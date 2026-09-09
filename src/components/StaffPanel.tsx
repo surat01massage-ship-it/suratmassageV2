@@ -101,6 +101,7 @@ export default function StaffPanel({
   const [showCancelJobModal, setShowCancelJobModal] = useState(false);
   const [cancelReasonInput, setCancelReasonInput] = useState('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   // Countdown timer for incoming offer
   const [countdown, setCountdown] = useState(30);
@@ -336,9 +337,9 @@ export default function StaffPanel({
       .then((geo) => updateLocationToServer(geo.latitude, geo.longitude))
       .catch((err) => console.warn("Staff GPS initial error:", err.message));
 
-    // 2. Watch position continuously if Online
+    // 2. Watch position continuously if Online OR if there is an active ongoing job
     let unwatch: (() => void) | null = null;
-    if (staff.Available === 'ON') {
+    if (staff.Available === 'ON' || ongoingBooking) {
       unwatch = watchRealLocation((geo) => {
         updateLocationToServer(geo.latitude, geo.longitude);
       });
@@ -347,29 +348,45 @@ export default function StaffPanel({
     return () => {
       if (unwatch) unwatch();
     };
-  }, [staff?.Available, staff?.StaffID]);
+  }, [staff?.Available, staff?.StaffID, !!ongoingBooking]);
 
-  // Auto turn-off availability if credit is insufficient
+  // Auto turn-off availability if credit is insufficient ONLY when staff has NO active/ongoing jobs
   useEffect(() => {
-    if (staff && staff.Available === 'ON' && staff.Credit < (settings?.minCredit || 398)) {
-      const turnOff = async () => {
-        try {
-          const res = await fetch('/api/staff/availability', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ staffId: staff.StaffID, available: 'OFF' })
-          });
-          if (res.ok) {
-            onUpdateStaffData({ ...staff, Available: 'OFF' });
-            onShowToast("🔴 ระบบปิดรับงานอัตโนมัติ เนื่องจากเครดิตของคุณไม่เพียงพอ", "error");
-          }
-        } catch (e) {
-          console.error("Failed to auto turn off availability:", e);
-        }
-      };
-      turnOff();
+    const minCredit = settings?.minCredit || 398;
+
+    // If staff is not online or has sufficient credit, do nothing
+    if (!staff || staff.Available !== 'ON' || staff.Credit >= minCredit) {
+      return;
     }
-  }, [staff?.Credit, staff?.Available, settings?.minCredit]);
+
+    // Do NOT turn off if staff is currently working on an ongoing job (Accepted or Working)
+    // or has an incoming offer. Let the staff travel and complete the job first!
+    const hasActiveJob = 
+      (ongoingBooking && (ongoingBooking.Status === 'Accepted' || ongoingBooking.Status === 'Working')) ||
+      (incomingBooking && incomingBooking.Status === 'Waiting') ||
+      bookings.some((b: any) => b.Status === 'Accepted' || b.Status === 'Working');
+
+    if (hasActiveJob) {
+      return;
+    }
+
+    const turnOff = async () => {
+      try {
+        const res = await fetch('/api/staff/availability', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ staffId: staff.StaffID, available: 'OFF' })
+        });
+        if (res.ok) {
+          onUpdateStaffData({ ...staff, Available: 'OFF' });
+          onShowToast("🔴 ระบบปิดรับงานอัตโนมัติ เนื่องจากเครดิตของคุณไม่เพียงพอ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่นะคะ", "error");
+        }
+      } catch (e) {
+        console.error("Failed to auto turn off availability:", e);
+      }
+    };
+    turnOff();
+  }, [staff?.Credit, staff?.Available, settings?.minCredit, ongoingBooking, incomingBooking, bookings]);
 
   // Toggle online/offline status
   const handleToggleOnline = async () => {
@@ -512,6 +529,7 @@ export default function StaffPanel({
   // Advance ongoing work status
   const handleUpdateOngoingStatus = async (actionName: 'start_travel' | 'complete') => {
     if (!ongoingBooking) return;
+    setIsUpdatingStatus(true);
 
     try {
       const res = await fetch(`/api/bookings/${ongoingBooking.BookingID}/action`, {
@@ -527,24 +545,44 @@ export default function StaffPanel({
       if (!res.ok) throw new Error(data.error);
 
       if (actionName === 'start_travel') {
-        onShowToast("อัปเดตสถานะ: พนักงานนวดกำลังเดินทางพบบ้านลูกค้าแล้วค่ะ", "info");
-      } else {
-        onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
+        onShowToast("🛵 อัปเดตสถานะ: พนักงานนวดกำลังเดินทางไปพบบ้านลูกค้าแล้วค่ะ", "info");
+        if (data.booking) {
+          setOngoingBooking(data.booking);
+          setBookings(prev => prev.map(b => b.BookingID === data.booking.BookingID ? data.booking : b));
+        }
         if (data.staff) {
           onUpdateStaffData(data.staff);
+        }
+      } else {
+        if (data.staff) {
+          onUpdateStaffData(data.staff);
+          if (data.staff.Available === 'OFF') {
+            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! เนื่องจากเครดิตหมด ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่นะคะ", "info");
+          } else {
+            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
+          }
         } else if (staff) {
-          // Increase TotalIncome and Credit transaction logs locally
+          const minCredit = settings?.minCredit || 398;
+          const willTurnOff = staff.Credit < minCredit;
           onUpdateStaffData({
             ...staff,
-            Credit: Math.max(0, staff.Credit - (ongoingBooking.CreditRequired ?? 398)),
+            Available: willTurnOff ? 'OFF' : staff.Available,
             TotalIncome: staff.TotalIncome + (ongoingBooking.NetIncome || ongoingBooking.TotalPrice),
             TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
           });
+          if (willTurnOff) {
+            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! เนื่องจากเครดิตหมด ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่นะคะ", "info");
+          } else {
+            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
+          }
         }
+        setOngoingBooking(null);
       }
       await fetchStaffData();
     } catch (e: any) {
       onShowToast(e.message, "error");
+    } finally {
+      setIsUpdatingStatus(false);
     }
   };
 
@@ -1317,18 +1355,37 @@ export default function StaffPanel({
                 </div>
               </div>
 
+              {/* Warning/info badge for last job before credit closure */}
+              {staff && staff.Credit < (settings?.minCredit || 398) && (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 leading-relaxed">
+                    <p className="font-black text-amber-950">⚡ คุณกำลังให้บริการงานสุดท้ายของรอบนี้ (เครดิตคงเหลือ {staff.Credit} CR)</p>
+                    <p className="text-[11px] text-amber-800">
+                      คุณสามารถกดเริ่มเดินทางและให้บริการงานนี้จนเสร็จสิ้นได้ตามปกติ ระบบจะปิดรับงานให้อัตโนมัติหลังจากคุณกดจบงานนี้เรียบร้อยแล้วค่ะ
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Status workflow steppers */}
               <div className="flex gap-3 pt-2">
                 {ongoingBooking.Status === 'Accepted' ? (
                   <>
                     <button
+                      disabled={isUpdatingStatus}
                       onClick={() => handleUpdateOngoingStatus('start_travel')}
-                      className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs py-3 rounded-xl transition-colors cursor-pointer"
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-extrabold text-xs py-3 rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                     >
-                      🛵 ฉันเริ่มเดินทางแล้ว
+                      {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : '🛵 ฉันเริ่มเดินทางแล้ว'}
                     </button>
                     <a
-                      href={`https://www.google.com/maps/dir/?api=1&origin=${staff?.CurrentLatitude || 9.1382},${staff?.CurrentLongitude || 99.3217}&destination=${ongoingBooking.CustomerLatitude || 9.1372},${ongoingBooking.CustomerLongitude || 99.3245}&travelmode=driving`}
+                      href={getGoogleMapsDirectionsUrl(
+                        staff?.CurrentLatitude,
+                        staff?.CurrentLongitude,
+                        ongoingBooking.CustomerLatitude,
+                        ongoingBooking.CustomerLongitude
+                      )}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs py-3 rounded-xl transition-colors cursor-pointer text-center flex items-center justify-center gap-1 shadow-sm"
@@ -1339,10 +1396,11 @@ export default function StaffPanel({
                   </>
                 ) : ongoingBooking.Status === 'Working' ? (
                   <button
+                    disabled={isUpdatingStatus}
                     onClick={() => handleUpdateOngoingStatus('complete')}
-                    className="w-full bg-sky-500 hover:bg-sky-600 text-white font-black text-xs py-3 rounded-xl transition-colors cursor-pointer shadow-md"
+                    className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-black text-xs py-3 rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                   >
-                    💆 นวดบริการเสร็จสมบูรณ์ (รับเงิน ฿{ongoingBooking.TotalPrice})
+                    {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : `💆 นวดบริการเสร็จสมบูรณ์ (รับเงิน ฿${ongoingBooking.TotalPrice})`}
                   </button>
                 ) : null}
               </div>

@@ -492,8 +492,9 @@ export default function CustomerPanel({
 
   // Find eligible online staff within search radius (configured by admin), sorted by distance
   const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
+  const minCreditRequirement = settings.minCredit && settings.minCredit > 0 ? settings.minCredit : 398;
   const activeOnlineStaff = allStaff
-    .filter((s) => s.Available === 'ON' && s.VerifyStatus !== 'Reject')
+    .filter((s) => s.Available === 'ON' && s.VerifyStatus !== 'Reject' && (s.Credit ?? 0) >= minCreditRequirement)
     .map((s) => {
       const staffLat = typeof s.CurrentLatitude === 'number' ? s.CurrentLatitude : 9.138244;
       const staffLng = typeof s.CurrentLongitude === 'number' ? s.CurrentLongitude : 99.321748;
@@ -724,9 +725,8 @@ export default function CustomerPanel({
                   <MapPin className="w-4 h-4" />
                 </div>
                 <div className="overflow-hidden min-w-0">
-                  <span className="text-[10px] text-slate-400 font-bold block">จุดให้บริการของคุณ (ค้นหาในรัศมี {maxSearchRadius} กม.)</span>
-                  <span className="text-xs text-slate-800 font-bold truncate block">
-                    {customerAddress || `พิกัด ${customerLat.toFixed(4)}, ${customerLng.toFixed(4)}`}
+                  <span className="text-xs text-slate-700 font-bold block">
+                    จุดให้บริการของคุณ (ค้นหาในรัศมี {maxSearchRadius} กม.)
                   </span>
                 </div>
               </div>

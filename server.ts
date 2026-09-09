@@ -1489,6 +1489,30 @@ async function startServer() {
           staff.TotalJobs = Math.max(1, (staff.TotalJobs || 0));
         }
 
+        // When this job is completed: if credit is now below minCredit, turn off availability now!
+        const minCredit = db.settings?.minCredit || 398;
+        const otherActiveBookings = db.bookings.some(b => 
+          b.StaffID === staff.StaffID && 
+          b.BookingID !== booking.BookingID && 
+          (b.Status === 'Accepted' || b.Status === 'Working')
+        );
+
+        if (!otherActiveBookings && staff.Credit < minCredit && staff.Available === 'ON') {
+          staff.Available = 'OFF';
+          console.log(`[StaffAvailability] Auto-turned off staff ${staff.Nickname} (${staff.StaffID}) after completing job #${booking.BookingID} due to low credit (${staff.Credit} < ${minCredit})`);
+          
+          const notif = {
+            NotificationID: generateId('N'),
+            UserID: staff.UserID,
+            Title: "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว)",
+            Detail: `งาน #${booking.BookingID} เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่นะคะ`,
+            ReadStatus: 'Unread' as const,
+            CreatedDate: new Date().toISOString()
+          };
+          db.notifications.push(notif);
+          syncToGoogleSheet('INSERT', 'Notification', notif);
+        }
+
         syncToGoogleSheet('UPDATE', 'Staff', staff);
       }
 
@@ -1604,6 +1628,18 @@ async function startServer() {
           };
           db.notifications.push(notif);
           syncToGoogleSheet('INSERT', 'Notification', notif);
+
+          // If credit < minCredit and no other active jobs, turn off availability
+          const minCredit = db.settings?.minCredit || 398;
+          const otherActive = db.bookings.some(b => 
+            b.StaffID === staffObj.StaffID && 
+            b.BookingID !== booking.BookingID && 
+            (b.Status === 'Accepted' || b.Status === 'Working')
+          );
+          if (!otherActive && staffObj.Credit < minCredit && staffObj.Available === 'ON') {
+            staffObj.Available = 'OFF';
+            syncToGoogleSheet('UPDATE', 'Staff', staffObj);
+          }
         }
       }
     }

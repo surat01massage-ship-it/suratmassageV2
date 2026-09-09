@@ -109,10 +109,17 @@ export function calculateTravelFee(
  * Generates a Google Maps direction navigation URL
  */
 export function getGoogleMapsDirectionsUrl(
-  originLat: number,
-  originLng: number,
-  destLat: number,
-  destLng: number
+  originLat?: number | null,
+  originLng?: number | null,
+  destLat?: number | null,
+  destLng?: number | null
 ): string {
-  return `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${destLat},${destLng}&travelmode=driving`;
+  const dLat = typeof destLat === 'number' && !isNaN(destLat) ? destLat : 9.1372;
+  const dLng = typeof destLng === 'number' && !isNaN(destLng) ? destLng : 99.3245;
+
+  if (typeof originLat === 'number' && !isNaN(originLat) && typeof originLng === 'number' && !isNaN(originLng) && originLat !== 0) {
+    return `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLng}&destination=${dLat},${dLng}&travelmode=driving`;
+  }
+  // When origin is omitted, Google Maps automatically uses the device's live current location
+  return `https://www.google.com/maps/dir/?api=1&destination=${dLat},${dLng}&travelmode=driving`;
 }
