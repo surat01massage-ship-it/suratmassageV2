@@ -111,6 +111,21 @@ export default function GoogleSheetsExport({ rawDb, onShowToast }: Props) {
         </button>
       </div>
 
+      {/* Real-time Two-way / Event Sync Status Badge */}
+      <div className="bg-emerald-50/80 border border-emerald-200 rounded-2xl p-4 flex items-start gap-3 text-xs text-emerald-900">
+        <div className="p-2 bg-emerald-500 text-white rounded-xl shadow-xs mt-0.5 shrink-0">
+          <CheckCircle className="w-4 h-4" />
+        </div>
+        <div className="space-y-1 text-left">
+          <h5 className="font-black text-emerald-950 flex items-center gap-2">
+            ⚡ ระบบเพิ่มและลบข้อมูลอัตโนมัติ (Live Synchronized)
+          </h5>
+          <p className="text-[11px] text-emerald-800 leading-relaxed">
+            เมื่อคุณ<strong>เพิ่มผู้ใช้ใหม่</strong>ในแอพ ข้อมูลจะถูกส่งไปเพิ่มแถวใหม่ใน Google Sheets ทันที และเมื่อ<strong>ลบผู้ใช้</strong>ในแอพ แถวของผู้ใช้งานในชีต <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[10px] border border-emerald-300">Users</code> และ <code className="bg-white px-1.5 py-0.5 rounded font-mono text-[10px] border border-emerald-300">Staff</code> จะถูกลบออกให้ตรงกันทันทีแบบ Real-time
+          </p>
+        </div>
+      </div>
+
       {/* Webhook Sync Section */}
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4">
         <div className="flex items-center justify-between">

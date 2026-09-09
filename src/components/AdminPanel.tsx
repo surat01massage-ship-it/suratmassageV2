@@ -175,7 +175,7 @@ export default function AdminPanel({
     e.preventDefault();
     try {
       const isEdit = !!editingUserId;
-      const url = isEdit ? `/api/users/${editingUserId}` : '/api/auth/register';
+      const url = isEdit ? `/api/users/${editingUserId}` : '/api/users';
       const method = isEdit ? 'PUT' : 'POST';
       
       const res = await fetch(url, {
@@ -186,12 +186,13 @@ export default function AdminPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      onShowToast(isEdit ? `อัปเดตข้อมูล ${userForm.name} สำเร็จ` : `เพิ่มผู้ใช้งาน ${userForm.name} สำเร็จ`, "success");
+      onShowToast(isEdit ? `อัปเดตข้อมูล ${userForm.name} และซิงค์ Google Sheets สำเร็จ` : `เพิ่มผู้ใช้งาน ${userForm.name} และซิงค์เข้าชีตอัตโนมัติเรียบร้อย`, "success");
       setShowUserForm(false);
       setEditingUserId(null);
       setUserForm({ name: '', phone: '', password: '', role: 'Customer' });
       fetchAllUsers();
       if (userForm.role === 'Staff') fetchStaffList();
+      fetchRawDatabase();
     } catch (e: any) {
       onShowToast(e.message, "error");
     }
@@ -219,10 +220,11 @@ export default function AdminPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดในการลบผู้ใช้งาน');
 
-      onShowToast(data.message || `ลบผู้ใช้งาน "${userToDelete.Name}" เรียบร้อยแล้ว`, "success");
+      onShowToast(data.message ? `${data.message} (ลบออกจากชีตเรียบร้อย)` : `ลบผู้ใช้งาน "${userToDelete.Name}" และแถวใน Google Sheets สำเร็จ`, "success");
       setUserToDelete(null);
       fetchAllUsers();
       fetchStaffList();
+      fetchRawDatabase();
     } catch (e: any) {
       onShowToast(e.message || "เกิดข้อผิดพลาดในการลบผู้ใช้งาน", "error");
     } finally {
@@ -238,9 +240,10 @@ export default function AdminPanel({
         body: JSON.stringify({ role })
       });
       if (!res.ok) throw new Error();
-      onShowToast(`เปลี่ยนสิทธิ์การใช้งานเป็น ${role} แล้ว`, "success");
+      onShowToast(`เปลี่ยนสิทธิ์การใช้งานเป็น ${role} และอัปเดตชีตแล้ว`, "success");
       fetchAllUsers();
       if (role === 'Staff') fetchStaffList();
+      fetchRawDatabase();
     } catch (e) {
       onShowToast("เกิดข้อผิดพลาดในการเปลี่ยนสิทธิ์", "error");
     }
@@ -2009,6 +2012,11 @@ export default function AdminPanel({
             <p className="text-xs text-slate-600 leading-relaxed">
               คุณแน่ใจหรือไม่ว่าต้องการลบผู้ใช้งาน <span className="font-bold text-slate-800">"{userToDelete.Name}"</span> ออกจากระบบ?
             </p>
+
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-[11px] leading-relaxed flex items-start gap-2 text-left">
+              <span className="text-sm">⚡</span>
+              <span><strong>ซิงค์ Google Sheets ทันที:</strong> การลบผู้ใช้งานนี้จะนำข้อมูลออกจากระบบและลบแถวใน Google Sheets ให้ตรงกันทันทีอัตโนมัติ</span>
+            </div>
 
             <div className="flex gap-3 pt-1">
               <button

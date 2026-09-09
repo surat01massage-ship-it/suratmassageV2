@@ -16,18 +16,18 @@ function setupInitialSheets() {
   const db = getDb();
   
   const tables = {
-    users: ["UserID", "Name", "Phone", "PasswordHash", "Email", "Address", "Province", "District", "SubDistrict", "Latitude", "Longitude", "ProfileImage", "Role", "Status", "CreatedDate"],
-    staff: ["StaffID", "UserID", "Nickname", "Gender", "Age", "Experience", "Description", "Rating", "ReviewCount", "Credit", "Available", "VerifyStatus", "CurrentLatitude", "CurrentLongitude", "LastLocationUpdate", "TotalIncome", "TotalJobs", "OfferedServices", "MaxJobDistance", "Photos", "LicenseFile", "IdCardFile", "HouseRegFile"],
-    services: ["ServiceID", "ServiceName", "Detail", "Duration", "Price", "CreditRequired", "Active", "SortOrder"],
-    bookings: ["BookingID", "CustomerID", "StaffID", "BookingDate", "BookingTime", "ServiceID", "ServicePrice", "Distance", "TravelFee", "TotalPrice", "CustomerLatitude", "CustomerLongitude", "CustomerAddress", "Status", "PaymentStatus", "CreatedDate"],
-    transactions: ["TransactionID", "StaffID", "Amount", "BeforeCredit", "AfterCredit", "Type", "SlipImage", "Status", "AdminRemark", "CreatedDate"],
-    reviews: ["ReviewID", "BookingID", "CustomerID", "StaffID", "Score", "Comment", "CreatedDate"],
-    notifications: ["NotificationID", "UserID", "Title", "Detail", "ReadStatus", "CreatedDate"],
-    settings: ["Key", "Value"]
+    Users: ["UserID", "Name", "Phone", "PasswordHash", "Email", "Address", "Province", "District", "SubDistrict", "Latitude", "Longitude", "ProfileImage", "Role", "Status", "CreatedDate"],
+    Staff: ["StaffID", "UserID", "Nickname", "Gender", "Age", "Experience", "Description", "Rating", "ReviewCount", "Credit", "Available", "VerifyStatus", "CurrentLatitude", "CurrentLongitude", "LastLocationUpdate", "TotalIncome", "TotalJobs", "OfferedServices", "MaxJobDistance", "Photos", "LicenseFile", "IdCardFile", "HouseRegFile"],
+    Services: ["ServiceID", "ServiceName", "Detail", "Duration", "Price", "CreditRequired", "Active", "SortOrder"],
+    Booking: ["BookingID", "CustomerID", "StaffID", "BookingDate", "BookingTime", "ServiceID", "ServicePrice", "Distance", "TravelFee", "TotalPrice", "CustomerLatitude", "CustomerLongitude", "CustomerAddress", "Status", "PaymentStatus", "CreatedDate"],
+    CreditTransaction: ["TransactionID", "StaffID", "Amount", "BeforeCredit", "AfterCredit", "Type", "SlipImage", "Status", "AdminRemark", "CreatedDate"],
+    Reviews: ["ReviewID", "BookingID", "CustomerID", "StaffID", "Score", "Comment", "CreatedDate"],
+    Notification: ["NotificationID", "UserID", "Title", "Detail", "ReadStatus", "CreatedDate"],
+    Settings: ["Key", "Value"]
   };
 
   for (const [sheetName, headers] of Object.entries(tables)) {
-    let sheet = db.getSheetByName(sheetName);
+    let sheet = getSheetByNameRobust(sheetName);
     if (!sheet) {
       sheet = db.insertSheet(sheetName);
     }
@@ -47,7 +47,7 @@ function setupInitialSheets() {
 
   // ลบแผ่นงานเริ่มต้น (ถ้ามี)
   const defaultSheet = db.getSheetByName("แผ่นงาน1") || db.getSheetByName("Sheet1");
-  if (defaultSheet) {
+  if (defaultSheet && db.getSheets().length > 1) {
     try {
       db.deleteSheet(defaultSheet);
     } catch (e) {
@@ -63,7 +63,7 @@ function setupInitialSheets() {
     name: "Database.gs",
     code: `/**
  * Database.gs
- * Core spreadsheet read/write database functions
+ * Core spreadsheet read/write/delete database functions
  */
 
 const SPREADSHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE";
@@ -75,8 +75,23 @@ function getDb() {
   return SpreadsheetApp.openById(SPREADSHEET_ID);
 }
 
+function getSheetByNameRobust(sheetName) {
+  const db = getDb();
+  let sheet = db.getSheetByName(sheetName);
+  if (sheet) return sheet;
+
+  // Case-insensitive fallback lookup
+  const sheets = db.getSheets();
+  for (let i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().toLowerCase() === sheetName.toLowerCase()) {
+      return sheets[i];
+    }
+  }
+  return null;
+}
+
 function getSheetData(sheetName) {
-  const sheet = getDb().getSheetByName(sheetName);
+  const sheet = getSheetByNameRobust(sheetName);
   if (!sheet) return [];
   const values = sheet.getDataRange().getValues();
   if (values.length <= 1) return [];
@@ -151,10 +166,15 @@ function processDataFiles(rowData) {
 }
 
 function appendSheetRow(sheetName, rowData) {
-  const sheet = getDb().getSheetByName(sheetName);
-  if (!sheet) throw new Error("Sheet " + sheetName + " not found");
-  
+  let sheet = getSheetByNameRobust(sheetName);
   const processedData = processDataFiles(rowData);
+  
+  if (!sheet) {
+    sheet = getDb().insertSheet(sheetName);
+    const headers = Object.keys(processedData);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight("bold").setBackground("#d9ead3");
+    sheet.setFrozenRows(1);
+  }
   
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const newRow = [];
@@ -173,19 +193,27 @@ function appendSheetRow(sheetName, rowData) {
 }
 
 function updateSheetRow(sheetName, idColumnName, idValue, updatedData) {
-  const sheet = getDb().getSheetByName(sheetName);
+  const sheet = getSheetByNameRobust(sheetName);
   if (!sheet) throw new Error("Sheet " + sheetName + " not found");
   
   const processedData = processDataFiles(updatedData);
   
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
-  const idColIndex = headers.indexOf(idColumnName);
+  let idColIndex = headers.indexOf(idColumnName);
   
+  // Fallbacks
+  if (idColIndex === -1) {
+    if (sheetName.toLowerCase() === 'users') idColIndex = headers.indexOf('UserID');
+    else if (sheetName.toLowerCase() === 'staff') idColIndex = headers.indexOf('StaffID');
+    else if (sheetName.toLowerCase() === 'services') idColIndex = headers.indexOf('ServiceID');
+    else if (sheetName.toLowerCase() === 'booking' || sheetName.toLowerCase() === 'bookings') idColIndex = headers.indexOf('BookingID');
+  }
+
   if (idColIndex === -1) throw new Error("ID Column " + idColumnName + " not found");
   
   for (let i = 1; i < values.length; i++) {
-    if (values[i][idColIndex] == idValue) {
+    if (String(values[i][idColIndex]).trim() === String(idValue).trim()) {
       // Found row, update cells
       for (const key in processedData) {
         const colIndex = headers.indexOf(key);
@@ -203,13 +231,61 @@ function updateSheetRow(sheetName, idColumnName, idValue, updatedData) {
   return false;
 }
 
+function upsertSheetRow(sheetName, idColumnName, idValue, rowData) {
+  if (idValue) {
+    try {
+      const updated = updateSheetRow(sheetName, idColumnName, idValue, rowData);
+      if (updated) return { action: "updated", id: idValue };
+    } catch (e) {
+      // Fall through to append if row not found
+    }
+  }
+  appendSheetRow(sheetName, rowData);
+  return { action: "inserted", id: idValue };
+}
+
+function deleteSheetRow(sheetName, idColumnName, idValue) {
+  const sheet = getSheetByNameRobust(sheetName);
+  if (!sheet) return { success: false, message: "Sheet " + sheetName + " not found" };
+  
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: true, deletedCount: 0, message: "No data rows" };
+  
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0];
+  let idColIndex = headers.indexOf(idColumnName);
+  
+  if (idColIndex === -1) {
+    if (sheetName.toLowerCase() === 'users') idColIndex = headers.indexOf('UserID');
+    else if (sheetName.toLowerCase() === 'staff') idColIndex = headers.indexOf('StaffID');
+    else if (sheetName.toLowerCase() === 'services') idColIndex = headers.indexOf('ServiceID');
+    else if (sheetName.toLowerCase() === 'booking' || sheetName.toLowerCase() === 'bookings') idColIndex = headers.indexOf('BookingID');
+    else if (sheetName.toLowerCase() === 'credittransaction' || sheetName.toLowerCase() === 'transactions') idColIndex = headers.indexOf('TransactionID');
+  }
+  
+  if (idColIndex === -1) {
+    throw new Error("ID Column " + idColumnName + " not found in sheet " + sheetName);
+  }
+  
+  let deletedCount = 0;
+  // Loop from bottom to top so deleting rows does not alter index of upper rows
+  for (let i = values.length - 1; i >= 1; i--) {
+    const cellValue = String(values[i][idColIndex]).trim();
+    if (cellValue === String(idValue).trim()) {
+      sheet.deleteRow(i + 1);
+      deletedCount++;
+    }
+  }
+  return { success: true, deletedCount: deletedCount };
+}
+
 function handleSyncAllTables(tables) {
   if (!tables) return { message: "No tables provided" };
   const db = getDb();
   for (const tableName in tables) {
     const rows = tables[tableName];
     if (!Array.isArray(rows) || rows.length === 0) continue;
-    let sheet = db.getSheetByName(tableName);
+    let sheet = getSheetByNameRobust(tableName);
     if (!sheet) {
       sheet = db.insertSheet(tableName);
     }
@@ -254,17 +330,47 @@ function doPost(e) {
       case "SYNC_ALL_DATA":
         result = handleSyncAllTables(request.tables || payload?.tables);
         break;
-      case "INSERT":
-        result = appendSheetRow(request.table, request.data);
+      case "INSERT": {
+        const idCol = request.table === 'Users' ? 'UserID' : (request.table === 'Staff' ? 'StaffID' : (request.table === 'Services' ? 'ServiceID' : (request.table === 'Booking' ? 'BookingID' : 'ID')));
+        const idVal = request.data ? (request.data[idCol] || request.data.UserID || request.data.StaffID) : null;
+        result = upsertSheetRow(request.table, idCol, idVal, request.data);
         break;
-      case "UPDATE":
-        const idCol = request.table === 'Users' ? 'UserID' : (request.table === 'Staff' ? 'StaffID' : (request.table === 'Booking' ? 'BookingID' : 'ID'));
+      }
+      case "UPDATE": {
+        const idCol = request.table === 'Users' ? 'UserID' : (request.table === 'Staff' ? 'StaffID' : (request.table === 'Booking' ? 'BookingID' : (request.table === 'Services' ? 'ServiceID' : 'ID')));
         result = updateSheetRow(request.table, idCol, request.data[idCol], request.data);
         break;
-      case "DELETE":
-        const delIdCol = request.table === 'Users' ? 'UserID' : (request.table === 'Staff' ? 'StaffID' : (request.table === 'Booking' ? 'BookingID' : 'ID'));
-        // Currently we don't physically delete, or we can just ignore since prompt didn't ask for DELETE
-        result = { success: true, message: "Delete ignored" };
+      }
+      case "DELETE": {
+        const table = request.table;
+        const data = request.data || {};
+        const idCol = table === 'Users' ? 'UserID' : (table === 'Staff' ? 'StaffID' : (table === 'Services' ? 'ServiceID' : (table === 'Booking' ? 'BookingID' : 'ID')));
+        const idVal = data[idCol] || data.id || data.ID || request.id;
+        
+        // ลบผู้ใช้งาน: ลบแถวใน Users และถ้ามีประวัติใน Staff ก็ลบออกด้วย
+        if (table === 'Users' && idVal) {
+          try {
+            deleteSheetRow('Staff', 'UserID', idVal);
+          } catch (e) {}
+          result = deleteSheetRow('Users', 'UserID', idVal);
+        } else if (table === 'Staff') {
+          if (data.StaffID) {
+            deleteSheetRow('Staff', 'StaffID', data.StaffID);
+          }
+          if (data.UserID) {
+            deleteSheetRow('Staff', 'UserID', data.UserID);
+          }
+          if (idVal && !data.StaffID && !data.UserID) {
+            deleteSheetRow('Staff', idCol, idVal);
+          }
+          result = { success: true };
+        } else {
+          result = deleteSheetRow(table, idCol, idVal);
+        }
+        break;
+      }
+      case "deleteUser":
+        result = handleDeleteUser(payload);
         break;
       case "login":
         result = handleLogin(payload);
@@ -312,7 +418,7 @@ function doPost(e) {
         result = updateAppSettings(payload);
         break;
       default:
-        throw new Error("Action not found");
+        throw new Error("Action not found: " + action);
     }
 
     return ContentService.createTextOutput(JSON.stringify({ success: true, data: result }))
@@ -329,7 +435,7 @@ function doPost(e) {
     name: "Auth.gs",
     code: `/**
  * Auth.gs
- * Authentication & Registration workflows
+ * Authentication, Registration & User Management workflows
  */
 
 function handleLogin(payload) {
@@ -346,6 +452,20 @@ function handleLogin(payload) {
   }
 
   return { user, staff };
+}
+
+function handleDeleteUser(payload) {
+  const userId = payload.userId || payload.UserID;
+  if (!userId) throw new Error("ระบุ UserID ที่ต้องการลบ");
+  
+  // ลบข้อมูลพนักงานนวดที่ผูกกัน (ถ้ามี)
+  try {
+    deleteSheetRow("Staff", "UserID", userId);
+  } catch (e) {}
+  
+  // ลบข้อมูลผู้ใช้จากชีต Users
+  const res = deleteSheetRow("Users", "UserID", userId);
+  return { success: true, deleted: res };
 }
 
 function handleRegister(payload) {

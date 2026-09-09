@@ -58,7 +58,9 @@ async function syncToGoogleSheet(action: 'INSERT' | 'UPDATE' | 'DELETE' | 'SYNC_
   try {
     const db = getDatabase();
     const webhookUrl = process.env.GOOGLE_SHEET_WEBHOOK_URL || db.settings?.googleSheetWebhookUrl;
-    if (!webhookUrl || !webhookUrl.startsWith('http')) return;
+    if (!webhookUrl || !webhookUrl.startsWith('http')) {
+      return;
+    }
     
     // Non-blocking asynchronous sync to Google Sheets
     fetch(webhookUrl, {
@@ -71,9 +73,12 @@ async function syncToGoogleSheet(action: 'INSERT' | 'UPDATE' | 'DELETE' | 'SYNC_
         data,
         timestamp: new Date().toISOString()
       })
-    }).then(res => {
+    }).then(async res => {
       if (!res.ok) {
         console.warn(`[GoogleSheetSync] ${table} (${action}) responded with status ${res.status}`);
+      } else {
+        const json = await res.json().catch(() => null);
+        console.log(`[GoogleSheetSync] Success ${table} (${action}):`, json);
       }
     }).catch(err => {
       console.error(`[GoogleSheetSync] Error syncing ${table} (${action}):`, err.message);
@@ -390,6 +395,93 @@ async function startServer() {
     res.json(db.users);
   });
 
+  app.post('/api/users', (req, res) => {
+    const db = getDatabase();
+    const { name, phone, password, email, address, province, district, subDistrict, latitude, longitude, role, staffInfo } = req.body;
+
+    if (!name || !phone || !password) {
+      return res.status(400).json({ error: 'กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (ชื่อ, เบอร์โทรศัพท์, รหัสผ่าน)' });
+    }
+
+    const existingUser = db.users.find(u => u.Phone === phone);
+    if (existingUser) {
+      return res.status(400).json({ error: 'เบอร์โทรศัพท์นี้ถูกใช้งานแล้วในระบบ' });
+    }
+
+    const newUserID = generateId('U');
+    const userRole = (role && ['Customer', 'Staff', 'Admin'].includes(role)) ? role : 'Customer';
+    const newUser: User = {
+      UserID: newUserID,
+      Name: name,
+      Phone: phone,
+      PasswordHash: password,
+      Email: email || '',
+      Address: address || '',
+      Province: province || '',
+      District: district || '',
+      SubDistrict: subDistrict || '',
+      Latitude: parseFloat(latitude) || 9.138244,
+      Longitude: parseFloat(longitude) || 99.321748,
+      ProfileImage: req.body.profileImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=60',
+      Role: userRole,
+      Status: 'Active',
+      CreatedDate: new Date().toISOString()
+    };
+
+    db.users.push(newUser);
+    syncToGoogleSheet('INSERT', 'Users', newUser);
+
+    if (userRole === 'Staff') {
+      const newStaffID = generateId('SFT');
+      const info = staffInfo || {};
+      const newStaff: Staff = {
+        StaffID: newStaffID,
+        UserID: newUserID,
+        Nickname: info.nickname || name.split(' ')[0],
+        Gender: info.gender || 'Female',
+        Age: parseInt(info.age) || 30,
+        Weight: parseInt(info.weight) || 50,
+        Height: parseInt(info.height) || 160,
+        RegisteredAddress: info.registeredAddress || newUser.Address,
+        Experience: parseInt(info.experience) || 2,
+        Description: info.description || 'ยินดีให้บริการนวดเพื่อสุขภาพค่ะ',
+        Rating: 5.0,
+        ReviewCount: 0,
+        Credit: 398,
+        Available: 'ON',
+        VerifyStatus: 'Approved',
+        CurrentLatitude: newUser.Latitude || 9.138244,
+        CurrentLongitude: newUser.Longitude || 99.321748,
+        LastLocationUpdate: new Date().toISOString(),
+        TotalIncome: 0,
+        TotalJobs: 0,
+        OfferedServices: db.services.map(s => s.ServiceID),
+        MaxJobDistance: 25,
+        Photos: []
+      };
+      db.staff.push(newStaff);
+      syncToGoogleSheet('INSERT', 'Staff', newStaff);
+
+      const welcomeTx = {
+        TransactionID: generateId('TX'),
+        StaffID: newStaffID,
+        Amount: 398,
+        BeforeCredit: 0,
+        AfterCredit: 398,
+        Type: 'Topup' as const,
+        SlipImage: '',
+        Status: 'Approved' as const,
+        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้ง)',
+        CreatedDate: new Date().toISOString()
+      };
+      db.transactions.push(welcomeTx);
+      syncToGoogleSheet('INSERT', 'CreditTransaction', welcomeTx);
+    }
+
+    saveDatabase(db);
+    res.status(201).json({ success: true, user: newUser });
+  });
+
   app.put('/api/users/:id', (req, res) => {
     const db = getDatabase();
     const user = db.users.find(u => u.UserID === req.params.id);
@@ -512,6 +604,31 @@ async function startServer() {
     syncToGoogleSheet('DELETE', 'Users', { UserID: id, Name: userToDelete.Name });
 
     res.json({ success: true, message: `ลบผู้ใช้งาน "${userToDelete.Name}" เรียบร้อยแล้ว` });
+  });
+
+  // Delete Staff Profile API
+  app.delete('/api/staff/:id', (req, res) => {
+    const db = getDatabase();
+    const { id } = req.params;
+    const sIndex = db.staff.findIndex(s => s.StaffID === id);
+    if (sIndex === -1) {
+      return res.status(404).json({ error: 'ไม่พบข้อมูลพนักงานที่ต้องการลบ' });
+    }
+
+    const staff = db.staff[sIndex];
+    db.staff.splice(sIndex, 1);
+
+    // If corresponding user exists, revert role to Customer
+    const user = db.users.find(u => u.UserID === staff.UserID);
+    if (user) {
+      user.Role = 'Customer';
+      syncToGoogleSheet('UPDATE', 'Users', user);
+    }
+
+    saveDatabase(db);
+    syncToGoogleSheet('DELETE', 'Staff', { StaffID: id, UserID: staff.UserID });
+
+    res.json({ success: true, message: `ลบข้อมูลพนักงาน "${staff.Nickname}" เรียบร้อยแล้ว` });
   });
 
   // 2. Services APIs
