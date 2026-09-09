@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   MapPin, Phone, Star, Sparkles, MessageSquare, Clock, Shield, CheckCircle, 
   ChevronRight, AlertTriangle, X, ShoppingBag, Send, ListCollapse, Award, Compass,
-  Navigation, ExternalLink
+  Navigation, ExternalLink, Filter, Search, Eye, EyeOff, Check
 } from 'lucide-react';
 import { User, Staff, Service, Booking, Review, Notification, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
+import MobileBottomNav, { CustomerNavTab } from './MobileBottomNav';
 import { calculateDistance, formatDistance, formatDistanceCompact, calculateTravelFee, getGoogleMapsDirectionsUrl } from '../utils/distance';
 import { getRealCurrentLocation } from '../utils/geolocation';
 
@@ -57,8 +58,12 @@ export default function CustomerPanel({
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [addressSuggestions, setAddressSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [activeTab, setActiveTab] = useState<'home' | 'booking' | 'history' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<CustomerNavTab>('home');
   const [historyBookings, setHistoryBookings] = useState<any[]>([]);
+  const [showLiveMap, setShowLiveMap] = useState(false);
+  const [genderFilter, setGenderFilter] = useState<'All' | 'Female' | 'Male'>('All');
+  const [searchStaff, setSearchStaff] = useState('');
+  const [sortBy, setSortBy] = useState<'distance' | 'rating' | 'experience'>('distance');
 
   // Profile Edit States
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -485,8 +490,8 @@ export default function CustomerPanel({
     }
   };
 
-  // Find eligible online staff within strict 15 km limit only, sorted by distance
-  const maxSearchRadius = Math.min(settings.searchRadius || 15, 15);
+  // Find eligible online staff within search radius (configured by admin), sorted by distance
+  const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
   const activeOnlineStaff = allStaff
     .filter((s) => s.Available === 'ON' && s.VerifyStatus !== 'Reject')
     .map((s) => {
@@ -504,52 +509,46 @@ export default function CustomerPanel({
     .filter((s) => s.distance <= maxSearchRadius)
     .sort((a, b) => a.distance - b.distance);
 
+  // Filter and sort staff for mobile view
+  const filteredOnlineStaff = activeOnlineStaff
+    .filter((s) => {
+      if (genderFilter !== 'All' && s.Gender !== genderFilter) return false;
+      if (searchStaff.trim()) {
+        const query = searchStaff.toLowerCase();
+        const nicknameMatch = (s.Nickname || '').toLowerCase().includes(query);
+        const descMatch = (s.Description || '').toLowerCase().includes(query);
+        if (!nicknameMatch && !descMatch) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'rating') return (b.Rating || 0) - (a.Rating || 0);
+      if (sortBy === 'experience') return (b.Experience || 0) - (a.Experience || 0);
+      return a.distance - b.distance;
+    });
+
   return (
-    <div className="space-y-6 max-w-lg mx-auto pb-10" id="customer-view-root">
-      {/* Customer Tabs */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-1.5 flex shadow-sm">
+    <div className="space-y-4 max-w-md sm:max-w-lg mx-auto pb-28" id="customer-view-root">
+      {/* Mobile Top Status Bar & Quick GPS */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-black text-slate-800">พร้อมให้บริการ</span>
+          <span className="text-[10px] text-sky-700 bg-sky-50 font-black px-2 py-0.5 rounded-full border border-sky-100">
+            {activeOnlineStaff.length} หมอนวดออนไลน์
+          </span>
+        </div>
+
+        {/* Quick GPS Refresh Button */}
         <button
-          onClick={() => setActiveTab('home')}
-          className={`flex-1 text-[10px] sm:text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'home' 
-              ? 'bg-sky-500 text-white shadow-md' 
-              : 'text-slate-500 hover:bg-slate-50'
-          }`}
+          type="button"
+          onClick={handleUseGPS}
+          disabled={isLoadingGPS}
+          className="flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-white border border-slate-200/80 px-2.5 py-1 rounded-xl shadow-2xs hover:bg-slate-50 cursor-pointer active:scale-95 transition-all"
+          title="ค้นหาตำแหน่งปัจจุบันผ่าน GPS"
         >
-          จองนวด
-        </button>
-        <button
-          onClick={() => setActiveTab('booking')}
-          className={`flex-1 text-[10px] sm:text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer relative ${
-            activeTab === 'booking' 
-              ? 'bg-sky-500 text-white shadow-md' 
-              : 'text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          กำลังจอง
-          {activeBooking && (
-            <span className="absolute top-1.5 right-4 w-2 h-2 bg-rose-500 rounded-full animate-pulse" />
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`flex-1 text-[10px] sm:text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'history' 
-              ? 'bg-sky-500 text-white shadow-md' 
-              : 'text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          ประวัติ
-        </button>
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`flex-1 text-[10px] sm:text-xs font-bold py-2.5 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'profile' 
-              ? 'bg-sky-500 text-white shadow-md' 
-              : 'text-slate-500 hover:bg-slate-50'
-          }`}
-        >
-          โปรไฟล์
+          <Compass className={`w-3.5 h-3.5 text-sky-500 ${isLoadingGPS ? 'animate-spin' : ''}`} />
+          <span>{isLoadingGPS ? 'ค้นหา...' : 'อัปเดต GPS'}</span>
         </button>
       </div>
 
@@ -586,6 +585,7 @@ export default function CustomerPanel({
                   : undefined
               }}
               height="h-[200px]"
+              searchRadius={maxSearchRadius}
             />
           </div>
 
@@ -715,151 +715,247 @@ export default function CustomerPanel({
 
       {/* Main Reservation panel when NO booking is active */}
       {activeTab === 'home' && (
-        <div className="space-y-5">
-          {/* Quick GPS Location Bar & Map */}
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-xs space-y-3">
+        <div className="space-y-4 animate-fade-in">
+          {/* Quick GPS Location Bar & Address Search */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/70 shadow-2xs space-y-2.5">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2.5 overflow-hidden">
                 <div className="p-2 rounded-xl bg-sky-50 text-sky-600 shrink-0">
                   <MapPin className="w-4 h-4" />
                 </div>
-                <div className="overflow-hidden">
-                  <span className="text-[10px] text-slate-400 font-bold block">ตำแหน่งปัจจุบันของคุณ (ค้นหาหมอนวดในระยะ 15 กม.)</span>
-                  <span className="text-xs text-slate-700 font-semibold truncate block">
-                    พิกัด {customerLat.toFixed(4)}, {customerLng.toFixed(4)}
+                <div className="overflow-hidden min-w-0">
+                  <span className="text-[10px] text-slate-400 font-bold block">จุดให้บริการของคุณ (ค้นหาในรัศมี {maxSearchRadius} กม.)</span>
+                  <span className="text-xs text-slate-800 font-bold truncate block">
+                    {customerAddress || `พิกัด ${customerLat.toFixed(4)}, ${customerLng.toFixed(4)}`}
                   </span>
                 </div>
               </div>
+
+              {/* Toggle Live Map Button */}
               <button
-                onClick={handleUseGPS}
-                disabled={isLoadingGPS}
-                className="text-[10px] font-black text-sky-600 bg-sky-50 hover:bg-sky-100 border border-sky-200/50 px-3 py-1.5 rounded-xl shrink-0 transition-colors cursor-pointer flex items-center gap-1.5"
+                type="button"
+                onClick={() => setShowLiveMap(!showLiveMap)}
+                className={`text-[11px] font-bold px-2.5 py-1.5 rounded-xl border shrink-0 transition-colors cursor-pointer flex items-center gap-1 ${
+                  showLiveMap 
+                    ? 'bg-sky-50 text-sky-700 border-sky-200' 
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
               >
-                <Compass className={`w-3.5 h-3.5 ${isLoadingGPS ? 'animate-spin' : ''}`} />
-                {isLoadingGPS ? 'ค้นหา...' : 'อัปเดต GPS'}
+                {showLiveMap ? <EyeOff className="w-3.5 h-3.5 text-sky-600" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
+                <span>{showLiveMap ? 'ซ่อนแผนที่' : 'ดูแผนที่สด'}</span>
               </button>
             </div>
+
+            {/* Collapsible Interactive Map */}
+            {showLiveMap && (
+              <div className="pt-2 rounded-2xl overflow-hidden border border-slate-100">
+                <InteractiveMap 
+                  customerLat={customerLat}
+                  customerLng={customerLng}
+                  staffPins={activeOnlineStaff.map((s) => ({
+                    id: s.StaffID,
+                    nickname: s.Nickname || 'หมอนวด',
+                    lat: s.CurrentLatitude || 9.1382,
+                    lng: s.CurrentLongitude || 99.3217,
+                    available: s.Available,
+                    status: s.VerifyStatus
+                  }))}
+                  searchRadius={maxSearchRadius}
+                  height="h-[220px]"
+                  onLocationChange={(lat, lng) => {
+                    setCustomerLat(lat);
+                    setCustomerLng(lng);
+                  }}
+                />
+              </div>
+            )}
           </div>
 
-          {/* Available Massage Therapists List */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-4 animate-fade-in">
-            <div className="flex items-center justify-between">
+          {/* Available Massage Therapists Header & Filter */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-1">
               <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <span className="text-xl">👩‍⚕️</span>
-                  พี่หมอนวดที่พร้อมให้บริการขณะนี้
+                <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-1.5">
+                  <span>👩‍⚕️</span>
+                  <span>หมอนวดใกล้ฉัน</span>
+                  <span className="text-xs font-bold text-sky-600">({filteredOnlineStaff.length})</span>
                 </h3>
-                <p className="text-[11px] text-slate-400 font-bold">คลิกที่พี่หมอนวดเพื่อเลือกรายการบริการนวดและจองบริการได้ทันทีค่ะ</p>
+                <p className="text-[10px] text-slate-400 font-medium">พร้อมเดินทางให้บริการถึงบ้านทันที</p>
               </div>
-              <span className="text-[10px] font-extrabold text-sky-600 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100 flex items-center gap-1.5 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-                {activeOnlineStaff.length} คนพร้อมรับงาน
-              </span>
             </div>
 
-            {/* Therapists list container */}
+            {/* Quick Search Input */}
+            <div className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input 
+                type="text"
+                value={searchStaff}
+                onChange={(e) => setSearchStaff(e.target.value)}
+                placeholder="ค้นหาชื่อเล่นหมอนวด หรือ อาการนวด..."
+                className="w-full pl-10 pr-4 py-2 text-xs font-medium bg-white border border-slate-200/80 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              />
+              {searchStaff && (
+                <button
+                  type="button"
+                  onClick={() => setSearchStaff('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Gender and Sort Filter Chips */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs">
+              <button
+                type="button"
+                onClick={() => setGenderFilter('All')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap cursor-pointer transition-all ${
+                  genderFilter === 'All' 
+                    ? 'bg-sky-600 text-white shadow-2xs' 
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                }`}
+              >
+                ทั้งหมด ({activeOnlineStaff.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenderFilter('Female')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap cursor-pointer transition-all ${
+                  genderFilter === 'Female' 
+                    ? 'bg-pink-600 text-white shadow-2xs' 
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                }`}
+              >
+                👩 หมอนวดหญิง
+              </button>
+              <button
+                type="button"
+                onClick={() => setGenderFilter('Male')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap cursor-pointer transition-all ${
+                  genderFilter === 'Male' 
+                    ? 'bg-blue-600 text-white shadow-2xs' 
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                }`}
+              >
+                👨 หมอนวดชาย
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortBy(sortBy === 'rating' ? 'distance' : 'rating')}
+                className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap cursor-pointer transition-all flex items-center gap-1 ${
+                  sortBy === 'rating' 
+                    ? 'bg-amber-500 text-white shadow-2xs' 
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-50'
+                }`}
+              >
+                <Star className="w-3 h-3 fill-current" />
+                <span>คะแนนสูงสุด</span>
+              </button>
+            </div>
+
+            {/* Mobile Therapist Cards List */}
             <div className="space-y-3">
-              {activeOnlineStaff.length === 0 ? (
-                <div className="bg-slate-50 rounded-2xl p-6 text-center border border-slate-100">
+              {filteredOnlineStaff.length === 0 ? (
+                <div className="bg-white rounded-3xl p-6 text-center border border-slate-100 shadow-2xs">
                   <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
-                  <p className="text-xs font-bold text-slate-600 mt-2">ไม่มีหมอนวดออนไลน์ในระยะ 15 กม. ณ ขณะนี้</p>
-                  <p className="text-[10px] text-slate-400 mt-1">ระบบจะแสดงเฉพาะหมอนวดที่เปิดสถานะออนไลน์ และอยู่ในรัศมีไม่เกิน 15 กิโลเมตรจากตำแหน่งจริงของคุณเท่านั้นค่ะ</p>
+                  <p className="text-xs font-bold text-slate-700 mt-2">ไม่พบหมอนวดออนไลน์ตามเงื่อนไขในระยะ {maxSearchRadius} กม.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">ลองเปลี่ยนตัวกรอง หรือขยายพิกัดค้นหาดูนะคะ</p>
                 </div>
               ) : (
-                activeOnlineStaff.map((staff) => {
-                  return (
-                    <div 
-                      key={staff.StaffID}
-                      onClick={async () => {
-                        setSelectedStaffProfile(staff);
-                        setSelectedStaffForBooking(staff);
-                        try {
-                          const res = await fetch(`/api/staff/${staff.StaffID}/reviews`);
-                          const data = await res.json();
-                          setSelectedStaffReviews(data);
-                        } catch (e) {
-                          console.error('Failed to fetch reviews', e);
-                        }
-                      }}
-                      className="border border-slate-100 hover:border-sky-500 hover:shadow-md rounded-3xl p-5 flex flex-col gap-4 bg-white transition-all cursor-pointer group hover:-translate-y-0.5 duration-200 relative overflow-hidden text-left"
-                    >
-                      {/* Decorative Background Element */}
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-sky-50 to-white/0 rounded-bl-[100px]" />
-
-                      <div className="flex gap-4 z-10 relative">
-                        {/* Image & Status */}
-                        <div className="relative shrink-0 mt-2">
-                          <img 
-                            src={staff.ProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.Nickname || 'พนักงาน')}&background=0D9488&color=fff&size=400`} 
-                            className="w-28 h-32 rounded-2xl object-cover border-2 border-white shadow-md group-hover:border-sky-100 transition-colors"
-                            alt={staff.Nickname} 
-                          />
-                          <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-500 border-[3px] border-white rounded-full" title="ออนไลน์" />
-                        </div>
-
-                        {/* Info Section */}
-                        <div className="flex-1 flex flex-col justify-between py-1">
-                          <div>
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="font-black text-slate-900 text-lg truncate group-hover:text-sky-700 transition-colors leading-tight">
-                                พี่{staff.Nickname}
-                              </span>
-                              <div className="flex flex-col items-end gap-1.5 shrink-0">
-                                <div className="flex items-center text-amber-600 font-black text-[11px] bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-md shadow-xs">
-                                  <Star className="w-3 h-3 fill-current mr-1 text-amber-500" />
-                                  <span>{staff.Rating}</span>
-                                </div>
-                                <div className="flex items-center text-[10px] bg-slate-50 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-md font-bold shadow-xs group-hover:bg-sky-50 group-hover:text-sky-700 group-hover:border-sky-200 transition-colors">
-                                  <MapPin className="w-2.5 h-2.5 mr-1 text-slate-400 group-hover:text-sky-500" />
-                                  <span>{formatDistance(staff.distance)}</span>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            <div className="mt-2.5 flex flex-wrap gap-1.5 text-[10px] font-bold text-slate-600">
-                              <span className="bg-slate-50 px-2 py-1 rounded-md border border-slate-100 flex items-center gap-1">
-                                <span className="text-sky-500 text-[8px] leading-none">●</span> {staff.Gender === 'Female' ? 'หญิง' : 'ชาย'}
-                              </span>
-                              <span className="bg-slate-50 px-2 py-1 rounded-md border border-slate-100 flex items-center gap-1">
-                                <span className="text-sky-500 text-[8px] leading-none">●</span> อายุ {staff.Age} ปี
-                              </span>
-                              <span className="bg-slate-50 px-2 py-1 rounded-md border border-slate-100 flex items-center gap-1">
-                                <Award className="w-3 h-3 text-sky-500" />
-                                ปสก. {staff.Experience} ปี
-                              </span>
-                            </div>
-
-                            {/* Bio / Description */}
-                            {staff.Description ? (
-                              <p className="mt-2.5 text-[10.5px] text-slate-500 font-medium leading-relaxed line-clamp-2">
-                                <span className="text-sky-400 font-serif text-lg leading-none mr-0.5">"</span>
-                                {staff.Description}
-                                <span className="text-sky-400 font-serif text-lg leading-none ml-0.5">"</span>
-                              </p>
-                            ) : (
-                              <p className="mt-2.5 text-[10.5px] text-slate-400 italic">
-                                ยินดีให้บริการด้วยความเต็มใจค่ะ
-                              </p>
-                            )}
-                          </div>
+                filteredOnlineStaff.map((staff) => (
+                  <div 
+                    key={staff.StaffID}
+                    onClick={async () => {
+                      setSelectedStaffProfile(staff);
+                      setSelectedStaffForBooking(staff);
+                      try {
+                        const res = await fetch(`/api/staff/${staff.StaffID}/reviews`);
+                        const data = await res.json();
+                        setSelectedStaffReviews(data);
+                      } catch (e) {
+                        console.error('Failed to fetch reviews', e);
+                      }
+                    }}
+                    className="border border-slate-200/80 hover:border-sky-500 rounded-3xl p-4 bg-white shadow-2xs hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] duration-150 relative overflow-hidden text-left"
+                  >
+                    <div className="flex gap-3.5 items-start">
+                      {/* Avatar with status and tag */}
+                      <div className="relative shrink-0">
+                        <img 
+                          src={staff.ProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.Nickname || 'พนักงาน')}&background=0D9488&color=fff&size=400`} 
+                          className="w-20 h-24 rounded-2xl object-cover border border-slate-100 shadow-sm"
+                          alt={staff.Nickname} 
+                        />
+                        <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
+                        </span>
+                        <div className="absolute bottom-1 left-1 bg-slate-900/80 backdrop-blur-xs text-white text-[8px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                          <CheckCircle className="w-2.5 h-2.5 text-emerald-400" />
+                          <span>พร้อมรับ</span>
                         </div>
                       </div>
 
-                      {/* Action button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedStaffProfile(staff);
-                          setSelectedStaffForBooking(staff);
-                        }}
-                        className="w-full mt-2 text-[13px] font-black text-white bg-sky-600 hover:bg-sky-700 shadow-md hover:shadow-lg py-3.5 rounded-xl transition-all cursor-pointer text-center flex items-center justify-center gap-2"
-                      >
-                        ดูโปรไฟล์ & จองบริการนวด
-                        <ChevronRight className="w-4 h-4 opacity-70" />
-                      </button>
+                      {/* Info Section */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-1">
+                          <div>
+                            <h4 className="font-black text-slate-900 text-base truncate group-hover:text-sky-600 transition-colors">
+                              พี่{staff.Nickname}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-semibold">ผู้ผ่านการตรวจสอบใบอนุญาต</p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <div className="flex items-center text-amber-700 font-black text-[11px] bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-lg shadow-2xs">
+                              <Star className="w-3 h-3 fill-current mr-0.5 text-amber-500" />
+                              <span>{staff.Rating}</span>
+                            </div>
+                            <div className="flex items-center text-[10px] bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded-lg font-bold">
+                              <MapPin className="w-2.5 h-2.5 mr-0.5 text-sky-500" />
+                              <span>{formatDistance(staff.distance)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div className="mt-2 flex flex-wrap gap-1 text-[10px] font-bold">
+                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                            {staff.Gender === 'Female' ? '👩 หญิง' : '👨 ชาย'}
+                          </span>
+                          <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                            อายุ {staff.Age} ปี
+                          </span>
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Award className="w-2.5 h-2.5 text-emerald-600" />
+                            ปสก. {staff.Experience} ปี
+                          </span>
+                        </div>
+
+                        {/* Quote */}
+                        {staff.Description && (
+                          <p className="mt-1.5 text-[10.5px] text-slate-500 font-medium line-clamp-1 leading-snug">
+                            "{staff.Description}"
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  );
-                })
+
+                    {/* Bottom CTA Button */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedStaffProfile(staff);
+                        setSelectedStaffForBooking(staff);
+                      }}
+                      className="w-full mt-3 text-xs font-black text-white bg-sky-600 hover:bg-sky-700 active:bg-sky-800 shadow-md py-2.5 rounded-xl transition-all cursor-pointer text-center flex items-center justify-center gap-1.5"
+                    >
+                      <span>ดูโปรไฟล์ & จองบริการ</span>
+                      <ChevronRight className="w-4 h-4 opacity-80" />
+                    </button>
+                  </div>
+                ))
               )}
             </div>
           </div>
@@ -868,8 +964,10 @@ export default function CustomerPanel({
 
       {/* MODAL 1: Full Staff Profile Detail & Booking Checkout Modal */}
       {selectedStaffProfile && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-[32px] sm:rounded-3xl max-w-lg w-full max-h-[92vh] sm:max-h-[85vh] overflow-y-auto shadow-2xl animate-slide-up">
+            {/* Mobile Sheet Drag Indicator */}
+            <div className="w-12 h-1.5 bg-slate-300/80 rounded-full mx-auto my-2.5 sm:hidden" />
             
             {/* Header profile banner */}
             <div className="relative h-32 bg-slate-100">
@@ -1132,6 +1230,7 @@ export default function CustomerPanel({
                         onLocationChange={handleMapLocationChange}
                         onUseGPS={handleUseGPS}
                         isLoadingGPS={isLoadingGPS}
+                        searchRadius={maxSearchRadius}
                       />
                     </div>
                     <p className="text-[10px] text-slate-500 font-semibold text-center">
@@ -1493,6 +1592,14 @@ export default function CustomerPanel({
           </div>
         </div>
       )}
+
+      {/* Floating Mobile Bottom Navigation Bar (LINE OA / Mobile Style) */}
+      <MobileBottomNav 
+        activeTab={activeTab} 
+        onChangeTab={setActiveTab} 
+        hasActiveBooking={!!activeBooking}
+        lineOa={settings.lineOA}
+      />
 
     </div>
   );

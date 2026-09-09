@@ -68,19 +68,22 @@ interface InteractiveMapProps {
   onLocationChange?: (lat: number, lng: number) => void;
   onUseGPS?: () => void;
   isLoadingGPS?: boolean;
+  searchRadius?: number;
 }
 
 // Component to handle map clicks, center and fit all pins
 function MapEvents({ 
   onLocationChange, 
   centerLat, 
-  centerLng,
-  staffPins
+  centerLng, 
+  staffPins,
+  searchRadius = 15
 }: { 
   onLocationChange?: (lat: number, lng: number) => void;
   centerLat: number;
   centerLng: number;
   staffPins: Array<{ lat: number; lng: number }>;
+  searchRadius?: number;
 }) {
   const map = useMap();
   
@@ -94,9 +97,10 @@ function MapEvents({
       return Math.sqrt(dLat * dLat + dLon * dLon);
     };
 
-    // Filter nearby staff only (< 40km) for map fitting bounds
+    // Filter nearby staff within visible search radius (buffered by 25% or at least 40km) for map fitting bounds
+    const maxFitDistance = Math.max(40, (searchRadius || 15) * 1.25);
     const nearbyStaff = staffPins.filter(
-      p => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng) && approxDistKm(centerLat, centerLng, p.lat, p.lng) <= 40
+      p => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng) && approxDistKm(centerLat, centerLng, p.lat, p.lng) <= maxFitDistance
     );
 
     if (nearbyStaff.length > 0) {
@@ -106,7 +110,7 @@ function MapEvents({
     } else {
       map.setView([centerLat, centerLng], 14, { animate: true });
     }
-  }, [centerLat, centerLng, staffPins.length, map]);
+  }, [centerLat, centerLng, staffPins.length, map, searchRadius]);
 
   useMapEvents({
     click(e) {
@@ -126,7 +130,8 @@ export default function InteractiveMap({
   height = 'h-[320px]',
   onLocationChange,
   onUseGPS,
-  isLoadingGPS = false
+  isLoadingGPS = false,
+  searchRadius = 15
 }: InteractiveMapProps) {
   const activeStaffPin = activeBooking && activeBooking.staffLat && activeBooking.staffLng 
     ? { lat: activeBooking.staffLat, lng: activeBooking.staffLng }
@@ -151,6 +156,7 @@ export default function InteractiveMap({
           centerLat={customerLat} 
           centerLng={customerLng} 
           staffPins={validStaffPins}
+          searchRadius={searchRadius}
         />
 
         {/* Customer Marker */}

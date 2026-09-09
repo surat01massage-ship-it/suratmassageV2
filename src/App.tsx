@@ -528,7 +528,7 @@ export default function App() {
       </header>
 
       {/* MAIN LAYOUT CANVAS */}
-      <main className="max-w-6xl w-full mx-auto px-4 py-8 flex-1">
+      <main className="max-w-6xl w-full mx-auto px-2.5 sm:px-4 py-2 sm:py-6 flex-1">
         
         {/* CASE 1: USER IS NOT LOGGED IN IN THE SESSION (LOGIN PANEL) */}
         {!currentUser ? (
@@ -1296,8 +1296,8 @@ export default function App() {
 
       </main>
 
-      {/* Sleek Bottom Status Bar */}
-      <footer className={`h-11 border-t px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left py-2 sm:py-0 ${
+      {/* Sleek Bottom Status Bar (Hidden on mobile to avoid colliding with Mobile Bottom Nav) */}
+      <footer className={`hidden sm:flex h-11 border-t px-6 flex-row items-center justify-between gap-2 text-left ${
         darkMode ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-white border-gray-100 text-slate-500'
       }`}>
         <div className="flex items-center gap-4">

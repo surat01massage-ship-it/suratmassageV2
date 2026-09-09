@@ -1098,6 +1098,58 @@ export default function StaffPanel({
         </div>
       )}
 
+      {/* Staff Segmented Navigation Tabs */}
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-1.5 flex shadow-2xs">
+        <button
+          type="button"
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex-1 text-[11px] font-bold py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+            activeTab === 'dashboard' 
+              ? 'bg-sky-600 text-white shadow-2xs' 
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>แดชบอร์ด</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('credit')}
+          className={`flex-1 text-[11px] font-bold py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+            activeTab === 'credit' 
+              ? 'bg-sky-600 text-white shadow-2xs' 
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <CreditCard className="w-3.5 h-3.5" />
+          <span>เครดิต</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('history')}
+          className={`flex-1 text-[11px] font-bold py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+            activeTab === 'history' 
+              ? 'bg-sky-600 text-white shadow-2xs' 
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <History className="w-3.5 h-3.5" />
+          <span>ประวัติงาน</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('profile')}
+          className={`flex-1 text-[11px] font-bold py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1 ${
+            activeTab === 'profile' 
+              ? 'bg-sky-600 text-white shadow-2xs' 
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <UserIcon className="w-3.5 h-3.5" />
+          <span>โปรไฟล์</span>
+        </button>
+      </div>
+
       {/* REVENUE STATS METRIC DASHBOARD */}
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
@@ -1876,15 +1928,24 @@ export default function StaffPanel({
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ระยะทางที่รับงานสูงสุด (กิโลเมตร)</label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ระยะทางที่รับงานสูงสุด (กิโลเมตร)</label>
+                <span className="text-[9px] font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-md">
+                  รัศมีระบบ: {settings.searchRadius || 15} กม.
+                </span>
+              </div>
               <input
                 type="number"
                 step="0.01"
+                min="1"
                 value={editMaxJobDistance}
-                onChange={(e) => setEditMaxJobDistance(parseFloat(e.target.value) || 15)}
+                onChange={(e) => setEditMaxJobDistance(parseFloat(e.target.value) || (settings.searchRadius || 15))}
                 required
                 className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
               />
+              <p className="text-[9px] text-slate-400">
+                คุณสามารถปรับระยะทางที่คุณสะดวกเดินทางไปให้บริการได้ (สูงสุดตามรัศมีที่ระบบเปิดให้บริการ)
+              </p>
             </div>
 
             <div className="space-y-1">

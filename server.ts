@@ -445,7 +445,7 @@ async function startServer() {
             TotalIncome: 0,
             TotalJobs: 0,
             OfferedServices: db.services.map(s => s.ServiceID),
-            MaxJobDistance: 15
+            MaxJobDistance: db.settings.searchRadius || 25
           };
           db.staff.push(staff);
           syncToGoogleSheet('INSERT', 'Staff', staff);
@@ -962,20 +962,22 @@ async function startServer() {
       return parseFloat((R * c).toFixed(2));
     };
 
-    // Calculate distance and travel fee for nearby online approved staff (strict 15km limit)
+    // Calculate distance and travel fee for nearby online approved staff
     const settings = db.settings;
     const clientLat = parseFloat(customerLatitude);
     const clientLng = parseFloat(customerLongitude);
-    const maxSearchRadius = Math.min(settings.searchRadius || 15, 15);
+    const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
 
-    // Find and sort eligible staff (ON, Approved, Credit >= Service.CreditRequired, within 15km search radius)
+    // Find and sort eligible staff (ON, Approved, Credit >= Service.CreditRequired, within search radius)
     const eligibleStaff = db.staff
       .filter(s => {
         const staffLat = typeof s.CurrentLatitude === 'number' ? s.CurrentLatitude : 9.138244;
         const staffLng = typeof s.CurrentLongitude === 'number' ? s.CurrentLongitude : 99.321748;
         const dist = calculateDistance(clientLat, clientLng, staffLat, staffLng);
         const offersService = !s.OfferedServices || s.OfferedServices.includes(serviceId);
-        const maxDist = Math.min(s.MaxJobDistance || maxSearchRadius, maxSearchRadius);
+        // If staff explicitly set a smaller limit (< 15km), respect it; otherwise allow up to platform search radius
+        const staffDistanceLimit = (s.MaxJobDistance && s.MaxJobDistance < 15) ? s.MaxJobDistance : Math.max(s.MaxJobDistance || 0, maxSearchRadius);
+        const maxDist = Math.min(staffDistanceLimit, maxSearchRadius);
         return (
           s.Available === 'ON' &&
           s.VerifyStatus !== 'Reject' &&
@@ -1011,7 +1013,7 @@ async function startServer() {
       .sort((a, b) => a.dist - b.dist); // closest first
       
     if (eligibleStaff.length === 0) {
-      return res.status(400).json({ error: 'ขออภัย ไม่มีหมอนวดให้บริการในระยะ 15 กม. จากตำแหน่งของคุณ กรุณาลองใหม่ภายหลังค่ะ' });
+      return res.status(400).json({ error: `ขออภัย ไม่มีหมอนวดให้บริการในระยะ ${maxSearchRadius} กม. จากตำแหน่งของคุณ กรุณาลองใหม่ภายหลังค่ะ` });
     }
 
     // If a preferred staff is requested, try to use them first if they are eligible

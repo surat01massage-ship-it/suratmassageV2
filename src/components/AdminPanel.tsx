@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Briefcase, Calendar, DollarSign, Settings, Eye, Edit, Trash2, 
   Check, X, Plus, ShieldCheck, Database, FileCode, Copy, Download, RefreshCw, BarChart2, ChevronRight,
-  MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw
+  MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw, Navigation
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
 import { googleAppsScriptFiles } from '../data/googleAppsScript';
@@ -1414,7 +1414,7 @@ export default function AdminPanel({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ค่าเดินทางเกินระยะต่อกม. (บาท)</label>
                 <input
@@ -1438,17 +1438,85 @@ export default function AdminPanel({
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                 />
               </div>
+            </div>
 
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">รัศมีค้นหาหมอ (กม.)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formSettings.searchRadius}
-                  onChange={(e) => setFormSettings({ ...formSettings, searchRadius: parseFloat(e.target.value) || 15 })}
-                  required
-                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
-                />
+            {/* Dedicated Search Radius Section */}
+            <div className="border border-sky-100 bg-sky-50/40 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-sky-500 text-white shadow-xs">
+                    <Navigation className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                      ระยะทางการค้นหาพนักงานนวดสูงสุด (Search Radius)
+                    </h4>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      กำหนดรัศมีที่ระบบจะค้นหาและแสดงหมอนวดที่ออนไลน์ให้ลูกค้า โดยสามารถปรับแก้ไขและขยายได้มากกว่า 15 กม. อย่างอิสระ
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-sky-700 bg-white px-3 py-1 rounded-xl border border-sky-200 shadow-xs shrink-0">
+                  {formSettings.searchRadius || 15} กม.
+                </span>
+              </div>
+
+              {/* Input and Quick Presets */}
+              <div className="space-y-3 pt-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="relative flex-1 max-w-xs">
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      step="1"
+                      value={formSettings.searchRadius}
+                      onChange={(e) => setFormSettings({ ...formSettings, searchRadius: parseFloat(e.target.value) || 15 })}
+                      required
+                      className="w-full text-sm font-black border border-slate-300 rounded-xl pl-4 pr-12 py-2.5 bg-white text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none shadow-xs"
+                      placeholder="เช่น 15, 20, 25, 30, 50"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
+                      กม.
+                    </span>
+                  </div>
+
+                  {/* Preset quick buttons */}
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 mr-1">ปุ่มลัด:</span>
+                    {[15, 20, 25, 30, 50, 100].map((radius) => {
+                      const isSelected = formSettings.searchRadius === radius;
+                      return (
+                        <button
+                          key={radius}
+                          type="button"
+                          onClick={() => setFormSettings({ ...formSettings, searchRadius: radius })}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-sky-500 text-white shadow-sm ring-2 ring-sky-300'
+                              : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-xs'
+                          }`}
+                        >
+                          {radius} กม.
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Dynamic guidance based on radius */}
+                {formSettings.searchRadius > 15 ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2 text-emerald-800">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed">
+                      <strong>ขยายพื้นที่บริการแล้ว:</strong> ขณะนี้ระบบค้นหาหมอนวดในระยะ <strong>{formSettings.searchRadius} กม.</strong> (กว้างกว่า 15 กม.) ลูกค้าจะสามารถค้นหาและจองหมอนวดในพื้นที่นี้ได้ทันที แนะนำให้ตรวจสอบตารางอัตราค่าเดินทางด้านล่างหากต้องการกำหนดราคาค่าเดินทางแยกตามช่วงระยะทางค่ะ
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400">
+                    💡 ค่าเริ่มต้นทั่วไปคือ 15 กม. หากในอนาคตต้องการขยายพื้นที่ให้บริการ สามารถปรับเพิ่มตัวเลขหรือคลิกปุ่มลัดด้านบนได้ทันทีค่ะ
+                  </p>
+                )}
               </div>
             </div>
 
