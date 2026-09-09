@@ -1,0 +1,10 @@
+{
+  "name": "SabaiDee MassageV2",
+  "description": "แพลตฟอร์มเรียกพนักงานนวดถึงบ้านแบบเรียลไทม์ (Real-time Home Massage Booking Platform)",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

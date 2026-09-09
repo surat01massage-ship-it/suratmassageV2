@@ -1,0 +1,213 @@
+import fs from 'fs';
+import path from 'path';
+import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings } from '../src/types';
+
+const DB_PATH = path.join(process.cwd(), 'server', 'db.json');
+
+// Ensure database directory exists
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+export interface DatabaseSchema {
+  users: User[];
+  staff: Staff[];
+  services: Service[];
+  bookings: Booking[];
+  transactions: CreditTransaction[];
+  reviews: Review[];
+  notifications: Notification[];
+  settings: AppSettings;
+}
+
+const defaultSettings: AppSettings = {
+  companyName: "SabaiDee Massage",
+  logo: "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
+  themeColor: "#10b981", // Emerald Green (Grab style)
+  travelFeePerKm: 15,
+  travelFeeTiers: [
+    { minKm: 0, maxKm: 3, fee: 0 },
+    { minKm: 3, maxKm: 10, fee: 150 },
+    { minKm: 10, maxKm: 15, fee: 200 }
+  ],
+  commissionRate: 15, // 15%
+  minCredit: 200,
+  searchRadius: 15, // 15 km
+  systemOpen: 'ON',
+  contactPhone: "081-234-5678",
+  lineOA: "@sabaideemassage",
+  facebook: "SabaiDee Home Massage",
+  businessHours: "09:00 - 22:00",
+  bannerText: "✨ โปรโมชั่นพิเศษ! ลดค่าเดินทาง 50% สำหรับการจองครั้งแรก ✨",
+  promotionText: "จองนวดอโรมาวันนี้ รับสิทธิ์นวดคอบ่าไหล่ฟรี 15 นาที!",
+  couponCode: "SABAIDEE99",
+  couponDiscount: 50,
+  bankName: "ธนาคารกสิกรไทย",
+  bankAccount: "123-4-56789-0",
+  bankAccountName: "บจก. สบายดี มาสสาจ",
+  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+};
+
+const defaultServices: Service[] = [
+  {
+    ServiceID: "S001",
+    ServiceName: "นวดผ่อนคลาย (Relaxing Massage)",
+    Detail: "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
+    Duration: 120,
+    Price: 798,
+    CreditRequired: 398,
+    Active: 'ON',
+    SortOrder: 1
+  },
+  {
+    ServiceID: "S002",
+    ServiceName: "นวดแก้อาการ (Therapeutic Massage)",
+    Detail: "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
+    Duration: 120,
+    Price: 798,
+    CreditRequired: 398,
+    Active: 'ON',
+    SortOrder: 2
+  },
+  {
+    ServiceID: "S003",
+    ServiceName: "นวดแผนไทย (Thai Massage)",
+    Detail: "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
+    Duration: 120,
+    Price: 798,
+    CreditRequired: 398,
+    Active: 'ON',
+    SortOrder: 3
+  }
+];
+
+const defaultUsers: User[] = [
+  {
+    UserID: "U001",
+    Name: "สมชาย ยิ่งดี (แอดมิน)",
+    Phone: "0812345678",
+    PasswordHash: "admin123",
+    Email: "admin@sabaidee.com",
+    Address: "99 ถนนกาญจนวิถี ต.บางกุ้ง อ.เมือง จ.สุราษฎร์ธานี 84000",
+    Province: "สุราษฎร์ธานี",
+    District: "เมืองสุราษฎร์ธานี",
+    SubDistrict: "บางกุ้ง",
+    Latitude: 9.145000,
+    Longitude: 99.336000,
+    ProfileImage: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=60",
+    Role: "Admin",
+    Status: "Active",
+    CreatedDate: "2026-01-01T08:00:00Z"
+  },
+  // Test Staff User
+  {
+    UserID: "U002",
+    Name: "วรรณภา แสนดี (พี่นง)",
+    Phone: "0823456789",
+    PasswordHash: "staff123",
+    Email: "nong@sabaidee.com",
+    Address: "45/12 ถนนหน้าเมือง ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
+    Province: "สุราษฎร์ธานี",
+    District: "เมืองสุราษฎร์ธานี",
+    SubDistrict: "ตลาด",
+    Latitude: 9.141500,
+    Longitude: 99.329200,
+    ProfileImage: "",
+    Role: "Staff",
+    Status: "Active",
+    CreatedDate: "2026-03-15T09:30:00Z"
+  },
+  // Test Customer User
+  {
+    UserID: "U005",
+    Name: "อภิสิทธิ์ วรศิลป์",
+    Phone: "0898765432",
+    PasswordHash: "customer123",
+    Email: "apisit@gmail.com",
+    Address: "128/9 ถนนชนเกษม ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
+    Province: "สุราษฎร์ธานี",
+    District: "เมืองสุราษฎร์ธานี",
+    SubDistrict: "ตลาด",
+    Latitude: 9.137200,
+    Longitude: 99.324500,
+    ProfileImage: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=60",
+    Role: "Customer",
+    Status: "Active",
+    CreatedDate: "2026-05-20T11:00:00Z"
+  }
+];
+
+const defaultStaff: Staff[] = [
+  {
+    StaffID: "SFT001",
+    UserID: "U002",
+    Nickname: "เจ้นง",
+    Gender: "Female",
+    Age: 38,
+    Experience: 8,
+    Description: "ถนัดนวดไทยกดจุด แก้อาการออฟฟิศซินโดรม นวดรีดเส้น และนวดประคบสมุนไพร ใจดี พูดจาไพเราะ ยินดีให้บริการในสุราษฎร์ธานีค่ะ",
+    Rating: 5.0,
+    ReviewCount: 0,
+    Credit: 1000,
+    Available: "ON",
+    VerifyStatus: "Approved",
+    CurrentLatitude: 9.141500,
+    CurrentLongitude: 99.329200,
+    LastLocationUpdate: "2026-06-27T18:50:00Z",
+    TotalIncome: 0,
+    TotalJobs: 0
+  }
+];
+
+const defaultBookings: Booking[] = [];
+
+const defaultTransactions: CreditTransaction[] = [];
+
+const defaultReviews: Review[] = [];
+
+const defaultNotifications: Notification[] = [];
+
+export function getDatabase(): DatabaseSchema {
+  if (!fs.existsSync(DB_PATH)) {
+    const initialDB: DatabaseSchema = {
+      users: defaultUsers,
+      staff: defaultStaff,
+      services: defaultServices,
+      bookings: defaultBookings,
+      transactions: defaultTransactions,
+      reviews: defaultReviews,
+      notifications: defaultNotifications,
+      settings: defaultSettings
+    };
+    saveDatabase(initialDB);
+    return initialDB;
+  }
+  
+  try {
+    const data = fs.readFileSync(DB_PATH, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error("Failed to parse database, restoring defaults...", error);
+    const initialDB: DatabaseSchema = {
+      users: defaultUsers,
+      staff: defaultStaff,
+      services: defaultServices,
+      bookings: defaultBookings,
+      transactions: defaultTransactions,
+      reviews: defaultReviews,
+      notifications: defaultNotifications,
+      settings: defaultSettings
+    };
+    saveDatabase(initialDB);
+    return initialDB;
+  }
+}
+
+export function saveDatabase(db: DatabaseSchema): void {
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf8');
+  } catch (error) {
+    console.error("Failed to save database", error);
+  }
+}

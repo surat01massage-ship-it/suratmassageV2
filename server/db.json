@@ -1,0 +1,293 @@
+{
+  "users": [
+    {
+      "UserID": "U001",
+      "Name": "สมชาย ยิ่งดี (แอดมิน)",
+      "Phone": "0812345678",
+      "PasswordHash": "admin123",
+      "Email": "admin@sabaidee.com",
+      "Address": "99 ถนนกาญจนวิถี ต.บางกุ้ง อ.เมือง จ.สุราษฎร์ธานี 84000",
+      "Province": "สุราษฎร์ธานี",
+      "District": "เมืองสุราษฎร์ธานี",
+      "SubDistrict": "บางกุ้ง",
+      "Latitude": 9.145,
+      "Longitude": 99.336,
+      "ProfileImage": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=60",
+      "Role": "Admin",
+      "Status": "Active",
+      "CreatedDate": "2026-01-01T08:00:00Z"
+    },
+    {
+      "UserID": "U002",
+      "Name": "วรรณภา แสนดี (พี่นง)",
+      "Phone": "0823456789",
+      "PasswordHash": "staff123",
+      "Email": "nong@sabaidee.com",
+      "Address": "45/12 ถนนหน้าเมือง ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
+      "Province": "สุราษฎร์ธานี",
+      "District": "เมืองสุราษฎร์ธานี",
+      "SubDistrict": "ตลาด",
+      "Latitude": 9.1415,
+      "Longitude": 99.3292,
+      "ProfileImage": "",
+      "Role": "Staff",
+      "Status": "Active",
+      "CreatedDate": "2026-03-15T09:30:00Z"
+    },
+    {
+      "UserID": "U759249",
+      "Name": "น้องฟ้า บริการดี",
+      "Phone": "0899999999",
+      "PasswordHash": "pass",
+      "Email": "",
+      "Address": "",
+      "Province": "",
+      "District": "",
+      "SubDistrict": "",
+      "Latitude": 9.1415,
+      "Longitude": 99.3292,
+      "ProfileImage": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=60",
+      "Role": "Staff",
+      "Status": "Active",
+      "CreatedDate": "2026-09-08T08:26:40.273Z"
+    }
+  ],
+  "staff": [
+    {
+      "StaffID": "SFT001",
+      "UserID": "U002",
+      "Nickname": "เจ้นง",
+      "Gender": "Female",
+      "Age": 38,
+      "Experience": 8,
+      "Description": "ถนัดนวดไทยกดจุด แก้อาการออฟฟิศซินโดรม นวดรีดเส้น และนวดประคบสมุนไพร ใจดี พูดจาไพเราะ ยินดีให้บริการในสุราษฎร์ธานีค่ะ",
+      "Rating": 5,
+      "ReviewCount": 0,
+      "Credit": 1000,
+      "Available": "ON",
+      "VerifyStatus": "Approved",
+      "CurrentLatitude": 9.1415,
+      "CurrentLongitude": 99.3292,
+      "LastLocationUpdate": "2026-06-27T18:50:00Z",
+      "TotalIncome": 0,
+      "TotalJobs": 0
+    },
+    {
+      "StaffID": "SFT956678",
+      "UserID": "U759249",
+      "Nickname": "ฟ้า",
+      "Gender": "Female",
+      "Age": 26,
+      "Weight": 50,
+      "Height": 160,
+      "RegisteredAddress": "",
+      "Experience": 2,
+      "Description": "บริการนวดเพื่อสุขภาพ",
+      "Rating": 5,
+      "ReviewCount": 0,
+      "Credit": 0,
+      "Available": "ON",
+      "VerifyStatus": "Approved",
+      "CurrentLatitude": 9.1415,
+      "CurrentLongitude": 99.3292,
+      "LastLocationUpdate": "2026-09-08T08:26:40.283Z",
+      "TotalIncome": 400,
+      "TotalJobs": 1,
+      "OfferedServices": [
+        "S001",
+        "S002",
+        "S003"
+      ],
+      "MaxJobDistance": 25,
+      "Photos": [
+        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=60"
+      ]
+    }
+  ],
+  "services": [
+    {
+      "ServiceID": "S001",
+      "ServiceName": "นวดผ่อนคลาย (Relaxing Massage)",
+      "Detail": "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
+      "Duration": 120,
+      "Price": 798,
+      "CreditRequired": 398,
+      "Active": "ON",
+      "SortOrder": 1
+    },
+    {
+      "ServiceID": "S002",
+      "ServiceName": "นวดแก้อาการ (Therapeutic Massage)",
+      "Detail": "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
+      "Duration": 120,
+      "Price": 798,
+      "CreditRequired": 398,
+      "Active": "ON",
+      "SortOrder": 2
+    },
+    {
+      "ServiceID": "S003",
+      "ServiceName": "นวดแผนไทย (Thai Massage)",
+      "Detail": "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
+      "Duration": 120,
+      "Price": 798,
+      "CreditRequired": 398,
+      "Active": "ON",
+      "SortOrder": 3
+    }
+  ],
+  "bookings": [
+    {
+      "BookingID": "B959790",
+      "CustomerID": "U001",
+      "StaffID": "SFT956678",
+      "BookingDate": "2026-09-08",
+      "BookingTime": "08:26",
+      "ServiceID": "S001",
+      "ServicePrice": 798,
+      "Distance": 0.84,
+      "TravelFee": 0,
+      "TotalPrice": 798,
+      "CustomerLatitude": 9.145,
+      "CustomerLongitude": 99.336,
+      "CustomerAddress": "เมืองสุราษฎร์",
+      "Status": "Completed",
+      "PaymentStatus": "Paid",
+      "CreatedDate": "2026-09-08T08:26:40.344Z",
+      "offeredQueue": [
+        "SFT956678",
+        "SFT001"
+      ],
+      "currentOfferIndex": 0,
+      "offerExpireTime": "2026-09-08T08:27:10.344Z"
+    }
+  ],
+  "transactions": [
+    {
+      "TransactionID": "TX680911",
+      "StaffID": "SFT661212",
+      "Amount": 398,
+      "BeforeCredit": 0,
+      "AfterCredit": 398,
+      "Type": "Topup",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้ง)",
+      "CreatedDate": "2026-09-08T07:17:02.169Z"
+    },
+    {
+      "TransactionID": "TX631001",
+      "StaffID": "SFT956678",
+      "Amount": 398,
+      "BeforeCredit": 0,
+      "AfterCredit": 398,
+      "Type": "Topup",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้ง)",
+      "CreatedDate": "2026-09-08T08:26:40.284Z"
+    },
+    {
+      "TransactionID": "TX312449",
+      "StaffID": "SFT956678",
+      "Amount": 398,
+      "BeforeCredit": 398,
+      "AfterCredit": 0,
+      "Type": "Deduct",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "หักค่าคอมมิชชันล่วงหน้าสำหรับ Booking #B959790",
+      "CreatedDate": "2026-09-08T08:26:40.361Z"
+    }
+  ],
+  "reviews": [],
+  "notifications": [
+    {
+      "NotificationID": "N801660",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ พนักงานใหม่ (ชื่อเล่น น้องใหม่) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T06:01:46.038Z"
+    },
+    {
+      "NotificationID": "N773203",
+      "UserID": "U759249",
+      "Title": "🎁 ยินดีต้อนรับ! คุณได้รับ 398 เครดิตฟรี",
+      "Detail": "ยินดีต้อนรับสู่ SabaiDee Massage! คุณได้รับเครดิตฟรี 398 เครดิต สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งทันทีค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.287Z"
+    },
+    {
+      "NotificationID": "N218956",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
+      "Detail": "พนักงานนวดคนใหม่ คุณ น้องฟ้า บริการดี (ชื่อเล่น ฟ้า) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.288Z"
+    },
+    {
+      "NotificationID": "N449727",
+      "UserID": "U759249",
+      "Title": "🔔 มีงานนวดใหม่เรียกใช้คุณ!",
+      "Detail": "คุณได้รับการเรียกงานนวดบริการ นวดผ่อนคลาย (Relaxing Massage) ระยะทาง 0.84 กม. รายได้รวม 798 บาท กรุณาตอบรับภายใน 30 วินาที",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.344Z"
+    },
+    {
+      "NotificationID": "N456967",
+      "UserID": "U001",
+      "Title": "🟢 พนักงานตอบรับงานของคุณแล้ว!",
+      "Detail": "พี่ ฟ้า ได้รับงานของคุณแล้ว กำลังจัดเตรียมอุปกรณ์เพื่อเดินทางไปให้บริการ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.362Z"
+    },
+    {
+      "NotificationID": "N487646",
+      "UserID": "U001",
+      "Title": "✅ การให้บริการเสร็จสิ้นแล้ว",
+      "Detail": "ขอบคุณที่ใช้บริการ SabaiDee Massage ค่ะ กรุณาให้คะแนนรีวิวเพื่อเป็นกำลังใจและพัฒนาคุณภาพต่อไป",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.382Z"
+    }
+  ],
+  "settings": {
+    "companyName": "SabaiDee Massage",
+    "logo": "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
+    "themeColor": "#10b981",
+    "travelFeePerKm": 15,
+    "travelFeeTiers": [
+      {
+        "minKm": 0,
+        "maxKm": 3,
+        "fee": 0
+      },
+      {
+        "minKm": 3,
+        "maxKm": 10,
+        "fee": 150
+      },
+      {
+        "minKm": 10,
+        "maxKm": 15,
+        "fee": 200
+      }
+    ],
+    "commissionRate": 15,
+    "minCredit": 200,
+    "searchRadius": 15,
+    "systemOpen": "ON",
+    "contactPhone": "081-234-5678",
+    "lineOA": "@sabaideemassage",
+    "facebook": "SabaiDee Home Massage",
+    "businessHours": "09:00 - 22:00",
+    "bannerText": "✨ โปรโมชั่นพิเศษ! ลดค่าเดินทาง 50% สำหรับการจองครั้งแรก ✨",
+    "promotionText": "จองนวดอโรมาวันนี้ รับสิทธิ์นวดคอบ่าไหล่ฟรี 15 นาที!",
+    "couponCode": "SABAIDEE99",
+    "couponDiscount": 50,
+    "bankName": "ธนาคารกสิกรไทย",
+    "bankAccount": "123-4-56789-0",
+    "bankAccountName": "บจก. สบายดี มาสสาจ",
+    "qrCodeImage": "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+  }
+}
