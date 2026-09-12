@@ -57,9 +57,9 @@ export default function AdminPanel({
   const [showServiceForm, setShowServiceForm] = useState(false);
   const [serviceFormName, setServiceFormName] = useState("");
   const [serviceFormDetail, setServiceFormDetail] = useState("");
-  const [serviceFormPrice, setServiceFormPrice] = useState(350);
-  const [serviceFormDuration, setServiceFormDuration] = useState(60);
-  const [serviceFormCredit, setServiceFormCredit] = useState(50);
+  const [serviceFormPrice, setServiceFormPrice] = useState<number | string>(350);
+  const [serviceFormDuration, setServiceFormDuration] = useState<number | string>(60);
+  const [serviceFormCredit, setServiceFormCredit] = useState<number | string>(50);
 
   // Settings customizer states
   const [formSettings, setFormSettings] = useState<AppSettings>({ ...settings });
@@ -391,9 +391,9 @@ export default function AdminPanel({
     const payload = {
       ServiceName: serviceFormName,
       Detail: serviceFormDetail,
-      Price: serviceFormPrice,
-      Duration: serviceFormDuration,
-      CreditRequired: serviceFormCredit
+      Price: Number(serviceFormPrice) || 0,
+      Duration: Number(serviceFormDuration) || 60,
+      CreditRequired: Number(serviceFormCredit) || 0
     };
 
     try {
@@ -1126,7 +1126,8 @@ export default function AdminPanel({
                       <input
                         type="number"
                         value={serviceFormPrice}
-                        onChange={(e) => setServiceFormPrice(parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setServiceFormPrice(e.target.value === '' ? '' : (parseFloat(e.target.value) || ''))}
+                        placeholder="เช่น 350"
                         required
                         className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                       />
@@ -1137,7 +1138,8 @@ export default function AdminPanel({
                       <input
                         type="number"
                         value={serviceFormDuration}
-                        onChange={(e) => setServiceFormDuration(parseInt(e.target.value) || 60)}
+                        onChange={(e) => setServiceFormDuration(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                        placeholder="เช่น 60"
                         required
                         className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                       />
@@ -1150,7 +1152,8 @@ export default function AdminPanel({
                       <input
                         type="number"
                         value={serviceFormCredit}
-                        onChange={(e) => setServiceFormCredit(parseInt(e.target.value) || 0)}
+                        onChange={(e) => setServiceFormCredit(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                        placeholder="เช่น 50"
                         required
                         className="w-full text-xs font-semibold border border-amber-200 rounded-xl p-3 bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-amber-700"
                       />
@@ -1159,7 +1162,7 @@ export default function AdminPanel({
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">พนักงานจะได้รับเงินสดสุทธิ (บาท)</label>
                       <div className="w-full text-xs font-black border border-sky-200 rounded-xl p-3 bg-sky-50 text-sky-700 flex items-center">
-                        ฿{Math.max(0, serviceFormPrice - serviceFormCredit)} บาท
+                        ฿{Math.max(0, (Number(serviceFormPrice) || 0) - (Number(serviceFormCredit) || 0))} บาท
                       </div>
                     </div>
                   </div>

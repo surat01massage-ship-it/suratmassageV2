@@ -83,11 +83,11 @@ export default function App() {
   const [regPassword, setRegPassword] = useState("");
   const [regRole, setRegRole] = useState<'Customer' | 'Staff'>('Customer');
   const [regNickname, setRegNickname] = useState("");
-  const [regAge, setRegAge] = useState(25);
-  const [regWeight, setRegWeight] = useState(50);
-  const [regHeight, setRegHeight] = useState(160);
+  const [regAge, setRegAge] = useState<number | string>(25);
+  const [regWeight, setRegWeight] = useState<number | string>(50);
+  const [regHeight, setRegHeight] = useState<number | string>(160);
   const [regRegisteredAddress, setRegRegisteredAddress] = useState("");
-  const [regExperience, setRegExperience] = useState(2);
+  const [regExperience, setRegExperience] = useState<number | string>(2);
   const [regGender, setRegGender] = useState<'Female' | 'Male' | 'Other'>('Female');
   
   // Photo states during Staff registration (starts completely empty so staff can add their own photos)
@@ -387,12 +387,12 @@ export default function App() {
         profileImage: finalProfileImage,
         staffInfo: currentRole === 'Staff' ? {
           nickname: regNickname.trim() || regName.split(" ")[0],
-          age: regAge,
-          weight: regWeight,
-          height: regHeight,
+          age: Number(regAge) || 25,
+          weight: Number(regWeight) || 50,
+          height: Number(regHeight) || 160,
           registeredAddress: regRegisteredAddress,
           gender: regGender,
-          experience: regExperience,
+          experience: Number(regExperience) || 0,
           description: "พร้อมให้บริการสปานวดเพื่อสุขภาพและการผ่อนคลายเต็มรูปแบบ",
           photos: finalStaffPhotos,
           licenseFile: regLicenseFile,
@@ -1058,11 +1058,12 @@ export default function App() {
                       <input
                         type="number"
                         value={regAge}
-                        onChange={(e) => setRegAge(parseInt(e.target.value) || 20)}
+                        onChange={(e) => setRegAge(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                        placeholder="เช่น 25"
                         required
                         min={18}
                         max={70}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900"
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1070,11 +1071,12 @@ export default function App() {
                       <input
                         type="number"
                         value={regWeight}
-                        onChange={(e) => setRegWeight(parseInt(e.target.value) || 50)}
+                        onChange={(e) => setRegWeight(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                        placeholder="เช่น 50"
                         required
                         min={35}
                         max={150}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900"
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1082,11 +1084,12 @@ export default function App() {
                       <input
                         type="number"
                         value={regHeight}
-                        onChange={(e) => setRegHeight(parseInt(e.target.value) || 160)}
+                        onChange={(e) => setRegHeight(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                        placeholder="เช่น 160"
                         required
                         min={120}
                         max={220}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900"
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
                   </div>
@@ -1099,7 +1102,7 @@ export default function App() {
                       onChange={(e) => setRegRegisteredAddress(e.target.value)}
                       placeholder="เช่น 12/34 ม.5 ต.ในเมือง อ.เมือง จ.ขอนแก่น"
                       required
-                      className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 focus:outline-none"
+                      className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                     />
                   </div>
 
@@ -1122,11 +1125,12 @@ export default function App() {
                       <input
                         type="number"
                         value={regExperience}
-                        onChange={(e) => setRegExperience(parseInt(e.target.value) || 1)}
+                        onChange={(e) => setRegExperience(e.target.value === '' ? '' : (parseInt(e.target.value) || 0))}
+                        placeholder="เช่น 2"
                         required
                         min={0}
                         max={50}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900"
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
                   </div>

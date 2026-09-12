@@ -151,16 +151,16 @@ export default function StaffPanel({
   // Profile Edit states
   const [editProfileImage, setEditProfileImage] = useState("");
   const [editNickname, setEditNickname] = useState("");
-  const [editAge, setEditAge] = useState(30);
-  const [editWeight, setEditWeight] = useState(50);
-  const [editHeight, setEditHeight] = useState(160);
+  const [editAge, setEditAge] = useState<number | string>(30);
+  const [editWeight, setEditWeight] = useState<number | string>(50);
+  const [editHeight, setEditHeight] = useState<number | string>(160);
   const [editGender, setEditGender] = useState<'Male' | 'Female' | 'Other'>('Female');
   const [editRegisteredAddress, setEditRegisteredAddress] = useState("");
-  const [editExperience, setEditExperience] = useState(3);
+  const [editExperience, setEditExperience] = useState<number | string>(3);
   const [editDescription, setEditDescription] = useState("");
   const [services, setServices] = useState<any[]>([]);
   const [editOfferedServices, setEditOfferedServices] = useState<string[]>([]);
-  const [editMaxJobDistance, setEditMaxJobDistance] = useState(15);
+  const [editMaxJobDistance, setEditMaxJobDistance] = useState<number | string>(15);
 
   // Photo gallery and profile photo management states
   const [staffPhotos, setStaffPhotos] = useState<string[]>([]);
@@ -798,15 +798,15 @@ export default function StaffPanel({
           profileImage: editProfileImage,
           staffInfo: {
             nickname: editNickname,
-            age: editAge,
-            weight: editWeight,
-            height: editHeight,
+            age: Number(editAge) || staff.Age || 30,
+            weight: Number(editWeight) || staff.Weight || 50,
+            height: Number(editHeight) || staff.Height || 160,
             gender: editGender,
             registeredAddress: editRegisteredAddress,
-            experience: editExperience,
+            experience: Number(editExperience) || 0,
             description: editDescription,
             offeredServices: editOfferedServices,
-            maxJobDistance: editMaxJobDistance,
+            maxJobDistance: Number(editMaxJobDistance) || 15,
             photos: staffPhotos
           }
         })
@@ -1940,7 +1940,8 @@ export default function StaffPanel({
                 <input
                   type="number"
                   value={editAge}
-                  onChange={(e) => setEditAge(parseInt(e.target.value) || 30)}
+                  onChange={(e) => setEditAge(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                  placeholder="เช่น 30"
                   required
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                 />
@@ -1951,7 +1952,8 @@ export default function StaffPanel({
                 <input
                   type="number"
                   value={editWeight}
-                  onChange={(e) => setEditWeight(parseInt(e.target.value) || 50)}
+                  onChange={(e) => setEditWeight(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                  placeholder="เช่น 50"
                   required
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                 />
@@ -1962,7 +1964,8 @@ export default function StaffPanel({
                 <input
                   type="number"
                   value={editHeight}
-                  onChange={(e) => setEditHeight(parseInt(e.target.value) || 160)}
+                  onChange={(e) => setEditHeight(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
+                  placeholder="เช่น 160"
                   required
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                 />
@@ -1986,7 +1989,8 @@ export default function StaffPanel({
               <input
                 type="number"
                 value={editExperience}
-                onChange={(e) => setEditExperience(parseInt(e.target.value) || 1)}
+                onChange={(e) => setEditExperience(e.target.value === '' ? '' : (parseInt(e.target.value) || 0))}
+                placeholder="เช่น 3"
                 required
                 className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
               />
@@ -2004,7 +2008,8 @@ export default function StaffPanel({
                 step="0.01"
                 min="1"
                 value={editMaxJobDistance}
-                onChange={(e) => setEditMaxJobDistance(parseFloat(e.target.value) || (settings.searchRadius || 15))}
+                onChange={(e) => setEditMaxJobDistance(e.target.value === '' ? '' : (parseFloat(e.target.value) || ''))}
+                placeholder={`เช่น ${settings.searchRadius || 15}`}
                 required
                 className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
               />

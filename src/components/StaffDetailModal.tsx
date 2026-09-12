@@ -124,10 +124,18 @@ export default function StaffDetailModal({
     e.preventDefault();
     try {
       setIsSavingEdit(true);
+      const payload = {
+        ...editForm,
+        age: editForm.age === '' ? 30 : (Number(editForm.age) || 30),
+        weight: editForm.weight === '' ? 50 : (Number(editForm.weight) || 50),
+        height: editForm.height === '' ? 160 : (Number(editForm.height) || 160),
+        experience: editForm.experience === '' ? 0 : (Number(editForm.experience) || 0),
+        maxJobDistance: editForm.maxJobDistance === '' ? 15 : (Number(editForm.maxJobDistance) || 15)
+      };
       const res = await fetch(`/api/admin/staff/${staffId}/update`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editForm)
+        body: JSON.stringify(payload)
       });
 
       const result = await res.json();
