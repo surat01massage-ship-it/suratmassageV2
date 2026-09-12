@@ -2019,6 +2019,15 @@ export default function AdminPanel({
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                   placeholder="https://..."
                 />
+                {formSettings.qrCodeImage && (
+                  <div className="mt-2 p-2 bg-white border border-slate-200 rounded-xl flex items-center gap-3">
+                    <img src={formSettings.qrCodeImage} alt="QR Preview" className="w-14 h-14 object-contain rounded-lg border border-slate-100 bg-slate-50 shrink-0" />
+                    <div className="text-[11px] text-slate-500 leading-tight">
+                      <span className="font-bold text-slate-700 block mb-0.5">ตัวอย่างภาพ QR Code สำหรับพนักงาน</span>
+                      <span>พนักงานจะเห็นปุ่ม <strong className="text-sky-600">"บันทึก QR Code ลงเครื่อง"</strong> เพื่อโอนเงินในแอปธนาคาร</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -4,7 +4,7 @@ import {
   User as UserIcon, LogOut, Check, X, ShieldAlert, CreditCard, ChevronRight, Upload,
   Compass, ExternalLink, Navigation, Volume2, VolumeX, Phone, PhoneCall, Copy,
   Camera, Image as ImageIcon, Sparkles, Trash2, Plus, Link as LinkIcon, Eye,
-  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot
+  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode
 } from 'lucide-react';
 import { User, Staff, Booking, CreditTransaction, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -168,6 +168,12 @@ export default function StaffPanel({
   const [isSavingPhoto, setIsSavingPhoto] = useState<boolean>(false);
   const [customPhotoUrl, setCustomPhotoUrl] = useState<string>('');
   const [previewZoomImage, setPreviewZoomImage] = useState<string | null>(null);
+
+  // QR Code download & bank copy states for credit top-up
+  const [isDownloadingQr, setIsDownloadingQr] = useState<boolean>(false);
+  const [qrDownloadSuccess, setQrDownloadSuccess] = useState<boolean>(false);
+  const [copiedAccount, setCopiedAccount] = useState<boolean>(false);
+  const [showFullQrModal, setShowFullQrModal] = useState<boolean>(false);
 
   // Load initial settings on edit form
   useEffect(() => {
@@ -649,6 +655,143 @@ export default function StaffPanel({
       onShowToast(e.message, "error");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // Handler to download/save QR Code to local device (mobile photo gallery / computer)
+  const handleDownloadQrCode = async () => {
+    if (!settings.qrCodeImage) {
+      onShowToast("ไม่พบรูปภาพ QR Code ในระบบ", "error");
+      return;
+    }
+
+    setIsDownloadingQr(true);
+    const rawAccount = (settings.bankAccount || '').replace(/[^0-9a-zA-Z]/g, '') || 'pay';
+    const fileName = `PromptPay_QR_Topup_${rawAccount}.png`;
+    const imageUrl = settings.qrCodeImage;
+
+    try {
+      let blob: Blob | null = null;
+
+      // Case 1: Base64 data URI
+      if (imageUrl.startsWith('data:image/')) {
+        const res = await fetch(imageUrl);
+        blob = await res.blob();
+      } else {
+        // Case 2: Fetch as blob (if CORS is allowed by host)
+        try {
+          const res = await fetch(imageUrl, { mode: 'cors' });
+          if (res.ok) {
+            blob = await res.blob();
+          }
+        } catch {
+          // Direct fetch had CORS limitation, continue to canvas method
+        }
+
+        // Case 3: Load into Image and render onto Canvas with solid white background
+        // (Ensures any transparent background SVG/PNG is crisp and readable by bank apps)
+        if (!blob) {
+          blob = await new Promise<Blob | null>((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                const naturalW = img.naturalWidth || 600;
+                const naturalH = img.naturalHeight || 600;
+                const size = Math.max(Math.max(naturalW, naturalH), 600);
+                canvas.width = size;
+                canvas.height = size;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  // Solid white background
+                  ctx.fillStyle = '#FFFFFF';
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  // Centered QR with clean margin
+                  const pad = Math.round(size * 0.04);
+                  ctx.drawImage(img, pad, pad, size - (pad * 2), size - (pad * 2));
+                  canvas.toBlob((b) => resolve(b), 'image/png', 0.95);
+                } else {
+                  resolve(null);
+                }
+              } catch {
+                resolve(null);
+              }
+            };
+            img.onerror = () => resolve(null);
+            img.src = imageUrl;
+          });
+        }
+      }
+
+      if (blob) {
+        // Trigger browser download via object URL
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+
+        setQrDownloadSuccess(true);
+        onShowToast("บันทึกภาพ QR Code ลงเครื่องเรียบร้อยแล้ว!", "success");
+        setTimeout(() => setQrDownloadSuccess(false), 4000);
+      } else {
+        // Fallback for browsers or third-party hosts where canvas export is blocked by CORS:
+        // Trigger direct anchor download or open window
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = fileName;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setQrDownloadSuccess(true);
+        onShowToast("ดาวน์โหลด QR Code แล้ว หรือแตะค้างที่ภาพเพื่อบันทึกลงอัลบั้ม", "info");
+        setTimeout(() => setQrDownloadSuccess(false), 4000);
+      }
+    } catch (err) {
+      console.error("Error saving QR Code:", err);
+      // Fallback: open in new tab so user can long-press save
+      window.open(imageUrl, '_blank');
+      onShowToast("เปิดภาพ QR Code แล้ว แตะค้างที่ภาพเพื่อบันทึกรูปค่ะ", "info");
+    } finally {
+      setIsDownloadingQr(false);
+    }
+  };
+
+  // Handler to copy bank account number
+  const handleCopyAccount = () => {
+    const acc = (settings.bankAccount || '081-234-5678').replace(/\s+/g, '');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(acc).then(() => {
+        setCopiedAccount(true);
+        onShowToast("คัดลอกเลขบัญชีธนาคารแล้ว!", "success");
+        setTimeout(() => setCopiedAccount(false), 2500);
+      }).catch(() => {
+        setCopiedAccount(true);
+        setTimeout(() => setCopiedAccount(false), 2500);
+      });
+    } else {
+      const el = document.createElement('textarea');
+      el.value = acc;
+      el.style.position = 'fixed';
+      el.style.opacity = '0';
+      document.body.appendChild(el);
+      el.select();
+      try {
+        document.execCommand('copy');
+        setCopiedAccount(true);
+        onShowToast("คัดลอกเลขบัญชีธนาคารแล้ว!", "success");
+        setTimeout(() => setCopiedAccount(false), 2500);
+      } catch {
+        onShowToast(`เลขบัญชี: ${acc}`, "info");
+      }
+      document.body.removeChild(el);
     }
   };
 
@@ -1428,18 +1571,104 @@ export default function StaffPanel({
         <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-6">
           <h3 className="text-base font-black text-slate-800">แจ้งประวัติโอนเงิน / เติมเครดิต</h3>
           
-          {/* Bank QR Code display mock */}
-          <div className="bg-slate-50 rounded-2xl p-4 text-center space-y-3 border border-slate-100 max-w-sm mx-auto">
-            <span className="text-[10px] font-bold text-slate-400 block uppercase">แสกน QR Code จ่ายโอนเงิน</span>
-            {settings.qrCodeImage && (
-              <div className="w-40 h-40 bg-white border border-slate-200 rounded-xl mx-auto flex items-center justify-center p-2">
-                <img src={settings.qrCodeImage} className="w-full h-full object-cover" alt="QR Code" />
+          {/* Bank QR Code display with Download and Copy feature */}
+          <div className="bg-slate-50/80 rounded-3xl p-5 sm:p-6 text-center space-y-4 border border-slate-200/80 max-w-sm mx-auto shadow-2xs">
+            <div className="flex items-center justify-center gap-1.5">
+              <QrCode className="w-4 h-4 text-sky-600" />
+              <span className="text-xs font-black text-slate-700 uppercase tracking-wide">
+                สแกน QR Code เพื่อเติมเครดิต
+              </span>
+            </div>
+
+            {settings.qrCodeImage ? (
+              <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-200 rounded-2xl p-2.5 shadow-sm flex items-center justify-center">
+                <img 
+                  src={settings.qrCodeImage} 
+                  className="w-full h-full object-contain rounded-lg" 
+                  alt="QR Code สำหรับเติมเครดิต" 
+                />
+                <button
+                  type="button"
+                  id="btn-zoom-qr-code"
+                  onClick={() => setShowFullQrModal(true)}
+                  title="ดูรูปภาพขนาดเต็ม"
+                  className="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white p-1.5 rounded-lg shadow-sm backdrop-blur-xs transition cursor-pointer"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="w-48 h-48 bg-white border-2 border-dashed border-slate-200 rounded-2xl mx-auto flex flex-col items-center justify-center p-4 text-slate-400">
+                <QrCode className="w-10 h-10 mb-2 opacity-50" />
+                <span className="text-xs font-semibold">ยังไม่ได้ตั้งค่ารูป QR Code</span>
               </div>
             )}
-            <div>
-              <p className="text-xs font-black text-slate-700">{settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ'}</p>
-              <p className="text-[10px] text-slate-500 mt-0.5 font-semibold">{settings.bankName || 'ธนาคารทั่วไป'}</p>
-              <p className="text-[10px] text-sky-600 mt-0.5 font-bold">เลขที่บัญชี: {settings.bankAccount || '081-234-5678'}</p>
+
+            {/* Main Action: Save QR Code Button */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                id="btn-save-qr-code"
+                onClick={handleDownloadQrCode}
+                disabled={isDownloadingQr || !settings.qrCodeImage}
+                className={`w-full py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 ${
+                  qrDownloadSuccess
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20"
+                    : "bg-gradient-to-r from-sky-600 to-teal-600 hover:from-sky-700 hover:to-teal-700 text-white shadow-sky-600/20"
+                }`}
+              >
+                {isDownloadingQr ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>กำลังบันทึกภาพ QR Code...</span>
+                  </>
+                ) : qrDownloadSuccess ? (
+                  <>
+                    <CheckCheck className="w-4 h-4" />
+                    <span>บันทึก QR Code ลงเครื่องแล้ว!</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>บันทึก QR Code ลงเครื่อง</span>
+                  </>
+                )}
+              </button>
+
+              <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
+                💡 บันทึกรูปลงเครื่องแล้วเข้าแอปธนาคาร เลือก <strong className="text-slate-700 font-bold">"สแกน QR"</strong> จากอัลบั้มรูปภาพเพื่อโอนเงินได้ทันที
+              </p>
+            </div>
+
+            {/* Bank details & Copy Account Number */}
+            <div className="bg-white border border-slate-100 rounded-2xl p-3.5 space-y-1.5 text-center shadow-2xs">
+              <p className="text-xs font-black text-slate-800">{settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ'}</p>
+              <p className="text-[11px] text-slate-500 font-semibold">{settings.bankName || 'ธนาคารทั่วไป'}</p>
+              
+              <div className="pt-1 flex items-center justify-center gap-2">
+                <span className="text-xs font-black text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-100 tracking-wide font-mono">
+                  {settings.bankAccount || '081-234-5678'}
+                </span>
+                <button
+                  type="button"
+                  id="btn-copy-bank-account"
+                  onClick={handleCopyAccount}
+                  title="คัดลอกเลขบัญชี"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 hover:text-sky-600 bg-slate-100 hover:bg-sky-50 px-2.5 py-1 rounded-lg border border-slate-200 transition cursor-pointer"
+                >
+                  {copiedAccount ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span className="text-emerald-600">คัดลอกแล้ว</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" />
+                      <span>คัดลอก</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2458,6 +2687,86 @@ export default function StaffPanel({
                 className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors cursor-pointer disabled:opacity-50"
               >
                 {isSubmittingCancel ? 'กำลังส่งคำขอ...' : 'ยืนยันยกเลิกงาน'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FULL QR CODE VIEW & SAVE MODAL */}
+      {showFullQrModal && settings.qrCodeImage && (
+        <div 
+          id="modal-full-qr-code"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowFullQrModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              id="btn-close-full-qr"
+              type="button"
+              onClick={() => setShowFullQrModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
+              title="ปิด"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <h4 className="text-sm font-black text-slate-800">QR Code สำหรับโอนเงินเติมเครดิต</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">{settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ'}</p>
+            </div>
+            
+            <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 shadow-inner inline-block w-64 h-64 mx-auto">
+              <img 
+                src={settings.qrCodeImage} 
+                alt="QR Code สำหรับเติมเครดิต" 
+                className="w-full h-full object-contain rounded-xl"
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-500 font-medium">
+              💡 แตะค้างที่ภาพเพื่อบันทึก หรือกดปุ่มบันทึกลงเครื่องด้านล่าง
+            </p>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                id="btn-modal-save-qr"
+                onClick={handleDownloadQrCode}
+                disabled={isDownloadingQr}
+                className={`w-full py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer ${
+                  qrDownloadSuccess
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "bg-sky-600 hover:bg-sky-700 text-white"
+                }`}
+              >
+                {isDownloadingQr ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>กำลังบันทึกภาพ...</span>
+                  </>
+                ) : qrDownloadSuccess ? (
+                  <>
+                    <CheckCheck className="w-4 h-4" />
+                    <span>บันทึก QR Code ลงเครื่องแล้ว!</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>บันทึก QR Code ลงเครื่อง</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowFullQrModal(false)}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                ปิดหน้าต่าง
               </button>
             </div>
           </div>
