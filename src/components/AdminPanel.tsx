@@ -1258,39 +1258,44 @@ export default function AdminPanel({
             </div>
           </div>
 
-          {/* Gemini AI Verification Status & Test Widget */}
+          {/* Slip Verification Status & Test Widget */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-emerald-400 text-white flex items-center justify-center shadow-md shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-md shrink-0">
                   <Bot className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black tracking-tight">ระบบตรวจสลิปอัตโนมัติด้วย AI (Gemini 3.8 Flash)</h4>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                      geminiStatus?.connected ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${geminiStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
-                      {geminiStatus?.connected ? 'พร้อมใช้งาน 100%' : 'ยังไม่พบ API Key'}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-black tracking-tight">ระบบตรวจสลิปอัตโนมัติ (Slip Mini QR & AI)</h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      ไม่ต้องใช้ API Key (สแกน Slip QR ในตัว)
                     </span>
+                    {geminiStatus?.connected && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                        + Gemini AI สำรอง
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    สแกนรหัสธุรกรรม ตรวจสอบยอดเงิน และสลิปซ้ำทันที • สลิปแท้จะอนุมัติและเติมเครดิตเข้าพนักงานทันที
+                    สแกนถอดรหัส QR Code ธนาคารทางการ ตรวจสอบรหัสอ้างอิงและกันสลิปซ้ำทันที 100% โดยไม่ต้องพึ่งพา API Key ภายนอก
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={handleTestGeminiConnection}
-                  disabled={isTestingGemini}
-                  className="text-xs font-bold px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <Zap className={`w-3.5 h-3.5 text-amber-300 ${isTestingGemini ? 'animate-spin' : ''}`} />
-                  {isTestingGemini ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
-                </button>
+                {geminiStatus?.connected && (
+                  <button
+                    type="button"
+                    onClick={handleTestGeminiConnection}
+                    disabled={isTestingGemini}
+                    className="text-xs font-bold px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Zap className={`w-3.5 h-3.5 text-amber-300 ${isTestingGemini ? 'animate-spin' : ''}`} />
+                    {isTestingGemini ? 'กำลังทดสอบ...' : 'ทดสอบ Gemini'}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowSlipTester(!showSlipTester)}
@@ -1318,9 +1323,9 @@ export default function AdminPanel({
                 <div className="flex items-center justify-between border-b border-white/10 pb-2">
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-emerald-400" />
-                    <span className="text-xs font-black uppercase text-slate-200 tracking-wider">เครื่องมือทดสอบสแกนสลิปด้วย AI (Slip Inspector Sandbox)</span>
+                    <span className="text-xs font-black uppercase text-slate-200 tracking-wider">เครื่องมือทดสอบสแกนสลิป (Slip Inspector Sandbox)</span>
                   </div>
-                  <span className="text-[10px] text-slate-400">สำหรับทดสอบความแม่นยำและตรวจดูข้อมูลที่ AI สกัดได้</span>
+                  <span className="text-[10px] text-emerald-400 font-bold">⚡ ถอดรหัสผ่าน Slip QR Code โดยตรง (ไม่ต้องใช้ API Key)</span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1379,12 +1384,12 @@ export default function AdminPanel({
                       {isTestingSlip ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>กำลังสแกนสลิปด้วย Gemini 3.8 Flash...</span>
+                          <span>กำลังตรวจสอบสลิปและถอดรหัส QR Code...</span>
                         </>
                       ) : (
                         <>
                           <Bot className="w-4 h-4" />
-                          <span>เริ่มสแกนตรวจสอบสลิป</span>
+                          <span>เริ่มสแกนตรวจสอบสลิป (ไม่ต้องใช้ API Key)</span>
                         </>
                       )}
                     </button>
@@ -1392,9 +1397,16 @@ export default function AdminPanel({
 
                   {/* Analysis Result Display */}
                   <div className="bg-black/50 border border-white/10 rounded-xl p-3.5 space-y-2 text-xs">
-                    <span className="text-[11px] font-bold text-slate-300 block border-b border-white/10 pb-1.5">
-                      ผลการวิเคราะห์โดย AI
-                    </span>
+                    <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                      <span className="text-[11px] font-bold text-slate-300 block">
+                        ผลการตรวจสอบสลิป
+                      </span>
+                      {slipTestResult && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                          {slipTestResult.method || "Slip QR Decoder"}
+                        </span>
+                      )}
+                    </div>
                     {slipTestResult ? (
                       <div className="space-y-2 font-mono text-[11px]">
                         <div className="grid grid-cols-2 gap-2">

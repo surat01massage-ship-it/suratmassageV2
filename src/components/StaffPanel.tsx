@@ -379,7 +379,6 @@ export default function StaffPanel({
         });
         if (res.ok) {
           onUpdateStaffData({ ...staff, Available: 'OFF' });
-          onShowToast("🔴 ระบบปิดรับงานอัตโนมัติ เนื่องจากเครดิตของคุณไม่เพียงพอ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่นะคะ", "error");
         }
       } catch (e) {
         console.error("Failed to auto turn off availability:", e);
@@ -556,11 +555,7 @@ export default function StaffPanel({
       } else {
         if (data.staff) {
           onUpdateStaffData(data.staff);
-          if (data.staff.Available === 'OFF') {
-            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! เนื่องจากเครดิตหมด ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่นะคะ", "info");
-          } else {
-            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
-          }
+          onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
         } else if (staff) {
           const minCredit = settings?.minCredit || 398;
           const willTurnOff = staff.Credit < minCredit;
@@ -570,11 +565,7 @@ export default function StaffPanel({
             TotalIncome: staff.TotalIncome + (ongoingBooking.NetIncome || ongoingBooking.TotalPrice),
             TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
           });
-          if (willTurnOff) {
-            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! เนื่องจากเครดิตหมด ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่นะคะ", "info");
-          } else {
-            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
-          }
+          onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
         }
         setOngoingBooking(null);
       }
@@ -637,7 +628,8 @@ export default function StaffPanel({
 
       if (data.transaction) {
         if (data.transaction.Status === 'Approved') {
-          onShowToast(`🎉 ตรวจสอบสลิปผ่าน AI สมบูรณ์! เติมเครดิตอัตโนมัติ +${data.transaction.Amount} CR เรียบร้อยแล้ว`, "success");
+          const methodText = data.transaction.IsAutoApproved ? 'ตรวจสอบสลิปอัตโนมัติสำเร็จ!' : 'เติมเครดิตสำเร็จ!';
+          onShowToast(`🎉 ${methodText} เติมเครดิต +${data.transaction.Amount} CR เรียบร้อยแล้ว`, "success");
           if (data.newCredit !== undefined) {
             onUpdateStaffData({ ...staff, Credit: data.newCredit });
           }
@@ -1354,19 +1346,6 @@ export default function StaffPanel({
                   </div>
                 </div>
               </div>
-
-              {/* Warning/info badge for last job before credit closure */}
-              {staff && staff.Credit < (settings?.minCredit || 398) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 shadow-xs">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="space-y-0.5 leading-relaxed">
-                    <p className="font-black text-amber-950">⚡ คุณกำลังให้บริการงานสุดท้ายของรอบนี้ (เครดิตคงเหลือ {staff.Credit} CR)</p>
-                    <p className="text-[11px] text-amber-800">
-                      คุณสามารถกดเริ่มเดินทางและให้บริการงานนี้จนเสร็จสิ้นได้ตามปกติ ระบบจะปิดรับงานให้อัตโนมัติหลังจากคุณกดจบงานนี้เรียบร้อยแล้วค่ะ
-                    </p>
-                  </div>
-                </div>
-              )}
 
               {/* Status workflow steppers */}
               <div className="flex gap-3 pt-2">
