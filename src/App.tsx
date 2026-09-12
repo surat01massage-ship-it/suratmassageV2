@@ -545,34 +545,44 @@ export default function App() {
 
             {/* WELCOME LANDING */}
             {authMode === 'welcome' ? (
-              <div className="space-y-3 animate-fade-in pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('register_customer');
-                    setRegRole('Customer');
-                  }}
-                  className="w-full bg-sky-500 hover:bg-sky-600 text-white font-black text-xs py-4 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <UserIcon className="w-4 h-4" /> สมัครใช้งานครั้งแรก
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAuthMode('login')}
-                  className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black text-xs py-4 rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Lock className="w-4 h-4" /> เข้าสู่ระบบ (สำหรับลูกค้าเก่า)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('register_staff');
-                    setRegRole('Staff');
-                  }}
-                  className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-black text-xs py-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 mt-4"
-                >
-                  <Briefcase className="w-4 h-4" /> สมัครเป็นพนักงานนวด
-                </button>
+              <div className="space-y-4 animate-fade-in pt-4">
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    id="btn-welcome-register-customer"
+                    onClick={() => {
+                      setAuthMode('register_customer');
+                      setRegRole('Customer');
+                    }}
+                    className="w-full bg-sky-500 hover:bg-sky-600 text-white font-black text-xs py-4 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <UserIcon className="w-4 h-4" /> สมัครใช้งานครั้งแรก
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-welcome-login"
+                    onClick={() => setAuthMode('login')}
+                    className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-black text-xs py-4 rounded-xl shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Lock className="w-4 h-4" /> เข้าสู่ระบบ (สำหรับลูกค้าเก่า)
+                  </button>
+                </div>
+
+                {/* Subtle small bottom-left button for staff registration */}
+                <div className="pt-5 border-t border-slate-100 flex items-center justify-start">
+                  <button
+                    type="button"
+                    id="btn-register-staff-subtle"
+                    onClick={() => {
+                      setAuthMode('register_staff');
+                      setRegRole('Staff');
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-600 hover:bg-slate-50 py-1.5 px-2.5 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                    <span>สมัครเป็นพนักงานนวด</span>
+                  </button>
+                </div>
               </div>
             ) : authMode === 'login' ? (
               <form onSubmit={handleLoginSubmit} className="space-y-4 animate-fade-in">
@@ -632,6 +642,21 @@ export default function App() {
                     className="text-slate-500 hover:text-slate-700 font-bold text-xs transition-colors cursor-pointer"
                   >
                     ย้อนกลับไปหน้าแรก
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-start">
+                  <button
+                    type="button"
+                    id="btn-login-staff-subtle"
+                    onClick={() => {
+                      setAuthMode('register_staff');
+                      setRegRole('Staff');
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-600 hover:bg-slate-50 py-1.5 px-2 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                    <span>สมัครเป็นพนักงานนวด</span>
                   </button>
                 </div>
               </form>
