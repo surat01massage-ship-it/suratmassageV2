@@ -1,4 +1,5 @@
 import express from 'express';
+import 'dotenv/config';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -12,13 +13,134 @@ const generateId = (prefix: string): string => {
 
 let aiClient: GoogleGenAI | null = null;
 function getAi(): GoogleGenAI | null {
-  if (!aiClient && process.env.GEMINI_API_KEY) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+  if (!aiClient) {
     aiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey: apiKey,
       httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
     });
   }
   return aiClient;
+}
+
+export interface SlipVerificationResult {
+  isValidSlip: boolean;
+  isTamperedOrFake: boolean;
+  amount: number;
+  refNo: string;
+  bankName: string;
+  receiverName: string;
+  receiverAccount: string;
+  senderName: string;
+  transferDateTime: string;
+  confidence: number;
+  isSuspicious: boolean;
+  suspiciousDetail: string;
+}
+
+async function verifySlipWithGemini(slipImage: string): Promise<SlipVerificationResult | null> {
+  const ai = getAi();
+  if (!ai) return null;
+
+  let mimeType = 'image/jpeg';
+  let base64Data = slipImage;
+
+  const match = slipImage.match(/^data:(image\/[a-zA-Z0-9+.-]*);base64,(.*)$/s);
+  if (match) {
+    mimeType = match[1];
+    base64Data = match[2];
+  } else if (slipImage.startsWith('data:')) {
+    const commaIdx = slipImage.indexOf(',');
+    if (commaIdx !== -1) {
+      const meta = slipImage.slice(0, commaIdx);
+      base64Data = slipImage.slice(commaIdx + 1);
+      const m = meta.match(/:(image\/[^;]+)/);
+      if (m) mimeType = m[1];
+    }
+  }
+
+  // Remove potential whitespace
+  base64Data = base64Data.replace(/[\r\n\s]/g, '');
+  if (!base64Data) return null;
+
+  let response;
+  const requestPayload = {
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            mimeType: mimeType,
+            data: base64Data
+          }
+        },
+        {
+          text: `You are an expert Thai banking fraud-detection system specializing in verifying mobile banking transfer slips (PromptPay, KBANK, SCB, KTB, BBL, TTB, BAY, GSB, etc.).
+Carefully inspect this image and extract verification data:
+1. Is this a genuine Thai bank transfer slip? Check for:
+   - Official bank logos and layout standards
+   - Font consistency (no blurred, edited, misaligned numbers or text)
+   - Presence of transaction reference code (รหัสอ้างอิง/เลขที่รายการ) and bank timestamp
+2. Detect fraud indicators:
+   - Photoshop or photo-editor modifications around the amount or account number
+   - Fake slip generator templates
+   - Screenshots of receipt pre-confirmation screens instead of actual final transfer slip
+   - Obscured, cut-off, or unreadable key information
+3. Extract exact details:
+   - amount: exact transfer amount as a number
+   - refNo: transaction reference number (เลขที่อ้างอิง / Ref No.)
+   - bankName: bank of sender (e.g. กสิกรไทย, ไทยพาณิชย์, กรุงไทย, กรุงเทพ, etc.)
+   - receiverName: recipient account owner name shown on the slip
+   - receiverAccount: recipient account number or PromptPay number shown on the slip
+   - senderName: sender name on slip
+   - transferDateTime: timestamp of the transfer
+   - confidence: 0 to 100 confidence that this slip is 100% authentic and unmanipulated
+   - isSuspicious: true if there are ANY doubts, mismatched amounts, potential edits, or missing transaction codes
+   - suspiciousDetail: specific reason in Thai explaining any suspicious findings or anomalies (empty string if completely clean)`
+        }
+      ]
+    },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          isValidSlip: { type: Type.BOOLEAN, description: "True if image is a real official bank slip" },
+          isTamperedOrFake: { type: Type.BOOLEAN, description: "True if detected fake slip, photoshop editing, or font manipulation" },
+          amount: { type: Type.NUMBER, description: "The transfer amount extracted from the slip" },
+          refNo: { type: Type.STRING, description: "The unique transaction reference number or slip ID" },
+          bankName: { type: Type.STRING, description: "Bank name" },
+          receiverName: { type: Type.STRING, description: "Receiver name on slip" },
+          receiverAccount: { type: Type.STRING, description: "Receiver account number or promptpay ID" },
+          senderName: { type: Type.STRING, description: "Sender name on slip" },
+          transferDateTime: { type: Type.STRING, description: "Date and time of transfer" },
+          confidence: { type: Type.NUMBER, description: "Confidence score 0-100" },
+          isSuspicious: { type: Type.BOOLEAN, description: "True if suspicious or needs human verification" },
+          suspiciousDetail: { type: Type.STRING, description: "Reason for suspicion in Thai" }
+        },
+        required: ["isValidSlip", "isTamperedOrFake", "amount", "refNo", "bankName", "confidence"]
+      }
+    }
+  };
+
+  try {
+    response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      ...requestPayload
+    });
+  } catch (err: any) {
+    console.warn("Primary gemini-3.8-flash failed, falling back to gemini-2.5-flash:", err?.message);
+    response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      ...requestPayload
+    });
+  }
+
+  const text = response.text;
+  if (!text) return null;
+  return JSON.parse(text) as SlipVerificationResult;
 }
 
 // LINE Messaging API helper (Sends ONLY to specified Admin User ID or Admin Group ID - NEVER broadcasted to customers)
@@ -1729,166 +1851,105 @@ async function startServer() {
 
     if (ai) {
       try {
-        const match = slipImage.match(/^data:(image\/[a-zA-Z0-9+.-]*);base64,(.*)$/);
-        if (match) {
-          const mimeType = match[1];
-          const base64Data = match[2];
+        const result = await verifySlipWithGemini(slipImage);
+        if (result) {
+          const cleanRefNo = (result.refNo || '').trim().replace(/[\s-]/g, '');
 
-          const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: mimeType,
-                    data: base64Data
-                  }
-                },
-                {
-                  text: `You are an expert Thai banking fraud-detection system specializing in verifying mobile banking transfer slips (PromptPay, KBANK, SCB, KTB, BBL, TTB, BAY, GSB, etc.).
-Carefully inspect this image and extract verification data:
-1. Is this a genuine Thai bank transfer slip? Check for:
-   - Official bank logos and layout standards
-   - Font consistency (no blurred, edited, misaligned numbers or text)
-   - Presence of transaction reference code (รหัสอ้างอิง/เลขที่รายการ) and bank timestamp
-2. Detect fraud indicators:
-   - Photoshop or photo-editor modifications around the amount or account number
-   - Fake slip generator templates
-   - Screenshots of receipt pre-confirmation screens instead of actual final transfer slip
-   - Obscured, cut-off, or unreadable key information
-3. Extract exact details:
-   - amount: exact transfer amount as a number
-   - refNo: transaction reference number (เลขที่อ้างอิง / Ref No.)
-   - bankName: bank of sender (e.g. กสิกรไทย, ไทยพาณิชย์, กรุงไทย, กรุงเทพ, etc.)
-   - receiverName: recipient account owner name shown on the slip
-   - receiverAccount: recipient account number or PromptPay number shown on the slip
-   - senderName: sender name on slip
-   - transferDateTime: timestamp of the transfer
-   - confidence: 0 to 100 confidence that this slip is 100% authentic and unmanipulated
-   - isSuspicious: true if there are ANY doubts, mismatched amounts, potential edits, or missing transaction codes
-   - suspiciousDetail: specific reason in Thai explaining any suspicious findings or anomalies (empty string if completely clean)`
-                }
-              ]
-            },
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  isValidSlip: { type: Type.BOOLEAN, description: "True if image is a real official bank slip" },
-                  isTamperedOrFake: { type: Type.BOOLEAN, description: "True if detected fake slip, photoshop editing, or font manipulation" },
-                  amount: { type: Type.NUMBER, description: "The transfer amount extracted from the slip" },
-                  refNo: { type: Type.STRING, description: "The unique transaction reference number or slip ID" },
-                  bankName: { type: Type.STRING, description: "Bank name" },
-                  receiverName: { type: Type.STRING, description: "Receiver name on slip" },
-                  receiverAccount: { type: Type.STRING, description: "Receiver account number or promptpay ID" },
-                  senderName: { type: Type.STRING, description: "Sender name on slip" },
-                  transferDateTime: { type: Type.STRING, description: "Date and time of transfer" },
-                  confidence: { type: Type.NUMBER, description: "Confidence score 0-100" },
-                  isSuspicious: { type: Type.BOOLEAN, description: "True if suspicious or needs human verification" },
-                  suspiciousDetail: { type: Type.STRING, description: "Reason for suspicion in Thai" }
-                },
-                required: ["isValidSlip", "isTamperedOrFake", "amount", "refNo", "bankName", "confidence"]
-              }
-            }
-          });
+          newTx.SlipRefId = cleanRefNo || undefined;
+          newTx.BankName = result.bankName || undefined;
+          newTx.ConfidenceScore = result.confidence || 0;
+          newTx.ExtractedReceiver = result.receiverName || result.receiverAccount || undefined;
+          newTx.ExtractedSender = result.senderName || undefined;
+          newTx.ExtractedTransferTime = result.transferDateTime || undefined;
 
-          const text = response.text;
-          if (text) {
-            const result = JSON.parse(text);
-            const cleanRefNo = (result.refNo || '').trim().replace(/[\s-]/g, '');
-
-            newTx.SlipRefId = cleanRefNo || undefined;
-            newTx.BankName = result.bankName || undefined;
-            newTx.ConfidenceScore = result.confidence || 0;
-            newTx.ExtractedReceiver = result.receiverName || result.receiverAccount || undefined;
-            newTx.ExtractedSender = result.senderName || undefined;
-            newTx.ExtractedTransferTime = result.transferDateTime || undefined;
-
-            // Anti-Fraud Check 1: Duplicate Transaction Ref ID across system
-            let isDuplicateRef = false;
-            if (cleanRefNo && cleanRefNo.length >= 6) {
-              const existingTxWithRef = db.transactions.find(
-                t => t.Type === 'Topup' &&
-                     t.SlipRefId &&
-                     t.SlipRefId.replace(/[\s-]/g, '') === cleanRefNo &&
-                     t.Status !== 'Reject'
-              );
-              if (existingTxWithRef) {
-                isDuplicateRef = true;
-                isSuspicious = true;
-                suspiciousReasons.push(`สลิปซ้ำ: เลขที่อ้างอิงธุรกรรม (${cleanRefNo}) เคยถูกใช้เติมเครดิตในระบบไปแล้ว`);
-              }
-            }
-
-            // Anti-Fraud Check 2: Fake or tampered image
-            if (result.isTamperedOrFake || !result.isValidSlip) {
+          // Anti-Fraud Check 1: Duplicate Transaction Ref ID across system
+          let isDuplicateRef = false;
+          if (cleanRefNo && cleanRefNo.length >= 6) {
+            const existingTxWithRef = db.transactions.find(
+              t => t.Type === 'Topup' &&
+                   t.SlipRefId &&
+                   t.SlipRefId.replace(/[\s-]/g, '') === cleanRefNo &&
+                   t.Status !== 'Reject'
+            );
+            if (existingTxWithRef) {
+              isDuplicateRef = true;
               isSuspicious = true;
-              suspiciousReasons.push(result.suspiciousDetail || 'ภาพมีความผิดปกติ ไม่ใช่สลิปโอนเงินทางการ หรือพบร่องรอยการแก้ไขภาพ');
-            }
-
-            // Anti-Fraud Check 3: Amount mismatch
-            if (result.amount !== requestedAmount) {
-              isSuspicious = true;
-              if (result.amount < requestedAmount) {
-                suspiciousReasons.push(`ยอดเงินในสลิปจริง (฿${result.amount}) น้อยกว่ายอดที่ระบุขอเติม (฿${requestedAmount})`);
-              } else {
-                suspiciousReasons.push(`ยอดเงินในสลิปจริง (฿${result.amount}) ไม่ตรงกับยอดที่ระบุขอเติม (฿${requestedAmount})`);
-              }
-            }
-
-            // Anti-Fraud Check 4: Missing or invalid reference number
-            if (!cleanRefNo || cleanRefNo.length < 5) {
-              isSuspicious = true;
-              suspiciousReasons.push('ไม่พบเลขที่อ้างอิงธุรกรรมที่ชัดเจนบนสลิป');
-            }
-
-            // Anti-Fraud Check 5: Low confidence score
-            if (result.confidence < 75) {
-              isSuspicious = true;
-              suspiciousReasons.push(`ความชัดเจนของสลิปอยู่ในเกณฑ์ต่ำ (ความมั่นใจ ${result.confidence}%)`);
-            }
-
-            // Anti-Fraud Check 6: Receiver check (if target account info is configured)
-            if (targetAccountName && result.receiverName) {
-              const rName = result.receiverName.toLowerCase();
-              const words = targetAccountName.split(' ').filter((w: string) => w.length > 2);
-              const matchedWord = words.some((w: string) => rName.includes(w));
-              if (!matchedWord && !rName.includes('สบายดี') && !rName.includes('sabai')) {
-                // If receiver looks entirely different, flag as suspicious for review
-                suspiciousReasons.push(`ชื่อบัญชีผู้รับในสลิป (${result.receiverName}) อาจไม่ตรงกับบัญชีร้าน (${targetAccountName})`);
-                isSuspicious = true;
-              }
-            }
-
-            if (result.isSuspicious && result.suspiciousDetail) {
-              if (!suspiciousReasons.includes(result.suspiciousDetail)) {
-                suspiciousReasons.push(result.suspiciousDetail);
-              }
-              isSuspicious = true;
-            }
-
-            newTx.IsSuspicious = isSuspicious;
-            newTx.SuspiciousReasons = suspiciousReasons;
-
-            // Decision Engine (Fully Automated):
-            // 1. IF completely clean & legitimate -> AUTO-APPROVE IMMEDIATELY
-            // 2. IF ANY suspicion (fake, duplicate, mismatch) -> AUTO-REJECT IMMEDIATELY (No manual admin review needed)
-            if (!isSuspicious && !isDuplicateRef) {
-              autoApproved = true;
-              newTx.Status = 'Approved';
-              newTx.IsAutoApproved = true;
-              newTx.AfterCredit = staff.Credit + newTx.Amount;
-              staff.Credit = newTx.AfterCredit;
-              newTx.AdminRemark = `✅ อนุมัติอัตโนมัติ 100%: สลิปถูกต้อง ยอดตรง บัญชีตรง (${result.bankName}, Ref: ${cleanRefNo}, ฿${result.amount})`;
-              newTx.SlipVerificationDetail = `สลิปแท้ 100% • ยอดเงินตรง ฿${result.amount} • รหัสอ้างอิง: ${cleanRefNo} • บัญชี: ${result.receiverName || 'ตรงตามระบบ'}`;
-            } else {
-              newTx.Status = 'Reject';
-              newTx.IsAutoApproved = false;
-              newTx.AdminRemark = `❌ ปฏิเสธอัตโนมัติ: ${suspiciousReasons.join('; ')}`;
-              newTx.SlipVerificationDetail = `ปฏิเสธสลิปอัตโนมัติ: ${suspiciousReasons.join(' | ')}`;
+              suspiciousReasons.push(`สลิปซ้ำ: เลขที่อ้างอิงธุรกรรม (${cleanRefNo}) เคยถูกใช้เติมเครดิตในระบบไปแล้ว`);
             }
           }
+
+          // Anti-Fraud Check 2: Fake or tampered image
+          if (result.isTamperedOrFake || !result.isValidSlip) {
+            isSuspicious = true;
+            suspiciousReasons.push(result.suspiciousDetail || 'ภาพมีความผิดปกติ ไม่ใช่สลิปโอนเงินทางการ หรือพบร่องรอยการแก้ไขภาพ');
+          }
+
+          // Anti-Fraud Check 3: Amount mismatch
+          if (result.amount !== requestedAmount) {
+            isSuspicious = true;
+            if (result.amount < requestedAmount) {
+              suspiciousReasons.push(`ยอดเงินในสลิปจริง (฿${result.amount}) น้อยกว่ายอดที่ระบุขอเติม (฿${requestedAmount})`);
+            } else {
+              suspiciousReasons.push(`ยอดเงินในสลิปจริง (฿${result.amount}) ไม่ตรงกับยอดที่ระบุขอเติม (฿${requestedAmount})`);
+            }
+          }
+
+          // Anti-Fraud Check 4: Missing or invalid reference number
+          if (!cleanRefNo || cleanRefNo.length < 5) {
+            isSuspicious = true;
+            suspiciousReasons.push('ไม่พบเลขที่อ้างอิงธุรกรรมที่ชัดเจนบนสลิป');
+          }
+
+          // Anti-Fraud Check 5: Low confidence score
+          if (result.confidence < 75) {
+            isSuspicious = true;
+            suspiciousReasons.push(`ความชัดเจนของสลิปอยู่ในเกณฑ์ต่ำ (ความมั่นใจ ${result.confidence}%)`);
+          }
+
+          // Anti-Fraud Check 6: Receiver check (if target account info is configured)
+          if (targetAccountName && result.receiverName) {
+            const rName = result.receiverName.toLowerCase();
+            const words = targetAccountName.split(' ').filter((w: string) => w.length > 2);
+            const matchedWord = words.some((w: string) => rName.includes(w));
+            if (!matchedWord && !rName.includes('สบายดี') && !rName.includes('sabai')) {
+              // If receiver looks entirely different, flag as suspicious for review
+              suspiciousReasons.push(`ชื่อบัญชีผู้รับในสลิป (${result.receiverName}) อาจไม่ตรงกับบัญชีร้าน (${targetAccountName})`);
+              isSuspicious = true;
+            }
+          }
+
+          if (result.isSuspicious && result.suspiciousDetail) {
+            if (!suspiciousReasons.includes(result.suspiciousDetail)) {
+              suspiciousReasons.push(result.suspiciousDetail);
+            }
+            isSuspicious = true;
+          }
+
+          newTx.IsSuspicious = isSuspicious;
+          newTx.SuspiciousReasons = suspiciousReasons;
+
+          // Decision Engine (Fully Automated):
+          // 1. IF completely clean & legitimate -> AUTO-APPROVE IMMEDIATELY
+          // 2. IF ANY suspicion (fake, duplicate, mismatch) -> AUTO-REJECT IMMEDIATELY (No manual admin review needed)
+          if (!isSuspicious && !isDuplicateRef) {
+            autoApproved = true;
+            newTx.Status = 'Approved';
+            newTx.IsAutoApproved = true;
+            newTx.AfterCredit = staff.Credit + newTx.Amount;
+            staff.Credit = newTx.AfterCredit;
+            newTx.AdminRemark = `✅ อนุมัติอัตโนมัติ 100%: สลิปถูกต้อง ยอดตรง บัญชีตรง (${result.bankName}, Ref: ${cleanRefNo}, ฿${result.amount})`;
+            newTx.SlipVerificationDetail = `สลิปแท้ 100% • ยอดเงินตรง ฿${result.amount} • รหัสอ้างอิง: ${cleanRefNo} • บัญชี: ${result.receiverName || 'ตรงตามระบบ'}`;
+          } else {
+            newTx.Status = 'Reject';
+            newTx.IsAutoApproved = false;
+            newTx.AdminRemark = `❌ ปฏิเสธอัตโนมัติ: ${suspiciousReasons.join('; ')}`;
+            newTx.SlipVerificationDetail = `ปฏิเสธสลิปอัตโนมัติ: ${suspiciousReasons.join(' | ')}`;
+          }
+        } else {
+          newTx.IsSuspicious = true;
+          newTx.SuspiciousReasons = ["ระบบ AI ไม่สามารถอ่านข้อมูลจากภาพสลิปได้"];
+          newTx.AdminRemark = "⚠️ รอแอดมินตรวจสอบ: อ่านสลิปไม่สำเร็จ";
+          newTx.SlipVerificationDetail = "ระบบอ่านภาพไม่สำเร็จ จำเป็นต้องใช้แอดมินตรวจสอบด้วยตนเอง";
         }
       } catch (err: any) {
         console.error("AI Slip Verification Error:", err);
@@ -1957,6 +2018,99 @@ Carefully inspect this image and extract verification data:
     }
     saveDatabase(db);
     res.json({ success: true, transaction: newTx, autoApproved, newCredit: staff.Credit });
+  });
+
+  // Dedicated Gemini AI Status & Test Endpoints
+  app.get('/api/gemini/status', (req, res) => {
+    const ai = getAi();
+    res.json({
+      connected: !!ai,
+      hasApiKey: !!process.env.GEMINI_API_KEY,
+      model: "gemini-3.8-flash",
+      status: ai ? "Ready" : "MissingApiKey",
+      feature: "Automated Slip & Anti-Fraud Verification",
+      supportedBanks: ["KBANK", "SCB", "KTB", "BBL", "TTB", "BAY", "GSB", "BAAC", "TrueMoney", "PromptPay"]
+    });
+  });
+
+  app.post('/api/gemini/test', async (req, res) => {
+    const ai = getAi();
+    if (!ai) {
+      return res.status(400).json({
+        success: false,
+        error: "ยังไม่ได้ระบุ GEMINI_API_KEY ในระบบ หรือไม่สามารถเชื่อมต่อได้"
+      });
+    }
+    try {
+      const startTime = Date.now();
+      let usedModel = "gemini-3.8-flash";
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: "กรุณาตอบสั้นๆ: ระบบ AI Gemini 3.8 Flash ตรวจสลิปอัตโนมัติเชื่อมต่อสำเร็จ พร้อมใช้งาน 100%"
+        });
+      } catch (err: any) {
+        usedModel = "gemini-2.5-flash";
+        response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: "กรุณาตอบสั้นๆ: ระบบ AI Gemini ตรวจสลิปอัตโนมัติเชื่อมต่อสำเร็จ พร้อมใช้งาน 100%"
+        });
+      }
+      const latencyMs = Date.now() - startTime;
+      res.json({
+        success: true,
+        message: response.text ? response.text.trim() : "เชื่อมต่อสำเร็จ",
+        latencyMs,
+        model: usedModel
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        error: err?.message || "เกิดข้อผิดพลาดในการเรียก Gemini API"
+      });
+    }
+  });
+
+  app.post('/api/gemini/verify-slip', async (req, res) => {
+    const { slipImage, expectedAmount } = req.body;
+    if (!slipImage) {
+      return res.status(400).json({ error: "กรุณาแนบรูปภาพสลิปที่ต้องการตรวจสอบ" });
+    }
+    const ai = getAi();
+    if (!ai) {
+      return res.status(400).json({ error: "Gemini API ยังไม่พร้อมใช้งาน" });
+    }
+    try {
+      const result = await verifySlipWithGemini(slipImage);
+      if (!result) {
+        return res.status(500).json({ error: "ไม่สามารถประมวลผลรูปภาพได้ หรือรูปแบบภาพไม่ถูกต้อง" });
+      }
+
+      const db = getDatabase();
+      const cleanRefNo = (result.refNo || '').trim().replace(/[\s-]/g, '');
+      const isDuplicateRef = cleanRefNo && cleanRefNo.length >= 6 ? db.transactions.some(
+        t => t.Type === 'Topup' && t.SlipRefId && t.SlipRefId.replace(/[\s-]/g, '') === cleanRefNo && t.Status !== 'Reject'
+      ) : false;
+
+      const targetAccountName = (db.settings?.bankAccountName || '').toLowerCase().trim();
+      let isAccountMatch = true;
+      if (targetAccountName && result.receiverName) {
+        const rName = result.receiverName.toLowerCase();
+        const words = targetAccountName.split(' ').filter((w: string) => w.length > 2);
+        isAccountMatch = words.some((w: string) => rName.includes(w)) || rName.includes('สบายดี') || rName.includes('sabai');
+      }
+
+      res.json({
+        success: true,
+        result,
+        isDuplicateRef,
+        isAccountMatch,
+        matchedAmount: expectedAmount ? result.amount === Number(expectedAmount) : true
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || "เกิดข้อผิดพลาดในการตรวจสอบสลิป" });
+    }
   });
 
   // Action on Topup Transaction (Approve / Reject) (Admin operation)

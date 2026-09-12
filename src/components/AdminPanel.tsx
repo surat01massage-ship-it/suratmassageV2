@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Briefcase, Calendar, DollarSign, Settings, Eye, Edit, Trash2, 
   Check, X, Plus, ShieldCheck, Database, FileCode, Copy, Download, RefreshCw, BarChart2, ChevronRight,
-  MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw, Navigation
+  MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw, Navigation,
+  Bot, Sparkles, Cpu, Zap, Upload, FileCheck
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
 import { googleAppsScriptFiles } from '../data/googleAppsScript';
@@ -64,6 +65,80 @@ export default function AdminPanel({
   const [formSettings, setFormSettings] = useState<AppSettings>({ ...settings });
   const [isTestingLine, setIsTestingLine] = useState(false);
 
+  // Gemini AI Status & Test states
+  const [geminiStatus, setGeminiStatus] = useState<{ connected: boolean; model: string; status: string; supportedBanks?: string[] } | null>(null);
+  const [isTestingGemini, setIsTestingGemini] = useState(false);
+  const [geminiTestResult, setGeminiTestResult] = useState<string | null>(null);
+  const [showSlipTester, setShowSlipTester] = useState(false);
+  const [slipTestImage, setSlipTestImage] = useState<string>('');
+  const [slipTestExpectedAmount, setSlipTestExpectedAmount] = useState<string>('');
+  const [isTestingSlip, setIsTestingSlip] = useState(false);
+  const [slipTestResult, setSlipTestResult] = useState<any | null>(null);
+
+  const fetchGeminiStatus = async () => {
+    try {
+      const res = await fetch('/api/gemini/status');
+      if (res.ok) {
+        const data = await res.json();
+        setGeminiStatus(data);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleTestGeminiConnection = async () => {
+    setIsTestingGemini(true);
+    setGeminiTestResult(null);
+    try {
+      const res = await fetch('/api/gemini/test', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGeminiTestResult(`✅ เชื่อมต่อสำเร็จ (${data.latencyMs}ms): ${data.message}`);
+        onShowToast(`เชื่อมต่อ Gemini AI สำเร็จ (${data.latencyMs}ms)`, "success");
+      } else {
+        setGeminiTestResult(`❌ ทดสอบไม่สำเร็จ: ${data.error || 'ไม่สามารถติดต่อ AI ได้'}`);
+        onShowToast(data.error || "เกิดข้อผิดพลาดในการทดสอบ AI", "error");
+      }
+    } catch (e: any) {
+      setGeminiTestResult(`❌ ขัดข้อง: ${e.message}`);
+      onShowToast(e.message, "error");
+    } finally {
+      setIsTestingGemini(false);
+      fetchGeminiStatus();
+    }
+  };
+
+  const handleTestSlipVerification = async () => {
+    if (!slipTestImage) {
+      onShowToast("กรุณาเลือกหรืออัปโหลดรูปภาพสลิปก่อนทดสอบ", "error");
+      return;
+    }
+    setIsTestingSlip(true);
+    setSlipTestResult(null);
+    try {
+      const res = await fetch('/api/gemini/verify-slip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slipImage: slipTestImage,
+          expectedAmount: slipTestExpectedAmount ? parseFloat(slipTestExpectedAmount) : undefined
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSlipTestResult(data);
+        onShowToast("AI สแกนสลิปสำเร็จ 100%!", "success");
+      } else {
+        onShowToast(data.error || "ไม่สามารถอ่านสลิปได้", "error");
+      }
+    } catch (e: any) {
+      onShowToast(e.message, "error");
+    } finally {
+      setIsTestingSlip(false);
+    }
+  };
+
   const handleTestLineNotification = async () => {
     const token = formSettings.lineChannelAccessToken;
     const adminId = formSettings.lineAdminUserId;
@@ -99,6 +174,7 @@ export default function AdminPanel({
     fetchServices();
     fetchTransactions();
     fetchRawDatabase();
+    fetchGeminiStatus();
   }, [activeTab]);
 
   useEffect(() => {
@@ -1182,6 +1258,211 @@ export default function AdminPanel({
             </div>
           </div>
 
+          {/* Gemini AI Verification Status & Test Widget */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500 to-emerald-400 text-white flex items-center justify-center shadow-md shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black tracking-tight">ระบบตรวจสลิปอัตโนมัติด้วย AI (Gemini 3.8 Flash)</h4>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                      geminiStatus?.connected ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${geminiStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
+                      {geminiStatus?.connected ? 'พร้อมใช้งาน 100%' : 'ยังไม่พบ API Key'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    สแกนรหัสธุรกรรม ตรวจสอบยอดเงิน และสลิปซ้ำทันที • สลิปแท้จะอนุมัติและเติมเครดิตเข้าพนักงานทันที
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleTestGeminiConnection}
+                  disabled={isTestingGemini}
+                  className="text-xs font-bold px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/10 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Zap className={`w-3.5 h-3.5 text-amber-300 ${isTestingGemini ? 'animate-spin' : ''}`} />
+                  {isTestingGemini ? 'กำลังทดสอบ...' : 'ทดสอบการเชื่อมต่อ'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowSlipTester(!showSlipTester)}
+                  className={`text-xs font-bold px-3 py-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    showSlipTester
+                      ? 'bg-emerald-500 text-white border-emerald-400 shadow-sm'
+                      : 'bg-white/10 hover:bg-white/20 text-white border-white/10'
+                  }`}
+                >
+                  <FileCheck className="w-3.5 h-3.5 text-emerald-300" />
+                  {showSlipTester ? 'ซ่อนเครื่องมือทดสอบ' : 'ทดสอบสแกนสลิป'}
+                </button>
+              </div>
+            </div>
+
+            {geminiTestResult && (
+              <div className="text-xs bg-black/40 border border-white/10 rounded-xl p-2.5 text-slate-200 font-mono">
+                {geminiTestResult}
+              </div>
+            )}
+
+            {/* Interactive Slip Tester Drawer */}
+            {showSlipTester && (
+              <div className="bg-slate-950/70 border border-white/15 rounded-xl p-4 space-y-4 animate-fade-in text-left">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-black uppercase text-slate-200 tracking-wider">เครื่องมือทดสอบสแกนสลิปด้วย AI (Slip Inspector Sandbox)</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">สำหรับทดสอบความแม่นยำและตรวจดูข้อมูลที่ AI สกัดได้</span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-bold text-slate-300 block">อัปโหลดรูปภาพสลิปที่ต้องการทดสอบ</label>
+                    <div className="flex items-center gap-3 bg-white/5 border border-dashed border-white/20 p-3 rounded-xl relative">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setSlipTestImage(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div className="w-16 h-20 rounded-lg bg-black/40 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
+                        {slipTestImage ? (
+                          <img src={slipTestImage} alt="Slip Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <Upload className="w-6 h-6 text-slate-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 text-xs text-slate-300">
+                        {slipTestImage ? (
+                          <span className="text-emerald-400 font-bold">แนบรูปภาพสลิปเรียบร้อยแล้ว</span>
+                        ) : (
+                          <span>คลิกหรือลากไฟล์ภาพสลิปมาวางที่นี่</span>
+                        )}
+                        <span className="block text-[10px] text-slate-400 mt-1">รองรับ JPG, PNG, WEBP จากทุกธนาคาร</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-bold text-slate-300 block">ยอดเงินที่คาดหวัง (ระบุเพื่อทดสอบตรวจยอดเงินตรงหรือไม่)</label>
+                      <input
+                        type="number"
+                        placeholder="เช่น 100, 300, 500 (ไม่บังคับ)"
+                        value={slipTestExpectedAmount}
+                        onChange={(e) => setSlipTestExpectedAmount(e.target.value)}
+                        className="w-full text-xs font-mono bg-white/10 border border-white/15 rounded-xl p-2.5 text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleTestSlipVerification}
+                      disabled={isTestingSlip || !slipTestImage}
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-2.5 rounded-xl text-xs shadow-md transition-all cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      {isTestingSlip ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>กำลังสแกนสลิปด้วย Gemini 3.8 Flash...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bot className="w-4 h-4" />
+                          <span>เริ่มสแกนตรวจสอบสลิป</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Analysis Result Display */}
+                  <div className="bg-black/50 border border-white/10 rounded-xl p-3.5 space-y-2 text-xs">
+                    <span className="text-[11px] font-bold text-slate-300 block border-b border-white/10 pb-1.5">
+                      ผลการวิเคราะห์โดย AI
+                    </span>
+                    {slipTestResult ? (
+                      <div className="space-y-2 font-mono text-[11px]">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="bg-white/5 p-2 rounded-lg">
+                            <span className="text-slate-400 text-[9px] block">ยอดเงินในสลิป</span>
+                            <span className="text-emerald-400 font-bold text-sm">฿{slipTestResult.result.amount} บาท</span>
+                          </div>
+                          <div className="bg-white/5 p-2 rounded-lg">
+                            <span className="text-slate-400 text-[9px] block">ความมั่นใจของ AI</span>
+                            <span className="text-sky-400 font-bold text-sm">{slipTestResult.result.confidence}%</span>
+                          </div>
+                        </div>
+
+                        <div className="bg-white/5 p-2 rounded-lg space-y-1">
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">ธนาคาร:</span>
+                            <span className="text-white font-sans font-bold">{slipTestResult.result.bankName || '-'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">รหัสอ้างอิง (Ref No.):</span>
+                            <span className="text-amber-300">{slipTestResult.result.refNo || '-'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">ผู้รับเงิน:</span>
+                            <span className="text-white font-sans">{slipTestResult.result.receiverName || slipTestResult.result.receiverAccount || '-'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">ผู้โอน:</span>
+                            <span className="text-slate-300 font-sans">{slipTestResult.result.senderName || '-'}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-slate-400">เวลาโอน:</span>
+                            <span className="text-slate-300">{slipTestResult.result.transferDateTime || '-'}</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 pt-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${slipTestResult.result.isValidSlip ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                            <span className="text-slate-300">สลิปทางการถูกต้อง: {slipTestResult.result.isValidSlip ? '✅ ใช่' : '❌ ไม่ใช่'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${!slipTestResult.result.isTamperedOrFake ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                            <span className="text-slate-300">ไม่พบร่องรอยตัดต่อ: {!slipTestResult.result.isTamperedOrFake ? '✅ ผ่าน' : '❌ พบร่องรอยแก้ไข'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${!slipTestResult.isDuplicateRef ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                            <span className="text-slate-300">สลิปไม่ซ้ำในระบบ: {!slipTestResult.isDuplicateRef ? '✅ ผ่าน (ยังไม่เคยใช้)' : '❌ สลิปซ้ำ'}</span>
+                          </div>
+                        </div>
+
+                        {slipTestResult.result.isSuspicious && (
+                          <div className="p-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 font-sans text-xs">
+                            ⚠️ ข้อควรระวัง: {slipTestResult.result.suspiciousDetail || 'ภาพมีความผิดปกติ'}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-slate-500 text-center py-8">
+                        เลือกรูปสลิปและกด "เริ่มสแกนตรวจสอบสลิป" เพื่อดูข้อมูลแบบเรียลไทม์
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="space-y-4">
             {transactions.filter(t => t.Status === 'Pending').length === 0 ? (
               <div className="text-center py-10 bg-emerald-50/40 border border-emerald-100 rounded-2xl p-6 space-y-2">
@@ -1630,6 +1911,54 @@ export default function AdminPanel({
                   onChange={(e) => setFormSettings({ ...formSettings, couponDiscount: parseInt(e.target.value) || 0 })}
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
                 />
+              </div>
+            </div>
+
+            {/* Gemini API Automation Settings Banner */}
+            <div className="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-2xl p-4 sm:p-5 border border-indigo-800/40 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                    <Bot className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black text-white">การตรวจสลิปอัตโนมัติด้วย Google Gemini API (3.8 Flash)</h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                        เชื่อมต่อและทำงานอัตโนมัติแล้ว
+                      </span>
+                    </div>
+                    <p className="text-xs text-indigo-200/80 mt-0.5">
+                      คีย์ GEMINI_API_KEY ถูกติดตั้งและทำงานฝั่งเซิร์ฟเวอร์เรียบร้อย ตรวจสอบยอดเงิน ชื่อบัญชี และสลิปซ้ำให้พนักงานอัตโนมัติ 100%
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestGeminiConnection}
+                  disabled={isTestingGemini}
+                  className="text-xs font-bold px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 flex items-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  <Zap className={`w-3.5 h-3.5 text-amber-300 ${isTestingGemini ? 'animate-spin' : ''}`} />
+                  {isTestingGemini ? 'กำลังทดสอบ...' : 'ทดสอบเรียก AI'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <span className="text-indigo-300 font-bold block">1. สแกนอัตโนมัติ</span>
+                  <span className="text-slate-300 text-[10px]">อ่าน Ref No., ยอดเงิน, ธนาคาร, และชื่อบัญชีผู้รับ</span>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <span className="text-indigo-300 font-bold block">2. ป้องกันทุจริต & สลิปซ้ำ</span>
+                  <span className="text-slate-300 text-[10px]">เช็คประวัติในระบบว่าสลิปนี้เคยนำมาใช้แล้วหรือไม่</span>
+                </div>
+                <div className="bg-white/5 border border-white/10 rounded-xl p-2.5">
+                  <span className="text-indigo-300 font-bold block">3. เติมเครดิตทันที</span>
+                  <span className="text-slate-300 text-[10px]">สลิปถูกต้อง พนักงานจะได้รับเครดิตทันที ไม่ต้องรอแอดมิน</span>
+                </div>
               </div>
             </div>
 

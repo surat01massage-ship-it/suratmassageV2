@@ -4,7 +4,7 @@ import {
   User as UserIcon, LogOut, Check, X, ShieldAlert, CreditCard, ChevronRight, Upload,
   Compass, ExternalLink, Navigation, Volume2, VolumeX, Phone, PhoneCall, Copy,
   Camera, Image as ImageIcon, Sparkles, Trash2, Plus, Link as LinkIcon, Eye,
-  CheckCheck, RefreshCw, ZoomIn, AlertCircle
+  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot
 } from 'lucide-react';
 import { User, Staff, Booking, CreditTransaction, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -1464,6 +1464,24 @@ export default function StaffPanel({
             </div>
           </div>
 
+          {/* AI Automated Verification Notification Banner */}
+          <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-sky-500/10 border border-emerald-200 rounded-2xl p-4 text-left flex items-start gap-3 shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Zap className="w-5 h-5 text-amber-300" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black text-emerald-950">ระบบตรวจสอบสลิปอัตโนมัติด้วย AI (Gemini 3.8 Flash)</span>
+                <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                  อนุมัติทันทีใน 3-5 วินาที
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                เพียงแนบสลิปการโอนเงินที่ชัดเจน และระบุจำนวนเงินให้ตรงกับสลิป ระบบ AI จะสแกนตรวจสอบความถูกต้องและเติมเครดิตเข้ากระเป๋าทันทีโดยไม่ต้องรอแอดมินอนุมัติค่ะ
+              </p>
+            </div>
+          </div>
+
           <form onSubmit={handleTopupSubmit} className="space-y-4 text-left">
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">จำนวนเงินที่โอนจ่าย (บาท)</label>
@@ -1524,9 +1542,19 @@ export default function StaffPanel({
               <button
                 type="submit"
                 disabled={isUploading}
-                className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-black py-3 rounded-xl text-xs shadow-md transition-colors cursor-pointer disabled:opacity-50"
+                className="flex-1 bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-700 hover:to-sky-700 text-white font-black py-3 rounded-xl text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {isUploading ? 'กำลังส่งแจ้งโอน...' : 'ยืนยันแจ้งเติมเงิน'}
+                {isUploading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>AI กำลังตรวจสลิป & เติมเครดิต...</span>
+                  </>
+                ) : (
+                  <>
+                    <Bot className="w-4 h-4" />
+                    <span>ยืนยันแจ้งเติมเงิน (AI ตรวจสอบทันที)</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
