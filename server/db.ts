@@ -3,6 +3,11 @@ import path from 'path';
 import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings } from '../src/types';
 
 const DB_PATH = path.join(process.cwd(), 'server', 'db.json');
+const DB_BAK_PATH = path.join(process.cwd(), 'server', 'db.json.bak');
+const DB_TMP_PATH = path.join(process.cwd(), 'server', 'db.json.tmp');
+
+// In-memory cache to prevent race conditions and frequent disk read locks
+let inMemoryDB: DatabaseSchema | null = null;
 
 // Ensure database directory exists
 const dbDir = path.dirname(DB_PATH);
@@ -21,7 +26,7 @@ export interface DatabaseSchema {
   settings: AppSettings;
 }
 
-const defaultSettings: AppSettings = {
+export const defaultSettings: AppSettings = {
   companyName: "SabaiDee Massage",
   logo: "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
   themeColor: "#10b981", // Emerald Green (Grab style)
@@ -169,45 +174,85 @@ const defaultReviews: Review[] = [];
 const defaultNotifications: Notification[] = [];
 
 export function getDatabase(): DatabaseSchema {
-  if (!fs.existsSync(DB_PATH)) {
-    const initialDB: DatabaseSchema = {
-      users: defaultUsers,
-      staff: defaultStaff,
-      services: defaultServices,
-      bookings: defaultBookings,
-      transactions: defaultTransactions,
-      reviews: defaultReviews,
-      notifications: defaultNotifications,
-      settings: defaultSettings
-    };
-    saveDatabase(initialDB);
-    return initialDB;
+  // 1. If we have in-memory database cached, return it immediately (fastest & safe from disk race conditions)
+  if (inMemoryDB) {
+    return inMemoryDB;
   }
-  
-  try {
-    const data = fs.readFileSync(DB_PATH, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error("Failed to parse database, restoring defaults...", error);
-    const initialDB: DatabaseSchema = {
-      users: defaultUsers,
-      staff: defaultStaff,
-      services: defaultServices,
-      bookings: defaultBookings,
-      transactions: defaultTransactions,
-      reviews: defaultReviews,
-      notifications: defaultNotifications,
-      settings: defaultSettings
-    };
-    saveDatabase(initialDB);
-    return initialDB;
+
+  const createInitialDB = (): DatabaseSchema => ({
+    users: defaultUsers,
+    staff: defaultStaff,
+    services: defaultServices,
+    bookings: defaultBookings,
+    transactions: defaultTransactions,
+    reviews: defaultReviews,
+    notifications: defaultNotifications,
+    settings: defaultSettings
+  });
+
+  // 2. Try loading from main DB_PATH
+  if (fs.existsSync(DB_PATH)) {
+    try {
+      const data = fs.readFileSync(DB_PATH, 'utf8');
+      if (data && data.trim().length > 0) {
+        const parsed = JSON.parse(data);
+        if (parsed && typeof parsed === 'object' && parsed.settings) {
+          inMemoryDB = parsed;
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.warn("⚠️ Warning: Primary db.json reading failed, checking backup file...", error);
+    }
   }
+
+  // 3. Try fallback to backup DB_BAK_PATH
+  if (fs.existsSync(DB_BAK_PATH)) {
+    try {
+      const bakData = fs.readFileSync(DB_BAK_PATH, 'utf8');
+      if (bakData && bakData.trim().length > 0) {
+        const parsedBak = JSON.parse(bakData);
+        if (parsedBak && typeof parsedBak === 'object' && parsedBak.settings) {
+          console.log("✅ Successfully recovered database from backup db.json.bak!");
+          inMemoryDB = parsedBak;
+          // Restore primary file from backup
+          saveDatabase(parsedBak);
+          return parsedBak;
+        }
+      }
+    } catch (bakError) {
+      console.error("Failed to read backup database:", bakError);
+    }
+  }
+
+  // 4. If neither exists or both failed, initialize default DB
+  console.log("ℹ️ Initializing fresh database with defaults...");
+  const initialDB = createInitialDB();
+  inMemoryDB = initialDB;
+  saveDatabase(initialDB);
+  return initialDB;
 }
 
 export function saveDatabase(db: DatabaseSchema): void {
+  // Always update in-memory cache first so all simultaneous requests see latest data immediately
+  inMemoryDB = db;
+
   try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf8');
+    const jsonString = JSON.stringify(db, null, 2);
+    
+    // Atomic write pattern:
+    // Write to a temporary file first, then atomically rename it to DB_PATH.
+    // This guarantees other read processes never catch the file in a truncated 0-byte or half-written state.
+    fs.writeFileSync(DB_TMP_PATH, jsonString, 'utf8');
+    fs.renameSync(DB_TMP_PATH, DB_PATH);
+
+    // Also update backup file asynchronously/safely for recovery
+    try {
+      fs.writeFileSync(DB_BAK_PATH, jsonString, 'utf8');
+    } catch {
+      // ignore backup write error
+    }
   } catch (error) {
-    console.error("Failed to save database", error);
+    console.error("Failed to save database to disk:", error);
   }
 }

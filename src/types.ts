@@ -159,4 +159,6 @@ export interface AppSettings {
   lineChannelAccessToken?: string;
   lineAdminUserId?: string;
   enableLineAdminNotify?: boolean;
+  isCustomized?: boolean;
+  updatedAt?: string;
 }

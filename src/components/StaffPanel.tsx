@@ -174,6 +174,26 @@ export default function StaffPanel({
   const [qrDownloadSuccess, setQrDownloadSuccess] = useState<boolean>(false);
   const [copiedAccount, setCopiedAccount] = useState<boolean>(false);
   const [showFullQrModal, setShowFullQrModal] = useState<boolean>(false);
+  const [generatedQrDataUrl, setGeneratedQrDataUrl] = useState<string>('');
+
+  // Helper to detect LINE in-app browser (iOS / Android)
+  const isLineBrowser = () => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || navigator.vendor || '';
+    return /Line\//i.test(ua) || /Line/i.test(ua);
+  };
+
+  // Helper to open current page in external browser (Safari / Chrome) from LINE
+  const handleOpenInExternalBrowser = () => {
+    try {
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('openExternalBrowser', '1');
+      window.location.href = currentUrl.toString();
+    } catch {
+      const sep = window.location.href.includes('?') ? '&' : '?';
+      window.location.href = window.location.href + sep + 'openExternalBrowser=1';
+    }
+  };
 
   // Load initial settings on edit form
   useEffect(() => {
@@ -658,7 +678,7 @@ export default function StaffPanel({
     }
   };
 
-  // Handler to download/save QR Code to local device (mobile photo gallery / computer)
+  // Handler to download/save QR Code to local device (mobile photo gallery / computer / LINE browser)
   const handleDownloadQrCode = async () => {
     if (!settings.qrCodeImage) {
       onShowToast("ไม่พบรูปภาพ QR Code ในระบบ", "error");
@@ -669,63 +689,95 @@ export default function StaffPanel({
     const rawAccount = (settings.bankAccount || '').replace(/[^0-9a-zA-Z]/g, '') || 'pay';
     const fileName = `PromptPay_QR_Topup_${rawAccount}.png`;
     const imageUrl = settings.qrCodeImage;
+    const inLine = isLineBrowser();
 
     try {
       let blob: Blob | null = null;
+      let dataUrl: string = imageUrl;
 
-      // Case 1: Base64 data URI
-      if (imageUrl.startsWith('data:image/')) {
-        const res = await fetch(imageUrl);
-        blob = await res.blob();
-      } else {
-        // Case 2: Fetch as blob (if CORS is allowed by host)
-        try {
-          const res = await fetch(imageUrl, { mode: 'cors' });
-          if (res.ok) {
-            blob = await res.blob();
+      // 1. Process onto Canvas with Solid White background (Ensures maximum scanning contrast in all bank apps)
+      const canvasResult = await new Promise<{ blob: Blob | null; dataUrl: string }>((resolve) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const naturalW = img.naturalWidth || 600;
+            const naturalH = img.naturalHeight || 600;
+            const size = Math.max(Math.max(naturalW, naturalH), 600);
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              // Solid white background
+              ctx.fillStyle = '#FFFFFF';
+              ctx.fillRect(0, 0, canvas.width, canvas.height);
+              // Centered QR with margin
+              const pad = Math.round(size * 0.04);
+              ctx.drawImage(img, pad, pad, size - (pad * 2), size - (pad * 2));
+              const dUrl = canvas.toDataURL('image/png', 0.95);
+              canvas.toBlob((b) => resolve({ blob: b, dataUrl: dUrl }), 'image/png', 0.95);
+            } else {
+              resolve({ blob: null, dataUrl: imageUrl });
+            }
+          } catch {
+            resolve({ blob: null, dataUrl: imageUrl });
           }
-        } catch {
-          // Direct fetch had CORS limitation, continue to canvas method
-        }
+        };
+        img.onerror = () => resolve({ blob: null, dataUrl: imageUrl });
+        img.src = imageUrl;
+      });
 
-        // Case 3: Load into Image and render onto Canvas with solid white background
-        // (Ensures any transparent background SVG/PNG is crisp and readable by bank apps)
-        if (!blob) {
-          blob = await new Promise<Blob | null>((resolve) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-              try {
-                const canvas = document.createElement('canvas');
-                const naturalW = img.naturalWidth || 600;
-                const naturalH = img.naturalHeight || 600;
-                const size = Math.max(Math.max(naturalW, naturalH), 600);
-                canvas.width = size;
-                canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  // Solid white background
-                  ctx.fillStyle = '#FFFFFF';
-                  ctx.fillRect(0, 0, canvas.width, canvas.height);
-                  // Centered QR with clean margin
-                  const pad = Math.round(size * 0.04);
-                  ctx.drawImage(img, pad, pad, size - (pad * 2), size - (pad * 2));
-                  canvas.toBlob((b) => resolve(b), 'image/png', 0.95);
-                } else {
-                  resolve(null);
-                }
-              } catch {
-                resolve(null);
-              }
-            };
-            img.onerror = () => resolve(null);
-            img.src = imageUrl;
-          });
+      blob = canvasResult.blob;
+      if (canvasResult.dataUrl) {
+        dataUrl = canvasResult.dataUrl;
+        setGeneratedQrDataUrl(canvasResult.dataUrl);
+      }
+
+      // Fallback fetch if canvas was blocked by CORS
+      if (!blob && imageUrl.startsWith('data:image/')) {
+        try {
+          const res = await fetch(imageUrl);
+          blob = await res.blob();
+        } catch {
+          // ignore
         }
       }
 
+      // 2. Mobile & LINE Web Share API: Triggers native OS Share Sheet ("Save Image" / "บันทึกภาพ" to Photo Gallery)
+      if (blob && navigator.share && navigator.canShare) {
+        try {
+          const file = new File([blob], fileName, { type: 'image/png' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'QR Code สำหรับเติมเครดิต SabaiDee',
+              text: `QR Code เติมเครดิต ${settings.bankAccountName || ''}`,
+            });
+            setQrDownloadSuccess(true);
+            onShowToast("เปิดเมนูบันทึกรูปแล้ว: เลือก 'บันทึกรูปภาพ' (Save Image) ได้เลยค่ะ", "success");
+            setTimeout(() => setQrDownloadSuccess(false), 4000);
+            return;
+          }
+        } catch (shareErr) {
+          if ((shareErr as Error)?.name === 'AbortError') {
+            return; // User dismissed share dialog
+          }
+          console.warn("Web Share failed, continuing to alternative save methods:", shareErr);
+        }
+      }
+
+      // 3. For LINE in-app browser (where WebView blocks <a download> blob URLs)
+      if (inLine) {
+        setShowFullQrModal(true);
+        setQrDownloadSuccess(true);
+        onShowToast("เปิดรูปภาพ QR Code แล้ว: แตะค้างที่ภาพ 1 วินาทีเพื่อบันทึกรูปค่ะ", "info");
+        setTimeout(() => setQrDownloadSuccess(false), 4000);
+        return;
+      }
+
+      // 4. Standard Browser Download via <a download>
       if (blob) {
-        // Trigger browser download via object URL
         const blobUrl = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = blobUrl;
@@ -739,10 +791,8 @@ export default function StaffPanel({
         onShowToast("บันทึกภาพ QR Code ลงเครื่องเรียบร้อยแล้ว!", "success");
         setTimeout(() => setQrDownloadSuccess(false), 4000);
       } else {
-        // Fallback for browsers or third-party hosts where canvas export is blocked by CORS:
-        // Trigger direct anchor download or open window
         const link = document.createElement('a');
-        link.href = imageUrl;
+        link.href = dataUrl || imageUrl;
         link.download = fileName;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
@@ -751,14 +801,13 @@ export default function StaffPanel({
         document.body.removeChild(link);
 
         setQrDownloadSuccess(true);
-        onShowToast("ดาวน์โหลด QR Code แล้ว หรือแตะค้างที่ภาพเพื่อบันทึกลงอัลบั้ม", "info");
+        onShowToast("ดาวน์โหลด QR Code แล้ว หรือแตะค้างที่ภาพเพื่อบันทึก", "info");
         setTimeout(() => setQrDownloadSuccess(false), 4000);
       }
     } catch (err) {
       console.error("Error saving QR Code:", err);
-      // Fallback: open in new tab so user can long-press save
-      window.open(imageUrl, '_blank');
-      onShowToast("เปิดภาพ QR Code แล้ว แตะค้างที่ภาพเพื่อบันทึกรูปค่ะ", "info");
+      setShowFullQrModal(true);
+      onShowToast("แตะค้างที่ภาพ QR Code เพื่อบันทึกรูปภาพค่ะ", "info");
     } finally {
       setIsDownloadingQr(false);
     }
@@ -1583,9 +1632,15 @@ export default function StaffPanel({
             {settings.qrCodeImage ? (
               <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-200 rounded-2xl p-2.5 shadow-sm flex items-center justify-center">
                 <img 
-                  src={settings.qrCodeImage} 
-                  className="w-full h-full object-contain rounded-lg" 
+                  src={generatedQrDataUrl || settings.qrCodeImage} 
+                  className="w-full h-full object-contain rounded-lg select-auto pointer-events-auto" 
                   alt="QR Code สำหรับเติมเครดิต" 
+                  style={{
+                    WebkitTouchCallout: 'default',
+                    touchAction: 'manipulation',
+                    userSelect: 'auto',
+                    WebkitUserSelect: 'auto'
+                  }}
                 />
                 <button
                   type="button"
@@ -1601,6 +1656,18 @@ export default function StaffPanel({
               <div className="w-48 h-48 bg-white border-2 border-dashed border-slate-200 rounded-2xl mx-auto flex flex-col items-center justify-center p-4 text-slate-400">
                 <QrCode className="w-10 h-10 mb-2 opacity-50" />
                 <span className="text-xs font-semibold">ยังไม่ได้ตั้งค่ารูป QR Code</span>
+              </div>
+            )}
+
+            {/* LINE Browser Note if detected */}
+            {isLineBrowser() && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-left text-emerald-800 space-y-1">
+                <span className="text-[11px] font-bold block flex items-center gap-1">
+                  🟢 ใช้งานผ่าน LINE:
+                </span>
+                <p className="text-[10px] text-emerald-700 leading-snug">
+                  กดปุ่มด้านล่าง หรือ <strong>แตะค้างที่รูปภาพ QR Code 1 วินาที</strong> เพื่อเลือก <strong>"บันทึกรูปภาพ"</strong> ลงเครื่องได้เลยค่ะ
+                </p>
               </div>
             )}
 
@@ -1634,6 +1701,18 @@ export default function StaffPanel({
                   </>
                 )}
               </button>
+
+              {isLineBrowser() && (
+                <button
+                  type="button"
+                  id="btn-line-open-external"
+                  onClick={handleOpenInExternalBrowser}
+                  className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                  <span>เปิดใน Safari / Chrome (ดาวน์โหลดอัตโนมัติ)</span>
+                </button>
+              )}
 
               <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
                 💡 บันทึกรูปลงเครื่องแล้วเข้าแอปธนาคาร เลือก <strong className="text-slate-700 font-bold">"สแกน QR"</strong> จากอัลบั้มรูปภาพเพื่อโอนเงินได้ทันที
@@ -2718,13 +2797,45 @@ export default function StaffPanel({
               <h4 className="text-sm font-black text-slate-800">QR Code สำหรับโอนเงินเติมเครดิต</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">{settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ'}</p>
             </div>
+
+            {/* LINE Browser Note */}
+            {isLineBrowser() && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-left space-y-1 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>วิธีบันทึกภาพสำหรับผู้ใช้ LINE:</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
+                  👉 <strong>แตะค้างที่รูปภาพ QR ด้านล่าง 1 วินาที</strong> แล้วกด <strong>"บันทึกรูปภาพ" (Save Image)</strong> หรือกดเปิดใน Safari/Chrome ด้านล่างได้เลยค่ะ
+                </p>
+              </div>
+            )}
             
-            <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 shadow-inner inline-block w-64 h-64 mx-auto">
+            <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 shadow-inner inline-block w-64 h-64 mx-auto select-none">
               <img 
-                src={settings.qrCodeImage} 
+                src={generatedQrDataUrl || settings.qrCodeImage} 
                 alt="QR Code สำหรับเติมเครดิต" 
-                className="w-full h-full object-contain rounded-xl"
+                className="w-full h-full object-contain rounded-xl select-auto pointer-events-auto"
+                style={{
+                  WebkitTouchCallout: 'default',
+                  touchAction: 'manipulation',
+                  userSelect: 'auto',
+                  WebkitUserSelect: 'auto'
+                }}
               />
+            </div>
+
+            {/* Bank account quick copy */}
+            <div className="flex items-center justify-center gap-2 bg-slate-50 py-1.5 px-3 rounded-xl border border-slate-100">
+              <span className="text-[11px] font-mono font-bold text-slate-700">{settings.bankAccount || '081-234-5678'}</span>
+              <button
+                type="button"
+                onClick={handleCopyAccount}
+                className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 hover:text-sky-800 transition cursor-pointer"
+              >
+                {copiedAccount ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedAccount ? "คัดลอกแล้ว" : "คัดลอกเลขบัญชี"}</span>
+              </button>
             </div>
 
             <p className="text-[11px] text-slate-500 font-medium">
@@ -2751,7 +2862,7 @@ export default function StaffPanel({
                 ) : qrDownloadSuccess ? (
                   <>
                     <CheckCheck className="w-4 h-4" />
-                    <span>บันทึก QR Code ลงเครื่องแล้ว!</span>
+                    <span>บันทึก QR Code แล้ว!</span>
                   </>
                 ) : (
                   <>
@@ -2761,10 +2872,22 @@ export default function StaffPanel({
                 )}
               </button>
 
+              {isLineBrowser() && (
+                <button
+                  type="button"
+                  id="btn-modal-open-external"
+                  onClick={handleOpenInExternalBrowser}
+                  className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                  <span>เปิดใน Safari / Chrome (ดาวน์โหลดอัตโนมัติ)</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setShowFullQrModal(false)}
-                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                className="w-full py-2 px-4 text-slate-500 hover:text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
               >
                 ปิดหน้าต่าง
               </button>

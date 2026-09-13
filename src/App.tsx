@@ -57,6 +57,51 @@ const getAudioContext = () => {
   return globalAudioCtx;
 };
 
+const defaultAppSettings: AppSettings = {
+  companyName: "SabaiDee Massage",
+  logo: "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
+  themeColor: "#00B14F",
+  travelFeePerKm: 15,
+  travelFeeTiers: [
+    { minKm: 0, maxKm: 3, fee: 0 },
+    { minKm: 3, maxKm: 10, fee: 150 },
+    { minKm: 10, maxKm: 15, fee: 200 }
+  ],
+  commissionRate: 15,
+  minCredit: 398,
+  searchRadius: 15,
+  systemOpen: 'ON',
+  contactPhone: "081-234-5678",
+  lineOA: "@sabaideemassage",
+  facebook: "SabaiDee Home Massage",
+  businessHours: "09:00 - 22:00",
+  bannerText: "✨ โปรโมชั่นพิเศษ! ลดค่าเดินทาง 50% สำหรับการจองครั้งแรก ✨",
+  promotionText: "จองนวดอโรมาวันนี้ รับสิทธิ์นวดคอบ่าไหล่ฟรี 15 นาที!",
+  couponCode: "SABAIDEE99",
+  couponDiscount: 50,
+  bankName: "ธนาคารกสิกรไทย",
+  bankAccount: "123-4-56789-0",
+  bankAccountName: "บจก. สบายดี มาสสาจ",
+  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+};
+
+const getPersistedSettings = (): AppSettings => {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('sabaidee_app_settings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && parsed.companyName) {
+          return { ...defaultAppSettings, ...parsed };
+        }
+      }
+    } catch (e) {
+      console.warn("Failed reading localStorage settings:", e);
+    }
+  }
+  return defaultAppSettings;
+};
+
 export default function App() {
   // Theme state
   const [darkMode, setDarkMode] = useState<boolean>(false);
@@ -99,34 +144,8 @@ export default function App() {
   const [regCustomPhotoUrl, setRegCustomPhotoUrl] = useState<string>('');
   const [isCompressingPhoto, setIsCompressingPhoto] = useState<boolean>(false);
 
-  // Platform global Settings loaded from server
-  const [settings, setSettings] = useState<AppSettings>({
-    companyName: "SabaiDee Massage",
-    logo: "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
-    themeColor: "#00B14F",
-    travelFeePerKm: 15,
-    travelFeeTiers: [
-      { minKm: 0, maxKm: 3, fee: 0 },
-      { minKm: 3, maxKm: 10, fee: 150 },
-      { minKm: 10, maxKm: 15, fee: 200 }
-    ],
-    commissionRate: 15,
-    minCredit: 398,
-    searchRadius: 15,
-    systemOpen: 'ON',
-    contactPhone: "081-234-5678",
-    lineOA: "@sabaideemassage",
-    facebook: "SabaiDee Home Massage",
-    businessHours: "09:00 - 22:00",
-    bannerText: "✨ โปรโมชั่นพิเศษ! ลดค่าเดินทาง 50% สำหรับการจองครั้งแรก ✨",
-    promotionText: "จองนวดอโรมาวันนี้ รับสิทธิ์นวดคอบ่าไหล่ฟรี 15 นาที!",
-    couponCode: "SABAIDEE99",
-    couponDiscount: 50,
-    bankName: "ธนาคารกสิกรไทย",
-    bankAccount: "123-4-56789-0",
-    bankAccountName: "บจก. สบายดี มาสสาจ",
-    qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
-  });
+  // Platform global Settings loaded from server & localStorage for permanent persistence
+  const [settings, setSettings] = useState<AppSettings>(getPersistedSettings);
 
   // Floating Toasts alerts state list
   const [toasts, setToasts] = useState<Array<{ id: number; msg: string; type: 'success' | 'error' | 'info' }>>([]);
@@ -210,10 +229,51 @@ export default function App() {
   const fetchSettings = async () => {
     try {
       const res = await fetch('/api/settings');
-      const data = await res.json();
-      setSettings(data);
+      if (res.ok) {
+        const serverData: AppSettings = await res.json();
+        if (serverData && typeof serverData === 'object' && serverData.companyName) {
+          // Check if local cache has customized settings that should be preserved
+          const localStr = typeof window !== 'undefined' ? localStorage.getItem('sabaidee_app_settings') : null;
+          if (localStr) {
+            try {
+              const localSettings: AppSettings = JSON.parse(localStr);
+              // If local settings were customized by admin and server returned uncustomized or older defaults
+              if (localSettings.isCustomized && !serverData.isCustomized) {
+                console.log("Restoring customized settings from localStorage to server...");
+                fetch('/api/settings', {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(localSettings)
+                }).catch(console.error);
+                setSettings(localSettings);
+                return;
+              }
+              if (localSettings.updatedAt && serverData.updatedAt && localSettings.updatedAt > serverData.updatedAt) {
+                setSettings(localSettings);
+                return;
+              }
+            } catch {
+              // ignore parse errors
+            }
+          }
+
+          setSettings(serverData);
+          try {
+            localStorage.setItem('sabaidee_app_settings', JSON.stringify(serverData));
+          } catch {}
+        }
+      }
     } catch (e) {
-      console.error(e);
+      console.error("fetchSettings error:", e);
+    }
+  };
+
+  const handlePersistSettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem('sabaidee_app_settings', JSON.stringify(newSettings));
+    } catch (e) {
+      console.warn("Failed saving settings to localStorage:", e);
     }
   };
 
@@ -771,17 +831,22 @@ export default function App() {
                 <div className="pt-2 text-center space-y-1.5">
                   <button
                     type="button"
-                    onClick={() => { setAuthMode('register_staff'); setRegRole('Staff'); }}
-                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 transition-colors cursor-pointer block w-full"
-                  >
-                    ต้องการสมัครเป็นพนักงานนวด? คลิกที่นี่
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setAuthMode('welcome')}
                     className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 transition-colors cursor-pointer block w-full"
                   >
                     มีบัญชีอยู่แล้ว? เข้าสู่ระบบ
+                  </button>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-start">
+                  <button
+                    type="button"
+                    id="btn-customer-staff-subtle"
+                    onClick={() => { setAuthMode('register_staff'); setRegRole('Staff'); }}
+                    className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-slate-600 hover:bg-slate-50 py-1.5 px-2 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <Briefcase className="w-3.5 h-3.5 text-slate-400" />
+                    <span>สมัครเป็นพนักงานนวด</span>
                   </button>
                 </div>
               </form>
@@ -1315,7 +1380,7 @@ export default function App() {
               <AdminPanel 
                 currentUser={currentUser}
                 settings={settings}
-                onUpdateSettings={(newSettings) => setSettings(newSettings)}
+                onUpdateSettings={handlePersistSettings}
                 onShowToast={showToast}
               />
             )}

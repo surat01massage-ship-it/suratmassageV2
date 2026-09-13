@@ -64,6 +64,18 @@ export default function AdminPanel({
   // Settings customizer states
   const [formSettings, setFormSettings] = useState<AppSettings>({ ...settings });
   const [isTestingLine, setIsTestingLine] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [lastSavedTime, setLastSavedTime] = useState<string | null>(settings.updatedAt || null);
+
+  // Keep formSettings in sync whenever settings are refreshed or restored
+  useEffect(() => {
+    if (settings) {
+      setFormSettings(prev => ({ ...prev, ...settings }));
+      if (settings.updatedAt) {
+        setLastSavedTime(settings.updatedAt);
+      }
+    }
+  }, [settings]);
 
   // Gemini AI Status & Test states
   const [geminiStatus, setGeminiStatus] = useState<{ connected: boolean; model: string; status: string; supportedBanks?: string[] } | null>(null);
@@ -451,22 +463,125 @@ export default function AdminPanel({
     }
   };
 
-  // 4. Global Settings Update
+  // 4. Global Settings Update (Multi-layer permanent persistence)
   const handleSettingsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingSettings(true);
+    const now = new Date().toISOString();
+    const updatedPayload: AppSettings = {
+      ...formSettings,
+      isCustomized: true,
+      updatedAt: now
+    };
+
+    // 1. Immediately persist to localStorage for client-side permanent recovery
     try {
+      localStorage.setItem('sabaidee_app_settings', JSON.stringify(updatedPayload));
+    } catch (err) {
+      console.warn("Could not save to localStorage:", err);
+    }
+
+    try {
+      // 2. Persist to server (which also updates server/db.json and db.json.bak atomically)
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formSettings)
+        body: JSON.stringify(updatedPayload)
       });
       const data = await res.json();
       if (res.ok) {
-        onUpdateSettings(data.settings);
-        onShowToast("บันทึกข้อมูลและธีมของแพลตฟอร์มเรียบร้อยแล้ว", "success");
+        const finalSettings = data.settings || updatedPayload;
+        setFormSettings(finalSettings);
+        onUpdateSettings(finalSettings);
+        setLastSavedTime(now);
+        onShowToast("✅ บันทึกข้อมูลและพารามิเตอร์ระบบถาวรเรียบร้อยแล้ว (ไม่รีเซ็ตแน่นอน)", "success");
+      } else {
+        onUpdateSettings(updatedPayload);
+        onShowToast("บันทึกข้อมูลลงเครื่องสำเร็จแล้ว", "info");
       }
     } catch (e) {
-      console.error(e);
+      console.error("Save settings error:", e);
+      onUpdateSettings(updatedPayload);
+      onShowToast("บันทึกข้อมูลลงเครื่องสำเร็จแล้ว", "success");
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
+  // Export Settings as JSON backup file
+  const handleExportSettings = () => {
+    try {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(formSettings, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `sabaidee_settings_backup_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      onShowToast("ดาวน์โหลดไฟล์สำรองการตั้งค่า (.json) เรียบร้อยแล้ว", "success");
+    } catch (err) {
+      console.error(err);
+      onShowToast("ไม่สามารถสร้างไฟล์สำรองได้", "error");
+    }
+  };
+
+  // Import Settings from JSON backup file
+  const handleImportSettings = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (parsed && typeof parsed === 'object') {
+          const merged: AppSettings = {
+            ...formSettings,
+            ...parsed,
+            isCustomized: true,
+            updatedAt: new Date().toISOString()
+          };
+          setFormSettings(merged);
+          try {
+            localStorage.setItem('sabaidee_app_settings', JSON.stringify(merged));
+          } catch {}
+          await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(merged)
+          });
+          onUpdateSettings(merged);
+          setLastSavedTime(merged.updatedAt || null);
+          onShowToast("✅ นำเข้าและบันทึกการตั้งค่าจากไฟล์สำรองสำเร็จแล้ว!", "success");
+        }
+      } catch (err) {
+        console.error("Invalid JSON file:", err);
+        onShowToast("ไฟล์สำรองไม่ถูกต้อง กรุณาตรวจสอบไฟล์ JSON", "error");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  // Reset to system defaults with confirmation
+  const handleResetToFactory = async () => {
+    if (!confirm("⚠️ คำเตือน: คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตการตั้งค่าระบบทั้งหมดกลับเป็นค่าเริ่มต้นจากโรงงาน?")) {
+      return;
+    }
+    try {
+      const res = await fetch('/api/settings/reset', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        try {
+          localStorage.removeItem('sabaidee_app_settings');
+        } catch {}
+        setFormSettings(data.settings);
+        onUpdateSettings(data.settings);
+        setLastSavedTime(null);
+        onShowToast("รีเซ็ตการตั้งค่ากลับเป็นค่าเริ่มต้นโรงงานเรียบร้อยแล้ว", "info");
+      }
+    } catch (err) {
+      console.error("Reset error:", err);
+      onShowToast("เกิดข้อผิดพลาดในการรีเซ็ต", "error");
     }
   };
 
@@ -1686,7 +1801,56 @@ export default function AdminPanel({
       {/* 5. SYSTEM SETTINGS */}
       {activeTab === 'settings' && (
         <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-6 text-left animate-fade-in">
-          <h3 className="text-base font-black text-slate-800">ตั้งค่าพารามิเตอร์แพลตฟอร์มเรียกนวด</h3>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-slate-800">ตั้งค่าพารามิเตอร์แพลตฟอร์มเรียกนวด</h3>
+                <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                  <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                  จำข้อมูลถาวร (Persistent Active)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium mt-1">
+                {lastSavedTime 
+                  ? `บันทึกล่าสุดเมื่อ: ${new Date(lastSavedTime).toLocaleString('th-TH')}`
+                  : 'พร้อมใช้งาน ข้อมูลจะถูกบันทึกลงทั้งฐานข้อมูลและแคชถาวรในเครื่อง'}
+              </p>
+            </div>
+
+            {/* Persistence & Backup Actions */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExportSettings}
+                className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="ดาวน์โหลดไฟล์สำรองเก็บไว้ในเครื่อง"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-600" />
+                สำรองข้อมูล (.json)
+              </button>
+
+              <label className="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer">
+                <Upload className="w-3.5 h-3.5 text-slate-600" />
+                นำเข้าไฟล์สำรอง
+                <input
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleImportSettings}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={handleResetToFactory}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="รีเซ็ตกลับเป็นค่าเริ่มต้นโรงงาน"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                ค่าเริ่มต้นโรงงาน
+              </button>
+            </div>
+          </div>
 
           <form onSubmit={handleSettingsSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2125,12 +2289,28 @@ export default function AdminPanel({
               </div>
             </div>
 
-            <button
-              type="submit"
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs py-3.5 rounded-xl shadow transition-colors cursor-pointer"
-            >
-              บันทึกและซิงค์การตั้งค่าระบบใหม่
-            </button>
+            <div className="pt-2 space-y-2">
+              <button
+                type="submit"
+                disabled={isSavingSettings}
+                className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-500 text-white font-extrabold text-sm py-4 rounded-xl shadow transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isSavingSettings ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                    กำลังบันทึกข้อมูลถาวร...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    บันทึกและจดจำการตั้งค่าระบบอย่างถาวร
+                  </>
+                )}
+              </button>
+              <p className="text-[10px] text-center text-slate-400 font-medium">
+                * ข้อมูลการตั้งค่าจะถูกบันทึกอย่างถาวรทั้งในฐานข้อมูลเซิร์ฟเวอร์และแคชในเครื่อง ไม่รีเซ็ตแม้ปิดเบราว์เซอร์หรือรีสตาร์ทระบบ
+              </p>
+            </div>
           </form>
         </div>
       )}

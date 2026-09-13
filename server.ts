@@ -3,7 +3,7 @@ import 'dotenv/config';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
-import { getDatabase, saveDatabase, DatabaseSchema } from './server/db';
+import { getDatabase, saveDatabase, DatabaseSchema, defaultSettings } from './server/db';
 import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings } from './src/types';
 import { scanSlipQRCode, DecodedSlipQR } from './server/slipQrScanner';
 
@@ -833,7 +833,25 @@ async function startServer() {
 
   app.put('/api/settings', (req, res) => {
     const db = getDatabase();
-    db.settings = { ...db.settings, ...req.body };
+    const isCustom = req.body?.isCustomized !== undefined ? req.body.isCustomized : true;
+    db.settings = {
+      ...db.settings,
+      ...req.body,
+      isCustomized: isCustom,
+      updatedAt: req.body?.updatedAt || new Date().toISOString()
+    };
+    saveDatabase(db);
+    syncToGoogleSheet('UPDATE', 'Settings', db.settings);
+    res.json({ success: true, settings: db.settings });
+  });
+
+  app.post('/api/settings/reset', (req, res) => {
+    const db = getDatabase();
+    db.settings = {
+      ...defaultSettings,
+      isCustomized: false,
+      updatedAt: new Date().toISOString()
+    };
     saveDatabase(db);
     syncToGoogleSheet('UPDATE', 'Settings', db.settings);
     res.json({ success: true, settings: db.settings });
