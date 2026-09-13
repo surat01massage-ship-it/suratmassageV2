@@ -5,7 +5,7 @@ import {
   Compass, ExternalLink, Navigation, Volume2, VolumeX, Phone, PhoneCall, Copy,
   Camera, Image as ImageIcon, Sparkles, Trash2, Plus, Link as LinkIcon, Eye,
   CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode, AlertTriangle,
-  FileBadge, ShieldCheck, Home, FileText
+  FileBadge, ShieldCheck, Home, FileText, Banknote, Receipt
 } from 'lucide-react';
 import { User, Staff, Booking, CreditTransaction, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -97,6 +97,7 @@ export default function StaffPanel({
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
   const [incomingBooking, setIncomingBooking] = useState<any | null>(null);
   const [ongoingBooking, setOngoingBooking] = useState<any | null>(null);
+  const [acceptedJobModal, setAcceptedJobModal] = useState<any | null>(null);
 
   // Job cancellation by staff states
   const [showCancelJobModal, setShowCancelJobModal] = useState(false);
@@ -575,7 +576,16 @@ export default function StaffPanel({
         throw new Error(data.error || "ไม่สามารถกดยอมรับงานนี้ได้");
       }
 
-      onShowToast("🎉 ยอมรับงานบริการนวดสำเร็จ! เริ่มเดินทางไปให้บริการได้ทันที", "success");
+      const totalCollect = Number(incomingBooking.TotalPrice || (incomingBooking.ServicePrice + incomingBooking.TravelFee) || 0);
+      const acceptedData = { 
+        ...incomingBooking, 
+        Status: 'Accepted',
+        TotalPrice: totalCollect
+      };
+      
+      onShowToast(`🎉 ยอมรับงานสำเร็จ! ยอดที่ต้องเก็บเงินลูกค้า ฿${totalCollect.toLocaleString()} บาท`, "success");
+      setAcceptedJobModal(acceptedData);
+      setOngoingBooking(acceptedData);
       setIncomingBooking(null);
       if (data.staff) {
         onUpdateStaffData(data.staff);
@@ -1571,6 +1581,53 @@ export default function StaffPanel({
                 )}
               </div>
 
+              {/* 💵 ยอดเงินที่ต้องเก็บจากลูกค้า (แสดงเด่นชัดทันทีหลังรับงาน) */}
+              <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 rounded-2xl p-4 text-white shadow-md border border-emerald-500/50 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs shrink-0">
+                      <Banknote className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] font-black uppercase tracking-wider text-emerald-100 block">
+                        ยอดเงินที่ต้องเก็บจากลูกค้า
+                      </span>
+                      <span className="text-[10px] text-emerald-100/90 font-medium">
+                        💵 พนักงานเก็บเงินกับลูกค้าเอง (เงินสด หรือ สแกนโอนตรงกับคุณ)
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-baseline justify-end gap-1 font-mono">
+                      <span className="text-base text-emerald-200">฿</span>
+                      <span>{Number(ongoingBooking.TotalPrice || ((ongoingBooking.ServicePrice || 0) + (ongoingBooking.TravelFee || 0))).toLocaleString()}</span>
+                    </div>
+                    <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full inline-block mt-0.5 shadow-2xs bg-amber-300 text-amber-950">
+                      พนักงานเก็บเงินเอง
+                    </span>
+                  </div>
+                </div>
+
+                {/* Breakdown details */}
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-500/40 text-xs">
+                  <div className="bg-black/15 rounded-xl p-2.5 flex justify-between items-center">
+                    <span className="text-emerald-100 text-[11px]">ค่าบริการนวด:</span>
+                    <span className="font-black text-white font-mono">฿{Number(ongoingBooking.ServicePrice || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="bg-black/15 rounded-xl p-2.5 flex justify-between items-center">
+                    <span className="text-emerald-100 text-[11px]">ค่าเดินทาง:</span>
+                    <span className="font-black text-white font-mono">฿{Number(ongoingBooking.TravelFee || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+
+                {ongoingBooking.NetIncome !== undefined && (
+                  <div className="flex justify-between items-center bg-white/10 rounded-xl px-3 py-2 text-[11px]">
+                    <span className="text-emerald-100 font-medium">รายได้สุทธิที่คุณได้รับ (หักเครดิตแล้ว):</span>
+                    <span className="font-black text-amber-200 font-mono text-xs">฿{Number(ongoingBooking.NetIncome).toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
               <div className="text-xs space-y-2 text-slate-700 bg-amber-100/40 p-3.5 rounded-2xl border border-amber-200/50">
                 <div className="flex justify-between">
                   <span className="font-semibold text-slate-500">บริการ</span>
@@ -1641,9 +1698,9 @@ export default function StaffPanel({
                   <button
                     disabled={isUpdatingStatus}
                     onClick={() => handleUpdateOngoingStatus('complete')}
-                    className="w-full bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white font-black text-xs py-3 rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black text-xs py-3 rounded-xl transition-colors cursor-pointer shadow-md flex items-center justify-center gap-1.5"
                   >
-                    {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : `💆 นวดบริการเสร็จสมบูรณ์ (รับเงิน ฿${ongoingBooking.TotalPrice})`}
+                    {isUpdatingStatus ? <RefreshCw className="w-4 h-4 animate-spin" /> : `💆 นวดบริการเสร็จสมบูรณ์ & เก็บเงินลูกค้าแล้ว (฿${Number(ongoingBooking.TotalPrice).toLocaleString()})`}
                   </button>
                 ) : null}
               </div>
@@ -2821,20 +2878,41 @@ export default function StaffPanel({
             </div>
 
             {/* Price & predicted distance */}
-            <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl flex items-center justify-around">
-              <div>
-                <span className="text-[9px] text-slate-400 block font-bold uppercase">ระยะทางจริง</span>
-                <span className="text-xs font-black text-slate-800">{formatDistance(incomingBooking.Distance)}</span>
+            <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200/80 rounded-xl p-2.5">
+                <div className="text-left">
+                  <span className="text-[10px] text-emerald-800 block font-black uppercase tracking-wider">
+                    ยอดเงินที่ต้องเก็บลูกค้า
+                  </span>
+                  <span className="text-lg font-black text-emerald-700 font-mono">
+                    ฿{Number(incomingBooking.TotalPrice || ((incomingBooking.ServicePrice || 0) + (incomingBooking.TravelFee || 0))).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-sky-800 block font-black uppercase tracking-wider">
+                    รายได้สุทธิของคุณ
+                  </span>
+                  <span className="text-base font-black text-sky-600 font-mono">
+                    ฿{Number(incomingBooking.NetIncome || incomingBooking.TotalPrice).toLocaleString()}
+                  </span>
+                </div>
               </div>
-              <div className="w-[1px] h-8 bg-slate-200" />
-              <div>
-                <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าเดินทาง</span>
-                <span className="text-sm font-black text-slate-800">฿{incomingBooking.TravelFee.toFixed(2)}</span>
-              </div>
-              <div className="w-[1px] h-8 bg-slate-200" />
-              <div>
-                <span className="text-[9px] text-slate-400 block font-bold uppercase">รายได้สุทธิ</span>
-                <span className="text-base font-black text-sky-600">฿{incomingBooking.NetIncome || incomingBooking.TotalPrice}</span>
+
+              <div className="flex items-center justify-around text-center pt-1 border-t border-slate-200/60">
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-bold uppercase">ระยะทางจริง</span>
+                  <span className="text-xs font-black text-slate-800">{formatDistance(incomingBooking.Distance)}</span>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-200" />
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าบริการ</span>
+                  <span className="text-xs font-black text-slate-800">฿{Number(incomingBooking.ServicePrice || 0).toLocaleString()}</span>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-200" />
+                <div>
+                  <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าเดินทาง</span>
+                  <span className="text-xs font-black text-slate-800">฿{Number(incomingBooking.TravelFee || 0).toFixed(2)}</span>
+                </div>
               </div>
             </div>
 
@@ -2863,6 +2941,120 @@ export default function StaffPanel({
                 className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-black py-3.5 rounded-2xl text-xs shadow-md transition-all cursor-pointer"
               >
                 กดรับงานนวด (฿)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💰 OVERLAY: ACCEPTED JOB SUCCESS & PAYMENT COLLECTION MODAL */}
+      {acceptedJobModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border-2 border-emerald-500 rounded-3xl max-w-sm w-full p-6 text-slate-800 space-y-5 shadow-2xl relative text-left">
+            {/* Header */}
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
+                <CheckCircle className="w-9 h-9" />
+              </div>
+              <h3 className="text-base font-black text-slate-900">🎉 รับงานบริการนวดเรียบร้อยแล้ว!</h3>
+              <p className="text-xs text-slate-500 font-medium">
+                กรุณาตรวจสอบยอดเงินที่ต้องเรียกเก็บจากลูกค้าก่อนเริ่มเดินทาง
+              </p>
+            </div>
+
+            {/* 💵 Main highlight: Amount to collect from customer */}
+            <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 rounded-2xl p-4 text-white shadow-md border border-emerald-400 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs shrink-0">
+                    <Banknote className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-100 block">
+                      ยอดเงินที่ต้องเก็บจากลูกค้า
+                    </span>
+                    <span className="text-[10px] text-emerald-100/90 font-medium">
+                      💵 พนักงานเก็บเงินกับลูกค้าเอง (เงินสด หรือ สแกนโอนตรงกับคุณ)
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                    ฿{Number(acceptedJobModal.TotalPrice || ((acceptedJobModal.ServicePrice || 0) + (acceptedJobModal.TravelFee || 0))).toLocaleString()}
+                  </div>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full inline-block mt-0.5 bg-amber-300 text-amber-950 shadow-xs font-bold">
+                    พนักงานเก็บเงินเอง
+                  </span>
+                </div>
+              </div>
+
+              {/* Breakdown */}
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-500/50 text-xs">
+                <div className="bg-black/15 rounded-xl p-2 flex justify-between items-center">
+                  <span className="text-emerald-100 text-[11px]">ค่าบริการนวด:</span>
+                  <span className="font-black text-white font-mono">฿{Number(acceptedJobModal.ServicePrice || 0).toLocaleString()}</span>
+                </div>
+                <div className="bg-black/15 rounded-xl p-2 flex justify-between items-center">
+                  <span className="text-emerald-100 text-[11px]">ค่าเดินทาง:</span>
+                  <span className="font-black text-white font-mono">฿{Number(acceptedJobModal.TravelFee || 0).toLocaleString()}</span>
+                </div>
+              </div>
+
+              {acceptedJobModal.NetIncome !== undefined && (
+                <div className="flex justify-between items-center bg-white/10 rounded-xl px-3 py-1.5 text-[11px]">
+                  <span className="text-emerald-100 font-medium">รายได้สุทธิที่คุณได้รับ (หักเครดิตแล้ว):</span>
+                  <span className="font-black text-amber-200 font-mono">฿{Number(acceptedJobModal.NetIncome).toLocaleString()}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Customer info card */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500 font-semibold">ลูกค้า:</span>
+                <span className="font-black text-slate-800">{acceptedJobModal.CustomerName}</span>
+              </div>
+              {acceptedJobModal.CustomerPhone && (
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-semibold">เบอร์โทรศัพท์:</span>
+                  <a 
+                    href={`tel:${acceptedJobModal.CustomerPhone}`} 
+                    className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                  >
+                    <Phone className="w-3.5 h-3.5" />
+                    {acceptedJobModal.CustomerPhone}
+                  </a>
+                </div>
+              )}
+              <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-200/60">
+                <span className="text-slate-500 font-semibold shrink-0">ที่อยู่จัดส่ง:</span>
+                <span className="font-bold text-slate-800 text-right line-clamp-2">{acceptedJobModal.CustomerAddress}</span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2 pt-1">
+              <a
+                href={getGoogleMapsDirectionsUrl(
+                  staff?.CurrentLatitude,
+                  staff?.CurrentLongitude,
+                  acceptedJobModal.CustomerLatitude,
+                  acceptedJobModal.CustomerLongitude
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setAcceptedJobModal(null)}
+                className="w-full bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Compass className="w-4 h-4" />
+                <span>เปิดแผนที่นำทาง Google Maps</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setAcceptedJobModal(null)}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-2xl transition-colors cursor-pointer text-center"
+              >
+                เข้าใจแล้ว (ไปที่หน้าควบคุมงาน)
               </button>
             </div>
           </div>

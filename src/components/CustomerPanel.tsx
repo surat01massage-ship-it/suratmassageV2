@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   MapPin, Phone, Star, Sparkles, MessageSquare, Clock, Shield, CheckCircle, 
   ChevronRight, AlertTriangle, X, ShoppingBag, Send, ListCollapse, Award, Compass,
-  Navigation, ExternalLink, Filter, Search, Eye, EyeOff, Check, FileBadge,
-  ShieldCheck, Home, ZoomIn
+  Navigation, ExternalLink, Filter, Search, Eye, EyeOff, Check,
+  ShieldCheck, Home, ZoomIn, Banknote
 } from 'lucide-react';
 import { User, Staff, Service, Booking, Review, Notification, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -444,7 +444,7 @@ export default function CustomerPanel({
         throw new Error(data.error || "จองบริการนวดล้มเหลว");
       }
 
-      onShowToast("ส่งคำขอจองบริการนวดสำเร็จ! กำลังติดต่อค้นหาพนักงานที่อยู่ใกล้ที่สุด...", "success");
+      onShowToast("ส่งคำขอจองบริการนวดสำเร็จ! กรุณาชำระเงินให้กับพนักงานนวดโดยตรงได้เลยค่ะ", "success");
       setActiveBooking(data.booking);
       setActiveTab('booking');
       setSelectedStaffProfile(null); // Close the staff profile modal/overlay
@@ -642,25 +642,43 @@ export default function CustomerPanel({
 
           {/* Assigned Staff Mini Card */}
           {activeBooking.StaffID !== 'none' && (
-            <div className="mt-6 bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <img 
-                  src={activeBooking.StaffProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeBooking.StaffNickname || 'พนักงาน')}&background=0D9488&color=fff&size=150`} 
-                  className="w-12 h-12 rounded-full object-cover border-2 border-sky-500" 
-                  alt="Staff" 
-                />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-slate-900 text-sm">พี่{activeBooking.StaffNickname}</span>
-                    <span className="bg-sky-100 text-sky-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded">มืออาชีพ</span>
+            <div className="mt-6 space-y-3">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={activeBooking.StaffProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeBooking.StaffNickname || 'พนักงาน')}&background=0D9488&color=fff&size=150`} 
+                    className="w-12 h-12 rounded-full object-cover border-2 border-sky-500" 
+                    alt="Staff" 
+                  />
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-900 text-sm">พี่{activeBooking.StaffNickname}</span>
+                      <span className="bg-sky-100 text-sky-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded">มืออาชีพ</span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">เบอร์ติดต่อ: {activeBooking.StaffPhone}</p>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">เบอร์ติดต่อ: {activeBooking.StaffPhone}</p>
+                </div>
+                
+                <div className="text-right shrink-0">
+                  <span className="text-slate-500 text-[10px] block font-semibold">ยอดชำระกับพนักงาน</span>
+                  <p className="text-base font-extrabold text-sky-600 font-mono">฿{activeBooking.TotalPrice}</p>
+                  <span className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full inline-block mt-0.5">
+                    💵 ชำระตรงกับพนักงาน
+                  </span>
                 </div>
               </div>
-              
-              <div className="text-right">
-                <span className="text-slate-500 text-xs">ยอดรวมบริการ</span>
-                <p className="text-base font-extrabold text-sky-600">฿{activeBooking.TotalPrice}</p>
+
+              {/* Notice for Customer to Pay Staff Directly */}
+              <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
+                <Banknote className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold text-amber-950 block text-[11px]">
+                    💵 กรุณาชำระเงินให้กับพนักงานนวดโดยตรง
+                  </span>
+                  <p className="text-[10px] text-amber-800 leading-relaxed font-medium">
+                    ไม่มีการตัดเงินผ่านระบบ สามารถชำระเงินสดหรือสแกนจ่ายโอนตรงกับพนักงานนวดได้เลยค่ะ (ยอดชำระสุทธิ ฿{activeBooking.TotalPrice})
+                  </p>
+                </div>
               </div>
             </div>
           )}
@@ -911,7 +929,7 @@ export default function CustomerPanel({
                             <h4 className="font-black text-slate-900 text-base truncate group-hover:text-sky-600 transition-colors">
                               พี่{staff.Nickname}
                             </h4>
-                            <p className="text-[10px] text-slate-400 font-semibold">ผู้ผ่านการตรวจสอบใบอนุญาต</p>
+                            <p className="text-[10px] text-slate-400 font-semibold">พนักงานนวดมืออาชีพ</p>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
                             <div className="flex items-center text-amber-700 font-black text-[11px] bg-amber-50 border border-amber-200/70 px-2 py-0.5 rounded-lg shadow-2xs">
@@ -1042,7 +1060,7 @@ export default function CustomerPanel({
                 <div className="space-y-1">
                   <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">คำอธิบายประวัติพนักงาน</h4>
                   <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                    {selectedStaffProfile.Description || 'พนักงานนวดผู้ผ่านใบอนุญาต นวดแก้อาการและนวดอโรมาผ่อนคลาย ยินดีดูแลคุณลูกค้าถึงบ้านค่ะ'}
+                    {selectedStaffProfile.Description || 'พนักงานนวดมืออาชีพ นวดแก้อาการและนวดอโรมาผ่อนคลาย ยินดีดูแลคุณลูกค้าถึงบ้านค่ะ'}
                   </p>
                 </div>
 
@@ -1069,146 +1087,15 @@ export default function CustomerPanel({
                   </div>
                 )}
 
-                {/* Staff Official Verification Documents (ใบอนุญาต, ทะเบียนบ้าน, บัตรประชาชน) */}
-                <div className="border-t border-slate-100 pt-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                        เอกสารหลักฐานและใบรับรองวิชาชีพ
-                      </h4>
-                      <p className="text-[10px] text-slate-500 font-medium mt-0.5">
-                        ผ่านการตรวจสอบประวัติและยืนยันตัวตนกับระบบ SabaiDee
-                      </p>
-                    </div>
-                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Check className="w-2.5 h-2.5" /> ตรวจสอบแล้ว
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2.5 pt-1">
-                    {/* 1. ใบอนุญาตประกอบวิชาชีพนวด */}
-                    <div 
-                      onClick={() => selectedStaffProfile.LicenseFile && openPhotoModal(selectedStaffProfile.LicenseFile, `ใบอนุญาตนวด / ใบประกาศรับรองวิชาชีพ - พี่${selectedStaffProfile.Nickname}`)}
-                      className={`border rounded-2xl p-2.5 flex flex-col items-center text-center transition-all ${
-                        selectedStaffProfile.LicenseFile 
-                          ? 'border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 cursor-pointer shadow-xs group hover:border-emerald-400' 
-                          : 'border-slate-200 bg-slate-50 opacity-60'
-                      }`}
-                    >
-                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-white border border-slate-200 relative mb-1.5 flex items-center justify-center shadow-2xs">
-                        {selectedStaffProfile.LicenseFile ? (
-                          <>
-                            <img 
-                              src={selectedStaffProfile.LicenseFile} 
-                              alt="ใบอนุญาตนวด" 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                            />
-                            <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
-                              <ZoomIn className="w-4 h-4" />
-                            </div>
-                          </>
-                        ) : (
-                          <FileBadge className="w-6 h-6 text-slate-400" />
-                        )}
-                      </div>
-                      <span className="text-[10px] font-black text-slate-800 line-clamp-1">ใบอนุญาตนวด</span>
-                      <span className="text-[8.5px] font-bold text-emerald-600 mt-0.5 flex items-center gap-0.5">
-                        {selectedStaffProfile.LicenseFile ? (
-                          <>
-                            <Eye className="w-2.5 h-2.5" /> กดดูรูปใหญ่
-                          </>
-                        ) : (
-                          'รอแนบเอกสาร'
-                        )}
-                      </span>
-                    </div>
-
-                    {/* 2. สำเนาบัตรประชาชน */}
-                    <div 
-                      onClick={() => selectedStaffProfile.IdCardFile && openPhotoModal(selectedStaffProfile.IdCardFile, `สำเนาบัตรประจำตัวประชาชน - พี่${selectedStaffProfile.Nickname}`)}
-                      className={`border rounded-2xl p-2.5 flex flex-col items-center text-center transition-all ${
-                        selectedStaffProfile.IdCardFile 
-                          ? 'border-sky-200 bg-sky-50/40 hover:bg-sky-50 cursor-pointer shadow-xs group hover:border-sky-400' 
-                          : 'border-slate-200 bg-slate-50 opacity-60'
-                      }`}
-                    >
-                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-white border border-slate-200 relative mb-1.5 flex items-center justify-center shadow-2xs">
-                        {selectedStaffProfile.IdCardFile ? (
-                          <>
-                            <img 
-                              src={selectedStaffProfile.IdCardFile} 
-                              alt="สำเนาบัตรประชาชน" 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                            />
-                            <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
-                              <ZoomIn className="w-4 h-4" />
-                            </div>
-                          </>
-                        ) : (
-                          <Shield className="w-6 h-6 text-slate-400" />
-                        )}
-                      </div>
-                      <span className="text-[10px] font-black text-slate-800 line-clamp-1">บัตรประชาชน</span>
-                      <span className="text-[8.5px] font-bold text-sky-600 mt-0.5 flex items-center gap-0.5">
-                        {selectedStaffProfile.IdCardFile ? (
-                          <>
-                            <Eye className="w-2.5 h-2.5" /> กดดูรูปใหญ่
-                          </>
-                        ) : (
-                          'รอแนบเอกสาร'
-                        )}
-                      </span>
-                    </div>
-
-                    {/* 3. สำเนาทะเบียนบ้าน */}
-                    <div 
-                      onClick={() => selectedStaffProfile.HouseRegFile && openPhotoModal(selectedStaffProfile.HouseRegFile, `สำเนาทะเบียนบ้าน - พี่${selectedStaffProfile.Nickname}`)}
-                      className={`border rounded-2xl p-2.5 flex flex-col items-center text-center transition-all ${
-                        selectedStaffProfile.HouseRegFile 
-                          ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50 cursor-pointer shadow-xs group hover:border-amber-400' 
-                          : 'border-slate-200 bg-slate-50 opacity-60'
-                      }`}
-                    >
-                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-white border border-slate-200 relative mb-1.5 flex items-center justify-center shadow-2xs">
-                        {selectedStaffProfile.HouseRegFile ? (
-                          <>
-                            <img 
-                              src={selectedStaffProfile.HouseRegFile} 
-                              alt="สำเนาทะเบียนบ้าน" 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                            />
-                            <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
-                              <ZoomIn className="w-4 h-4" />
-                            </div>
-                          </>
-                        ) : (
-                          <Home className="w-6 h-6 text-slate-400" />
-                        )}
-                      </div>
-                      <span className="text-[10px] font-black text-slate-800 line-clamp-1">ทะเบียนบ้าน</span>
-                      <span className="text-[8.5px] font-bold text-amber-600 mt-0.5 flex items-center gap-0.5">
-                        {selectedStaffProfile.HouseRegFile ? (
-                          <>
-                            <Eye className="w-2.5 h-2.5" /> กดดูรูปใหญ่
-                          </>
-                        ) : (
-                          'รอแนบเอกสาร'
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Credentials list */}
+                {/* Verification & Trust indicators */}
                 <div className="border-t border-slate-100 pt-4 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-                    <CheckCircle className="w-4 h-4 text-sky-500 shrink-0" />
-                    <span>มีใบประกาศรับรองนวดแผนไทยกระทรวงสาธารณสุข</span>
+                    <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span>ยืนยันตัวตนและเบอร์โทรศัพท์กับระบบเรียบร้อย</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
                     <CheckCircle className="w-4 h-4 text-sky-500 shrink-0" />
-                    <span>ประวัติการเติมเครดิตและพฤติกรรมยอดเยี่ยม</span>
+                    <span>ประวัติการให้บริการและพฤติกรรมยอดเยี่ยม</span>
                   </div>
                 </div>
                 
@@ -1432,8 +1319,27 @@ export default function CustomerPanel({
                               <span className="font-bold text-slate-800">฿{travelFee.toFixed(2)}</span>
                             </div>
                             <div className="border-t border-slate-200/60 my-2 pt-2.5 flex justify-between text-sm font-black text-slate-900">
-                              <span className="text-sky-700">ยอดชำระสุทธิทั้งหมด</span>
+                              <span className="text-sky-700">ยอดชำระสุทธิ (ชำระตรงกับพนักงาน)</span>
                               <span className="text-sky-600 font-black text-base">฿{totalPayment.toFixed(2)}</span>
+                            </div>
+                            {/* กล่องแจ้งเตือนชำระเงินตรงกับพนักงานชัดเจน */}
+                            <div className="bg-gradient-to-r from-amber-50 to-amber-100/70 border-2 border-amber-300 rounded-2xl p-3 text-amber-950 flex items-start gap-2.5 mb-2 shadow-xs">
+                              <div className="w-8 h-8 rounded-xl bg-amber-200/70 text-amber-800 flex items-center justify-center shrink-0 mt-0.5">
+                                <Banknote className="w-5 h-5" />
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-black text-xs text-amber-950">
+                                    💵 ชำระเงินให้กับพนักงานนวดโดยตรง
+                                  </span>
+                                  <span className="bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.2 rounded-md">
+                                    สำคัญ
+                                  </span>
+                                </div>
+                                <p className="text-amber-900 text-[11px] leading-relaxed font-semibold">
+                                  ไม่มีการชำระเงินผ่านระบบ ให้คุณลูกค้าชำระเงินสด หรือสแกนจ่ายโอนตรงกับพนักงานนวดได้เลยค่ะ (ยอด ฿{totalPayment.toFixed(2)})
+                                </p>
+                              </div>
                             </div>
                             <p className="text-[10px] text-slate-400 font-semibold leading-normal">
                               * {feeFormulaText} จากตำแหน่ง พี่{selectedStaffProfile.Nickname} ณ ปัจจุบัน จนถึงสถานที่ของคุณ
@@ -1719,7 +1625,7 @@ export default function CustomerPanel({
             <div className="w-full flex items-center justify-between pb-3 px-2 text-white z-[110]" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center gap-2">
                 <span className="text-xs sm:text-sm font-black bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-md border border-white/10">
-                  {fullSizePhotoTitle || 'ภาพเอกสารหลักฐาน / ผลงาน'}
+                  {fullSizePhotoTitle || 'ภาพผลงาน'}
                 </span>
               </div>
               <button 
