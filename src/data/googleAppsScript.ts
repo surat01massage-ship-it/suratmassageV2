@@ -724,10 +724,18 @@ function updateBookingState(bookingId, actionName, staffId) {
     updates.Status = "Completed";
     updates.PaymentStatus = "Paid";
     
-    // Add income to staff
+    // Add income to staff & auto turn off if credit exhausted/below min
     const staff = getSheetData("Staff").find(s => s.StaffID === b.StaffID);
     if (staff) {
-      updateSheetRow("Staff", "StaffID", b.StaffID, { TotalIncome: Number(staff.TotalIncome) + Number(b.TotalPrice) });
+      var newIncome = Number(staff.TotalIncome || 0) + Number(b.TotalPrice || 0);
+      var staffUpdates = { TotalIncome: newIncome };
+      var currentCredit = Number(staff.Credit || 0);
+      var minCredit = 398;
+      if (currentCredit <= 0 || currentCredit < minCredit) {
+        staffUpdates.Available = "OFF";
+        createNotification(staff.UserID, "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว & เครดิตหมด)", "งาน #" + bookingId + " เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือหมดหรือต่ำกว่าเกณฑ์ขั้นต่ำ (" + minCredit + " เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่ค่ะ");
+      }
+      updateSheetRow("Staff", "StaffID", b.StaffID, staffUpdates);
     }
     
     createNotification(b.CustomerID, "✅ บริการเสร็จสิ้นเรียบร้อย", "ขอบคุณที่ใช้บริการค่ะ โปรดสละเวลาช่วยรีวิวให้คะแนนพนักงานด้วยนะคะ");

@@ -1174,7 +1174,7 @@ async function startServer() {
   // Toggle availability (ON/OFF)
   app.put('/api/staff/availability', (req, res) => {
     const db = getDatabase();
-    const { staffId, available } = req.body;
+    const { staffId, available, onlyIfNoActiveJobs } = req.body;
 
     const index = db.staff.findIndex(s => s.StaffID === staffId);
     if (index === -1) {
@@ -1185,6 +1185,19 @@ async function startServer() {
       const minCredit = Math.max(db.settings?.minCredit || 398, 398);
       if (db.staff[index].Credit < minCredit) {
         return res.status(400).json({ error: `เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCredit} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ` });
+      }
+    }
+
+    if (available === 'OFF' && onlyIfNoActiveJobs) {
+      const hasActive = db.bookings.some(b => 
+        b.StaffID === staffId && (b.Status === 'Accepted' || b.Status === 'Working')
+      );
+      if (hasActive) {
+        return res.json({ 
+          success: false, 
+          message: 'พนักงานยังมีงานที่กำลังดำเนินการอยู่ ไม่สามารถปิดรับงานอัตโนมัติได้จนกว่าจะจบงานสุดท้าย', 
+          staff: db.staff[index] 
+        });
       }
     }
 
@@ -1744,23 +1757,23 @@ async function startServer() {
           staff.TotalJobs = Math.max(1, (staff.TotalJobs || 0));
         }
 
-        // When this job is completed: if credit is now below minCredit, turn off availability now!
-        const minCredit = db.settings?.minCredit || 398;
+        // When this job is completed: if credit is exhausted (<= 0) or below minCredit, turn off availability now!
+        const minCredit = Math.max(db.settings?.minCredit ?? 398, 398);
         const otherActiveBookings = db.bookings.some(b => 
           b.StaffID === staff.StaffID && 
           b.BookingID !== booking.BookingID && 
           (b.Status === 'Accepted' || b.Status === 'Working')
         );
 
-        if (!otherActiveBookings && staff.Credit < minCredit && staff.Available === 'ON') {
+        if (!otherActiveBookings && (staff.Credit <= 0 || staff.Credit < minCredit)) {
           staff.Available = 'OFF';
-          console.log(`[StaffAvailability] Auto-turned off staff ${staff.Nickname} (${staff.StaffID}) after completing job #${booking.BookingID} due to low credit (${staff.Credit} < ${minCredit})`);
+          console.log(`[StaffAvailability] Auto-turned off staff ${staff.Nickname} (${staff.StaffID}) after completing LAST job #${booking.BookingID} due to exhausted or low credit (${staff.Credit} < ${minCredit})`);
           
           const notif = {
             NotificationID: generateId('N'),
             UserID: staff.UserID,
-            Title: "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว)",
-            Detail: `งาน #${booking.BookingID} เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำ (${minCredit} เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่นะคะ`,
+            Title: "🔴 ปิดรับงานอัตโนมัติ (จบงานสุดท้ายแล้ว & เครดิตหมด)",
+            Detail: `งานสุดท้าย #${booking.BookingID} เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือ (${staff.Credit} CR) หมดหรือต่ำกว่าเกณฑ์ขั้นต่ำ (${minCredit} เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่นะคะ`,
             ReadStatus: 'Unread' as const,
             CreatedDate: new Date().toISOString()
           };

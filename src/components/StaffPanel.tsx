@@ -422,16 +422,16 @@ export default function StaffPanel({
   useEffect(() => {
     const minCredit = Math.max(settings?.minCredit || 398, 398);
 
-    // If staff is not online or has sufficient credit, do nothing
-    if (!staff || staff.Available !== 'ON' || staff.Credit >= minCredit) {
+    // If staff is not online or has sufficient credit (> 0 and >= minCredit), do nothing
+    if (!staff || staff.Available !== 'ON' || (staff.Credit >= minCredit && staff.Credit > 0)) {
       return;
     }
 
     // Do NOT turn off if staff is currently working on an ongoing job (Accepted or Working)
-    // or has an incoming offer. Let the staff travel and complete the job first!
+    // or has an incoming offer, or has ANY remaining active job!
     const hasActiveJob = 
-      (ongoingBooking && (ongoingBooking.Status === 'Accepted' || ongoingBooking.Status === 'Working')) ||
-      (incomingBooking && incomingBooking.Status === 'Waiting') ||
+      Boolean(ongoingBooking && (ongoingBooking.Status === 'Accepted' || ongoingBooking.Status === 'Working')) ||
+      Boolean(incomingBooking && incomingBooking.Status === 'Waiting') ||
       bookings.some((b: any) => b.Status === 'Accepted' || b.Status === 'Working');
 
     if (hasActiveJob) {
@@ -443,10 +443,13 @@ export default function StaffPanel({
         const res = await fetch('/api/staff/availability', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ staffId: staff.StaffID, available: 'OFF' })
+          body: JSON.stringify({ staffId: staff.StaffID, available: 'OFF', onlyIfNoActiveJobs: true })
         });
         if (res.ok) {
-          onUpdateStaffData({ ...staff, Available: 'OFF' });
+          const resData = await res.json();
+          if (resData.success && resData.staff?.Available === 'OFF') {
+            onUpdateStaffData({ ...staff, Available: 'OFF' });
+          }
         }
       } catch (e) {
         console.error("Failed to auto turn off availability:", e);
@@ -587,12 +590,17 @@ export default function StaffPanel({
       setAcceptedJobModal(acceptedData);
       setOngoingBooking(acceptedData);
       setIncomingBooking(null);
+      setBookings(prev => [acceptedData, ...prev.filter(b => b.BookingID !== acceptedData.BookingID)]);
       if (data.staff) {
-        onUpdateStaffData(data.staff);
+        onUpdateStaffData({
+          ...data.staff,
+          Available: 'ON' // Always stay online while performing accepted work
+        });
       } else {
         // Local optimistic fallback
         onUpdateStaffData({
           ...staff,
+          Available: 'ON',
           Credit: Math.max(0, staff.Credit - (incomingBooking.CreditRequired ?? 398)),
           TotalJobs: (staff.TotalJobs || 0) + 1
         });
@@ -631,21 +639,48 @@ export default function StaffPanel({
           onUpdateStaffData(data.staff);
         }
       } else {
-        if (data.staff) {
-          onUpdateStaffData(data.staff);
-          onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
-        } else if (staff) {
-          const minCredit = Math.max(settings?.minCredit || 398, 398);
-          const willTurnOff = staff.Credit < minCredit;
-          onUpdateStaffData({
-            ...staff,
-            Available: willTurnOff ? 'OFF' : staff.Available,
-            TotalIncome: staff.TotalIncome + (ongoingBooking.NetIncome || ongoingBooking.TotalPrice),
-            TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
-          });
-          onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
+        const completedBooking = data.booking || { ...ongoingBooking, Status: 'Completed', PaymentStatus: 'Paid' };
+        setBookings(prev => prev.map(b => b.BookingID === completedBooking.BookingID ? completedBooking : b));
+
+        // Check if there are other active jobs remaining for this staff
+        const otherActiveJobs = bookings.filter(b => 
+          b.BookingID !== completedBooking.BookingID && 
+          (b.Status === 'Accepted' || b.Status === 'Working')
+        );
+        const isLastJob = otherActiveJobs.length === 0;
+
+        const minCredit = Math.max(settings?.minCredit || 398, 398);
+        const finalStaff = data.staff || (staff ? {
+          ...staff,
+          TotalIncome: staff.TotalIncome + (ongoingBooking.NetIncome || ongoingBooking.TotalPrice),
+          TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
+        } : null);
+
+        const isCreditExhausted = finalStaff && (finalStaff.Credit <= 0 || finalStaff.Credit < minCredit);
+        const shouldTurnOff = isLastJob && isCreditExhausted;
+
+        if (finalStaff) {
+          const updatedStaff = {
+            ...finalStaff,
+            Available: shouldTurnOff ? 'OFF' : (isLastJob ? finalStaff.Available : 'ON')
+          };
+          onUpdateStaffData(updatedStaff);
         }
-        setOngoingBooking(null);
+
+        if (otherActiveJobs.length > 0) {
+          // Move to next active job
+          setOngoingBooking(otherActiveJobs[0]);
+          onShowToast("💆 บันทึกจบงานนี้เรียบร้อยแล้ว! กำลังนำคุณไปยังงานถัดไปที่ต้องให้บริการค่ะ", "success");
+        } else {
+          // Last job finished!
+          setOngoingBooking(null);
+
+          if (shouldTurnOff) {
+            onShowToast(`💆 จบงานสุดท้ายเรียบร้อยแล้ว! เนื่องจากเครดิตคงเหลือ (${finalStaff?.Credit?.toFixed(0) || 0} CR) หมดหรือต่ำกว่าเกณฑ์ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่ค่ะ`, "info");
+          } else {
+            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
+          }
+        }
       }
       await fetchStaffData();
     } catch (e: any) {
