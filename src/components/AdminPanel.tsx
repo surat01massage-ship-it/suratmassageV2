@@ -3,7 +3,7 @@ import {
   Users, Briefcase, Calendar, DollarSign, Settings, Eye, Edit, Trash2, 
   Check, X, Plus, ShieldCheck, Database, FileCode, Copy, Download, RefreshCw, BarChart2, ChevronRight,
   MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw, Navigation,
-  Bot, Sparkles, Cpu, Zap, Upload, FileCheck
+  Bot, Sparkles, Cpu, Zap, Upload, FileCheck, FileBadge, Home, ZoomIn, FileText
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
 import { googleAppsScriptFiles } from '../data/googleAppsScript';
@@ -48,6 +48,7 @@ export default function AdminPanel({
   
   // Staff Details & Filters
   const [selectedStaffIdForDetail, setSelectedStaffIdForDetail] = useState<string | null>(null);
+  const [adminDocPreview, setAdminDocPreview] = useState<{ url: string; title: string; staffName: string; staffId: string } | null>(null);
   const [staffSearchKeyword, setStaffSearchKeyword] = useState<string>('');
   const [staffGenderFilter, setStaffGenderFilter] = useState<string>('All');
   const [staffVerifyFilter, setStaffVerifyFilter] = useState<string>('All');
@@ -1062,6 +1063,7 @@ export default function AdminPanel({
               <thead>
                 <tr className="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-bold">
                   <th className="py-3 px-2">ข้อมูลพนักงาน</th>
+                  <th className="py-3 px-2">เอกสารหลักฐาน (3 รายการ)</th>
                   <th className="py-3 px-2">ยอดเครดิต</th>
                   <th className="py-3 px-2">สถานะออนไลน์</th>
                   <th className="py-3 px-2">ผลงานและรายได้</th>
@@ -1109,6 +1111,101 @@ export default function AdminPanel({
                               {staff.Name} • โทร {staff.Phone} • <span className="font-mono text-slate-500">{staff.StaffID}</span>
                             </span>
                           </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-2">
+                        <div className="flex items-center gap-1.5">
+                          {/* 1. ใบอนุญาตนวด */}
+                          {staff.LicenseFile ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAdminDocPreview({
+                                  url: staff.LicenseFile!,
+                                  title: 'ใบอนุญาตประกอบวิชาชีพนวด',
+                                  staffName: `พี่${staff.Nickname} (${staff.Name})`,
+                                  staffId: staff.StaffID
+                                });
+                              }}
+                              className="relative group p-0.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:scale-105 hover:border-emerald-500 transition-all cursor-pointer shadow-2xs"
+                              title="คลิกเพื่อดูรูปใบอนุญาตนวด"
+                            >
+                              <img src={staff.LicenseFile} alt="ใบอนุญาต" className="w-8 h-8 rounded-md object-cover" />
+                              <span className="absolute -top-1 -right-1 bg-emerald-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] font-black shadow-xs">
+                                ✓
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300" title="ยังไม่มีใบอนุญาต">
+                              <FileBadge className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+
+                          {/* 2. สำเนาบัตรประชาชน */}
+                          {staff.IdCardFile ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAdminDocPreview({
+                                  url: staff.IdCardFile!,
+                                  title: 'สำเนาบัตรประชาชน (ยืนยันตัวตน)',
+                                  staffName: `พี่${staff.Nickname} (${staff.Name})`,
+                                  staffId: staff.StaffID
+                                });
+                              }}
+                              className="relative group p-0.5 rounded-lg border border-sky-300 bg-sky-50 hover:scale-105 hover:border-sky-500 transition-all cursor-pointer shadow-2xs"
+                              title="คลิกเพื่อดูรูปบัตรประชาชน"
+                            >
+                              <img src={staff.IdCardFile} alt="บัตรประชาชน" className="w-8 h-8 rounded-md object-cover" />
+                              <span className="absolute -top-1 -right-1 bg-sky-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] font-black shadow-xs">
+                                ✓
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300" title="ยังไม่มีบัตรประชาชน">
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+
+                          {/* 3. สำเนาทะเบียนบ้าน */}
+                          {staff.HouseRegFile ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAdminDocPreview({
+                                  url: staff.HouseRegFile!,
+                                  title: 'สำเนาทะเบียนบ้าน',
+                                  staffName: `พี่${staff.Nickname} (${staff.Name})`,
+                                  staffId: staff.StaffID
+                                });
+                              }}
+                              className="relative group p-0.5 rounded-lg border border-purple-300 bg-purple-50 hover:scale-105 hover:border-purple-500 transition-all cursor-pointer shadow-2xs"
+                              title="คลิกเพื่อดูรูปสำเนาทะเบียนบ้าน"
+                            >
+                              <img src={staff.HouseRegFile} alt="ทะเบียนบ้าน" className="w-8 h-8 rounded-md object-cover" />
+                              <span className="absolute -top-1 -right-1 bg-purple-600 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[8px] font-black shadow-xs">
+                                ✓
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="w-8 h-8 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex items-center justify-center text-slate-300" title="ยังไม่มีทะเบียนบ้าน">
+                              <Home className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-1 flex items-center gap-1 font-bold text-[9px]">
+                          {staff.LicenseFile && staff.IdCardFile && staff.HouseRegFile ? (
+                            <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+                              ครบ 3 เอกสาร
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                              แนบ {Number(!!staff.LicenseFile) + Number(!!staff.IdCardFile) + Number(!!staff.HouseRegFile)}/3
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-4 px-2">
@@ -2587,6 +2684,62 @@ export default function AdminPanel({
                     <span>ยืนยันลบผู้ใช้งาน</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🖼️ 11. ADMIN QUICK DOCUMENT VIEWER LIGHTBOX */}
+      {adminDocPreview && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setAdminDocPreview(null)}
+        >
+          <div 
+            className="relative max-w-lg w-full bg-slate-900 rounded-3xl overflow-hidden shadow-2xl p-4 border border-slate-700 animate-fade-in text-left" 
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-white">
+              <div>
+                <span className="text-xs font-black text-sky-400 block">{adminDocPreview.title}</span>
+                <span className="text-[11px] text-slate-400 font-semibold">{adminDocPreview.staffName} ({adminDocPreview.staffId})</span>
+              </div>
+              <button
+                onClick={() => setAdminDocPreview(null)}
+                className="bg-slate-800 hover:bg-slate-700 text-white p-2 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="my-3 max-h-[68vh] flex items-center justify-center overflow-auto rounded-2xl bg-black/60 p-2 border border-slate-800">
+              <img 
+                src={adminDocPreview.url} 
+                alt={adminDocPreview.title} 
+                className="max-h-[62vh] w-auto object-contain rounded-xl shadow-lg"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const staffId = adminDocPreview.staffId;
+                  setAdminDocPreview(null);
+                  setSelectedStaffIdForDetail(staffId);
+                }}
+                className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-black px-4 py-2.5 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                เปิดตรวจโปรไฟล์หมอ & จัดการเอกสาร
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdminDocPreview(null)}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                ปิด
               </button>
             </div>
           </div>

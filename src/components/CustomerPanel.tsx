@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   MapPin, Phone, Star, Sparkles, MessageSquare, Clock, Shield, CheckCircle, 
   ChevronRight, AlertTriangle, X, ShoppingBag, Send, ListCollapse, Award, Compass,
-  Navigation, ExternalLink, Filter, Search, Eye, EyeOff, Check
+  Navigation, ExternalLink, Filter, Search, Eye, EyeOff, Check, FileBadge,
+  ShieldCheck, Home, ZoomIn
 } from 'lucide-react';
 import { User, Staff, Service, Booking, Review, Notification, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -49,6 +50,12 @@ export default function CustomerPanel({
   const [reviewScore, setReviewScore] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
   const [fullSizePhoto, setFullSizePhoto] = useState<string | null>(null);
+  const [fullSizePhotoTitle, setFullSizePhotoTitle] = useState<string>('');
+
+  const openPhotoModal = (url: string, title?: string) => {
+    setFullSizePhoto(url);
+    setFullSizePhotoTitle(title || '');
+  };
 
   // Loading indicator states
   const [isLoading, setIsLoading] = useState(false);
@@ -1049,15 +1056,149 @@ export default function CustomerPanel({
                       {selectedStaffProfile.Photos.map((photo: string, pIdx: number) => (
                         <div 
                           key={pIdx} 
-                          onClick={() => setFullSizePhoto(photo)}
-                          className="aspect-square rounded-2xl overflow-hidden border border-slate-200 shadow-sm cursor-pointer group"
+                          onClick={() => openPhotoModal(photo, `ภาพผลงาน #${pIdx + 1} - พี่${selectedStaffProfile.Nickname}`)}
+                          className="aspect-square rounded-2xl overflow-hidden border border-slate-200 shadow-sm cursor-pointer group relative"
                         >
                           <img src={photo} alt={`ผลงาน ${pIdx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                            <ZoomIn className="w-5 h-5" />
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
+
+                {/* Staff Official Verification Documents (ใบอนุญาต, ทะเบียนบ้าน, บัตรประชาชน) */}
+                <div className="border-t border-slate-100 pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                        เอกสารหลักฐานและใบรับรองวิชาชีพ
+                      </h4>
+                      <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                        ผ่านการตรวจสอบประวัติและยืนยันตัวตนกับระบบ SabaiDee
+                      </p>
+                    </div>
+                    <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Check className="w-2.5 h-2.5" /> ตรวจสอบแล้ว
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                    {/* 1. ใบอนุญาตประกอบวิชาชีพนวด */}
+                    <div 
+                      onClick={() => selectedStaffProfile.LicenseFile && openPhotoModal(selectedStaffProfile.LicenseFile, `ใบอนุญาตนวด / ใบประกาศรับรองวิชาชีพ - พี่${selectedStaffProfile.Nickname}`)}
+                      className={`border rounded-2xl p-2.5 flex flex-col items-center text-center transition-all ${
+                        selectedStaffProfile.LicenseFile 
+                          ? 'border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 cursor-pointer shadow-xs group hover:border-emerald-400' 
+                          : 'border-slate-200 bg-slate-50 opacity-60'
+                      }`}
+                    >
+                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-white border border-slate-200 relative mb-1.5 flex items-center justify-center shadow-2xs">
+                        {selectedStaffProfile.LicenseFile ? (
+                          <>
+                            <img 
+                              src={selectedStaffProfile.LicenseFile} 
+                              alt="ใบอนุญาตนวด" 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                            />
+                            <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                              <ZoomIn className="w-4 h-4" />
+                            </div>
+                          </>
+                        ) : (
+                          <FileBadge className="w-6 h-6 text-slate-400" />
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black text-slate-800 line-clamp-1">ใบอนุญาตนวด</span>
+                      <span className="text-[8.5px] font-bold text-emerald-600 mt-0.5 flex items-center gap-0.5">
+                        {selectedStaffProfile.LicenseFile ? (
+                          <>
+                            <Eye className="w-2.5 h-2.5" /> กดดูรูปใหญ่
+                          </>
+                        ) : (
+                          'รอแนบเอกสาร'
+                        )}
+                      </span>
+                    </div>
+
+                    {/* 2. สำเนาบัตรประชาชน */}
+                    <div 
+                      onClick={() => selectedStaffProfile.IdCardFile && openPhotoModal(selectedStaffProfile.IdCardFile, `สำเนาบัตรประจำตัวประชาชน - พี่${selectedStaffProfile.Nickname}`)}
+                      className={`border rounded-2xl p-2.5 flex flex-col items-center text-center transition-all ${
+                        selectedStaffProfile.IdCardFile 
+                          ? 'border-sky-200 bg-sky-50/40 hover:bg-sky-50 cursor-pointer shadow-xs group hover:border-sky-400' 
+                          : 'border-slate-200 bg-slate-50 opacity-60'
+                      }`}
+                    >
+                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-white border border-slate-200 relative mb-1.5 flex items-center justify-center shadow-2xs">
+                        {selectedStaffProfile.IdCardFile ? (
+                          <>
+                            <img 
+                              src={selectedStaffProfile.IdCardFile} 
+                              alt="สำเนาบัตรประชาชน" 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                            />
+                            <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                              <ZoomIn className="w-4 h-4" />
+                            </div>
+                          </>
+                        ) : (
+                          <Shield className="w-6 h-6 text-slate-400" />
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black text-slate-800 line-clamp-1">บัตรประชาชน</span>
+                      <span className="text-[8.5px] font-bold text-sky-600 mt-0.5 flex items-center gap-0.5">
+                        {selectedStaffProfile.IdCardFile ? (
+                          <>
+                            <Eye className="w-2.5 h-2.5" /> กดดูรูปใหญ่
+                          </>
+                        ) : (
+                          'รอแนบเอกสาร'
+                        )}
+                      </span>
+                    </div>
+
+                    {/* 3. สำเนาทะเบียนบ้าน */}
+                    <div 
+                      onClick={() => selectedStaffProfile.HouseRegFile && openPhotoModal(selectedStaffProfile.HouseRegFile, `สำเนาทะเบียนบ้าน - พี่${selectedStaffProfile.Nickname}`)}
+                      className={`border rounded-2xl p-2.5 flex flex-col items-center text-center transition-all ${
+                        selectedStaffProfile.HouseRegFile 
+                          ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50 cursor-pointer shadow-xs group hover:border-amber-400' 
+                          : 'border-slate-200 bg-slate-50 opacity-60'
+                      }`}
+                    >
+                      <div className="w-full aspect-[4/3] rounded-xl overflow-hidden bg-white border border-slate-200 relative mb-1.5 flex items-center justify-center shadow-2xs">
+                        {selectedStaffProfile.HouseRegFile ? (
+                          <>
+                            <img 
+                              src={selectedStaffProfile.HouseRegFile} 
+                              alt="สำเนาทะเบียนบ้าน" 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                            />
+                            <div className="absolute inset-0 bg-slate-950/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                              <ZoomIn className="w-4 h-4" />
+                            </div>
+                          </>
+                        ) : (
+                          <Home className="w-6 h-6 text-slate-400" />
+                        )}
+                      </div>
+                      <span className="text-[10px] font-black text-slate-800 line-clamp-1">ทะเบียนบ้าน</span>
+                      <span className="text-[8.5px] font-bold text-amber-600 mt-0.5 flex items-center gap-0.5">
+                        {selectedStaffProfile.HouseRegFile ? (
+                          <>
+                            <Eye className="w-2.5 h-2.5" /> กดดูรูปใหญ่
+                          </>
+                        ) : (
+                          'รอแนบเอกสาร'
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
                 {/* Credentials list */}
                 <div className="border-t border-slate-100 pt-4 space-y-2">
@@ -1573,22 +1714,31 @@ export default function CustomerPanel({
           className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-fade-in"
           onClick={() => setFullSizePhoto(null)}
         >
-          <div className="relative w-full max-w-5xl h-full max-h-screen flex items-center justify-center">
-            <button 
-              className="absolute top-4 right-4 bg-white/10 hover:bg-white/20 text-white rounded-full p-3 transition-colors z-[110]"
-              onClick={(e) => {
-                e.stopPropagation();
-                setFullSizePhoto(null);
-              }}
-            >
-              <X className="w-6 h-6" />
-            </button>
-            <img 
-              src={fullSizePhoto} 
-              alt="ภาพขนาดเต็ม" 
-              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
-              onClick={(e) => e.stopPropagation()} 
-            />
+          <div className="relative w-full max-w-4xl h-full max-h-screen flex flex-col items-center justify-center">
+            {/* Header bar */}
+            <div className="w-full flex items-center justify-between pb-3 px-2 text-white z-[110]" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-black bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-md border border-white/10">
+                  {fullSizePhotoTitle || 'ภาพเอกสารหลักฐาน / ผลงาน'}
+                </span>
+              </div>
+              <button 
+                className="bg-white/10 hover:bg-white/20 text-white rounded-full p-2.5 transition-colors cursor-pointer"
+                onClick={() => setFullSizePhoto(null)}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Image viewer */}
+            <div className="relative flex-1 flex items-center justify-center overflow-hidden w-full p-2">
+              <img 
+                src={fullSizePhoto} 
+                alt={fullSizePhotoTitle || "ภาพขนาดเต็ม"} 
+                className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-2xl border border-white/10"
+                onClick={(e) => e.stopPropagation()} 
+              />
+            </div>
           </div>
         </div>
       )}

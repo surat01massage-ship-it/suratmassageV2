@@ -4,7 +4,8 @@ import {
   User as UserIcon, LogOut, Check, X, ShieldAlert, CreditCard, ChevronRight, Upload,
   Compass, ExternalLink, Navigation, Volume2, VolumeX, Phone, PhoneCall, Copy,
   Camera, Image as ImageIcon, Sparkles, Trash2, Plus, Link as LinkIcon, Eye,
-  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode, AlertTriangle
+  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode, AlertTriangle,
+  FileBadge, ShieldCheck, Home, FileText
 } from 'lucide-react';
 import { User, Staff, Booking, CreditTransaction, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -168,6 +169,41 @@ export default function StaffPanel({
   const [isSavingPhoto, setIsSavingPhoto] = useState<boolean>(false);
   const [customPhotoUrl, setCustomPhotoUrl] = useState<string>('');
   const [previewZoomImage, setPreviewZoomImage] = useState<string | null>(null);
+  const [previewZoomTitle, setPreviewZoomTitle] = useState<string>('');
+  const [previewIsDoc, setPreviewIsDoc] = useState<boolean>(false);
+
+  // Official verification documents states (ใบอนุญาต, บัตรประชาชน, ทะเบียนบ้าน)
+  const [editLicenseFile, setEditLicenseFile] = useState<string>('');
+  const [editIdCardFile, setEditIdCardFile] = useState<string>('');
+  const [editHouseRegFile, setEditHouseRegFile] = useState<string>('');
+  const [isUploadingDoc, setIsUploadingDoc] = useState<string | null>(null);
+
+  const openZoomViewer = (url: string, title?: string, isDoc?: boolean) => {
+    setPreviewZoomImage(url);
+    setPreviewZoomTitle(title || '');
+    setPreviewIsDoc(!!isDoc);
+  };
+
+  const handleUploadDocFile = async (type: 'license' | 'idCard' | 'houseReg', file: File) => {
+    try {
+      setIsUploadingDoc(type);
+      const b64 = await compressImageFile(file);
+      if (type === 'license') {
+        setEditLicenseFile(b64);
+        onShowToast('อัปโหลดรูปใบอนุญาตวิชาชีพนวดเรียบร้อยแล้วค่ะ', 'success');
+      } else if (type === 'idCard') {
+        setEditIdCardFile(b64);
+        onShowToast('อัปโหลดรูปสำเนาบัตรประชาชนเรียบร้อยแล้วค่ะ', 'success');
+      } else if (type === 'houseReg') {
+        setEditHouseRegFile(b64);
+        onShowToast('อัปโหลดรูปสำเนาทะเบียนบ้านเรียบร้อยแล้วค่ะ', 'success');
+      }
+    } catch (err: any) {
+      onShowToast('ไม่สามารถอัปโหลดไฟล์รูปภาพได้ กรุณาลองใหม่', 'error');
+    } finally {
+      setIsUploadingDoc(null);
+    }
+  };
 
   // QR Code download & bank copy states for credit top-up
   const [isDownloadingQr, setIsDownloadingQr] = useState<boolean>(false);
@@ -224,6 +260,11 @@ export default function StaffPanel({
       setEditDescription(staff.Description);
       setEditOfferedServices(staff.OfferedServices || []);
       setEditMaxJobDistance(staff.MaxJobDistance || 15);
+
+      // Load official verification documents
+      setEditLicenseFile(staff.LicenseFile || '');
+      setEditIdCardFile(staff.IdCardFile || '');
+      setEditHouseRegFile(staff.HouseRegFile || '');
     }
   }, [staff, currentUser]);
 
@@ -1000,7 +1041,10 @@ export default function StaffPanel({
             description: editDescription,
             offeredServices: editOfferedServices,
             maxJobDistance: Number(editMaxJobDistance) || 15,
-            photos: staffPhotos
+            photos: staffPhotos,
+            licenseFile: editLicenseFile,
+            idCardFile: editIdCardFile,
+            houseRegFile: editHouseRegFile
           }
         })
       });
@@ -2241,7 +2285,275 @@ export default function StaffPanel({
             </div>
           </div>
 
-          {/* 2. PROFILE DETAILS EDIT FORM */}
+          {/* 📄 2. OFFICIAL VERIFICATION DOCUMENTS (ใบอนุญาต, บัตรประชาชน, ทะเบียนบ้าน) */}
+          <div className="bg-white border border-slate-100 rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-sky-500 text-white flex items-center justify-center shadow-xs">
+                    <FileBadge className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-slate-800 text-left">
+                      รูปเอกสารหลักฐานสำคัญ (ใบอนุญาต • บัตรประชาชน • ทะเบียนบ้าน)
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium text-left">
+                      แสดงในโปรไฟล์หมอเพื่อให้แอดมินและลูกค้าตรวจสอบความถูกต้องและสร้างความน่าเชื่อถือ
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <span className={`text-[10px] font-black px-3 py-1 rounded-full self-start sm:self-auto ${
+                editLicenseFile && editIdCardFile && editHouseRegFile 
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                  : 'bg-amber-100 text-amber-800 border border-amber-200'
+              }`}>
+                แนบแล้ว {Number(!!editLicenseFile) + Number(!!editIdCardFile) + Number(!!editHouseRegFile)}/3 รายการ
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-left">
+              {/* Card 1: ใบอนุญาตประกอบวิชาชีพนวด */}
+              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col justify-between space-y-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <FileBadge className="w-3.5 h-3.5 text-sky-600" />
+                      1. ใบอนุญาตนวด
+                    </span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                      editLicenseFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {editLicenseFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium">ใบรับรองมาตรฐานวิชาชีพนวด</p>
+                </div>
+
+                {editLicenseFile ? (
+                  <div 
+                    onClick={() => openZoomViewer(editLicenseFile, 'ใบอนุญาตประกอบวิชาชีพนวด', true)}
+                    className="relative h-32 rounded-xl overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100 shadow-xs"
+                  >
+                    <img src={editLicenseFile} alt="ใบอนุญาตนวด" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white gap-1.5 text-xs font-bold">
+                      <ZoomIn className="w-4 h-4" /> กดดูรูปใหญ่
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-32 rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-xs gap-1.5 p-3 text-center">
+                    <FileBadge className="w-6 h-6 text-slate-300" />
+                    <span className="text-[10px] font-semibold text-slate-500">ยังไม่มีรูปใบอนุญาต</span>
+                    <span className="text-[9px] text-slate-400">ควรอัปโหลดเพื่อผ่านการอนุมัติ</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  {editLicenseFile && (
+                    <button
+                      type="button"
+                      onClick={() => openZoomViewer(editLicenseFile, 'ใบอนุญาตประกอบวิชาชีพนวด', true)}
+                      className="w-full py-1.5 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> ดูรูปขนาดใหญ่
+                    </button>
+                  )}
+
+                  <label className="w-full py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingDoc === 'license' ? 'กำลังอัปโหลด...' : (editLicenseFile ? 'เปลี่ยนรูปใบอนุญาต' : 'อัปโหลดรูปใบอนุญาต')}</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      disabled={isUploadingDoc === 'license'}
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadDocFile('license', file);
+                      }} 
+                    />
+                  </label>
+
+                  {editLicenseFile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('คุณต้องการลบรูปใบอนุญาตนี้ใช่หรือไม่?')) {
+                          setEditLicenseFile('');
+                        }
+                      }}
+                      className="w-full py-1 text-slate-400 hover:text-rose-600 text-[10px] font-semibold transition-colors cursor-pointer"
+                    >
+                      ลบรูปใบอนุญาต
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 2: สำเนาบัตรประชาชน */}
+              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col justify-between space-y-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-sky-600" />
+                      2. บัตรประชาชน
+                    </span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                      editIdCardFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {editIdCardFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium">เอกสารยืนยันตัวตนสำหรับแอดมิน</p>
+                </div>
+
+                {editIdCardFile ? (
+                  <div 
+                    onClick={() => openZoomViewer(editIdCardFile, 'สำเนาบัตรประชาชน (ยืนยันตัวตน)', true)}
+                    className="relative h-32 rounded-xl overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100 shadow-xs"
+                  >
+                    <img src={editIdCardFile} alt="สำเนาบัตรประชาชน" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white gap-1.5 text-xs font-bold">
+                      <ZoomIn className="w-4 h-4" /> กดดูรูปใหญ่
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-32 rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-xs gap-1.5 p-3 text-center">
+                    <ShieldCheck className="w-6 h-6 text-slate-300" />
+                    <span className="text-[10px] font-semibold text-slate-500">ยังไม่มีรูปบัตรประชาชน</span>
+                    <span className="text-[9px] text-slate-400">เพื่อความปลอดภัยในการตรวจสอบ</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  {editIdCardFile && (
+                    <button
+                      type="button"
+                      onClick={() => openZoomViewer(editIdCardFile, 'สำเนาบัตรประชาชน (ยืนยันตัวตน)', true)}
+                      className="w-full py-1.5 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> ดูรูปขนาดใหญ่
+                    </button>
+                  )}
+
+                  <label className="w-full py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingDoc === 'idCard' ? 'กำลังอัปโหลด...' : (editIdCardFile ? 'เปลี่ยนรูปบัตรประชาชน' : 'อัปโหลดรูปบัตรประชาชน')}</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      disabled={isUploadingDoc === 'idCard'}
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadDocFile('idCard', file);
+                      }} 
+                    />
+                  </label>
+
+                  {editIdCardFile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('คุณต้องการลบรูปบัตรประชาชนนี้ใช่หรือไม่?')) {
+                          setEditIdCardFile('');
+                        }
+                      }}
+                      className="w-full py-1 text-slate-400 hover:text-rose-600 text-[10px] font-semibold transition-colors cursor-pointer"
+                    >
+                      ลบรูปบัตรประชาชน
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 3: สำเนาทะเบียนบ้าน */}
+              <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 flex flex-col justify-between space-y-3">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                      <Home className="w-3.5 h-3.5 text-sky-600" />
+                      3. ทะเบียนบ้าน
+                    </span>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                      editHouseRegFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {editHouseRegFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium">หลักฐานที่อยู่ตามทะเบียนราษฎร์</p>
+                </div>
+
+                {editHouseRegFile ? (
+                  <div 
+                    onClick={() => openZoomViewer(editHouseRegFile, 'สำเนาทะเบียนบ้าน', true)}
+                    className="relative h-32 rounded-xl overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100 shadow-xs"
+                  >
+                    <img src={editHouseRegFile} alt="สำเนาทะเบียนบ้าน" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white gap-1.5 text-xs font-bold">
+                      <ZoomIn className="w-4 h-4" /> กดดูรูปใหญ่
+                    </div>
+                  </div>
+                ) : (
+                  <div className="h-32 rounded-xl border border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-xs gap-1.5 p-3 text-center">
+                    <Home className="w-6 h-6 text-slate-300" />
+                    <span className="text-[10px] font-semibold text-slate-500">ยังไม่มีรูปทะเบียนบ้าน</span>
+                    <span className="text-[9px] text-slate-400">เพื่อความสมบูรณ์ของเอกสาร</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 pt-1">
+                  {editHouseRegFile && (
+                    <button
+                      type="button"
+                      onClick={() => openZoomViewer(editHouseRegFile, 'สำเนาทะเบียนบ้าน', true)}
+                      className="w-full py-1.5 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> ดูรูปขนาดใหญ่
+                    </button>
+                  )}
+
+                  <label className="w-full py-2 bg-sky-500 hover:bg-sky-600 text-white rounded-xl text-[11px] font-black flex items-center justify-center gap-1.5 cursor-pointer transition-colors shadow-xs">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploadingDoc === 'houseReg' ? 'กำลังอัปโหลด...' : (editHouseRegFile ? 'เปลี่ยนรูปทะเบียนบ้าน' : 'อัปโหลดรูปทะเบียนบ้าน')}</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      disabled={isUploadingDoc === 'houseReg'}
+                      className="hidden" 
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleUploadDocFile('houseReg', file);
+                      }} 
+                    />
+                  </label>
+
+                  {editHouseRegFile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('คุณต้องการลบรูปสำเนาทะเบียนบ้านนี้ใช่หรือไม่?')) {
+                          setEditHouseRegFile('');
+                        }
+                      }}
+                      className="w-full py-1 text-slate-400 hover:text-rose-600 text-[10px] font-semibold transition-colors cursor-pointer"
+                    >
+                      ลบรูปทะเบียนบ้าน
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-sky-50/70 border border-sky-100 rounded-2xl p-3 flex items-start gap-2.5 text-left">
+              <ShieldCheck className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-slate-600 font-medium">
+                💡 <strong className="text-slate-800">คำแนะนำ:</strong> เมื่อท่านอัปโหลดหรือแก้ไขรูปเอกสารหลักฐานแล้ว อย่าลืมกดปุ่ม <strong className="text-sky-700">"บันทึกข้อมูลและเอกสารทั้งหมด"</strong> ด้านล่างเพื่อทำการบันทึกและซิงค์ข้อมูลไปยังฐานข้อมูลและแอดมินนะคะ
+              </p>
+            </div>
+          </div>
+
+          {/* 3. PROFILE DETAILS EDIT FORM */}
           <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-4">
             <h3 className="text-base font-black text-slate-800 text-left">แก้ไขประวัติเพิ่มเติม</h3>
 
@@ -2716,18 +3028,26 @@ export default function StaffPanel({
             </button>
             <img src={previewZoomImage} className="w-full max-h-[75vh] object-contain rounded-2xl" alt="Zoomed" />
             <div className="p-3 flex items-center justify-between gap-3 bg-slate-900 text-white">
-              <span className="text-xs font-medium text-slate-300">พรีวิวรูปภาพพนักงาน</span>
-              <button
-                type="button"
-                onClick={() => {
-                  handleSetAsProfilePicture(previewZoomImage, true);
-                  setPreviewZoomImage(null);
-                }}
-                className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-black px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                ตั้งเป็นรูปโปรไฟล์
-              </button>
+              <span className="text-xs font-semibold text-slate-200">
+                {previewZoomTitle || 'พรีวิวรูปภาพพนักงาน'}
+              </span>
+              {previewIsDoc ? (
+                <span className="text-[11px] font-bold bg-sky-500/20 text-sky-300 border border-sky-400/30 px-3 py-1.5 rounded-xl">
+                  เอกสารหลักฐานทางการ
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSetAsProfilePicture(previewZoomImage, true);
+                    setPreviewZoomImage(null);
+                  }}
+                  className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-black px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  ตั้งเป็นรูปโปรไฟล์
+                </button>
+              )}
             </div>
           </div>
         </div>
