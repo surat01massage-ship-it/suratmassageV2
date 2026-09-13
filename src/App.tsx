@@ -92,7 +92,11 @@ const getPersistedSettings = (): AppSettings => {
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && parsed.companyName) {
-          return { ...defaultAppSettings, ...parsed };
+          const merged = { ...defaultAppSettings, ...parsed };
+          if (!merged.minCredit || merged.minCredit < 398) {
+            merged.minCredit = 398;
+          }
+          return merged;
         }
       }
     } catch (e) {
@@ -257,6 +261,9 @@ export default function App() {
             }
           }
 
+          if (!serverData.minCredit || serverData.minCredit < 398) {
+            serverData.minCredit = 398;
+          }
           setSettings(serverData);
           try {
             localStorage.setItem('sabaidee_app_settings', JSON.stringify(serverData));

@@ -37,7 +37,7 @@ export const defaultSettings: AppSettings = {
     { minKm: 10, maxKm: 15, fee: 200 }
   ],
   commissionRate: 15, // 15%
-  minCredit: 200,
+  minCredit: 398,
   searchRadius: 15, // 15 km
   systemOpen: 'ON',
   contactPhone: "081-234-5678",
@@ -150,6 +150,9 @@ const defaultStaff: Staff[] = [
     Nickname: "เจ้นง",
     Gender: "Female",
     Age: 38,
+    Weight: 54,
+    Height: 162,
+    RegisteredAddress: "45/12 ถนนหน้าเมือง ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
     Experience: 8,
     Description: "ถนัดนวดไทยกดจุด แก้อาการออฟฟิศซินโดรม นวดรีดเส้น และนวดประคบสมุนไพร ใจดี พูดจาไพเราะ ยินดีให้บริการในสุราษฎร์ธานีค่ะ",
     Rating: 5.0,
@@ -161,7 +164,17 @@ const defaultStaff: Staff[] = [
     CurrentLongitude: 99.329200,
     LastLocationUpdate: "2026-06-27T18:50:00Z",
     TotalIncome: 0,
-    TotalJobs: 0
+    TotalJobs: 0,
+    OfferedServices: ["S001", "S002", "S003"],
+    MaxJobDistance: 20,
+    Photos: [
+      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&auto=format&fit=crop&q=80",
+      "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&auto=format&fit=crop&q=80"
+    ],
+    LicenseFile: "https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=1000&auto=format&fit=crop&q=80",
+    IdCardFile: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1000&auto=format&fit=crop&q=80",
+    HouseRegFile: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=1000&auto=format&fit=crop&q=80"
   }
 ];
 

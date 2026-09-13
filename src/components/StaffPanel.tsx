@@ -4,7 +4,7 @@ import {
   User as UserIcon, LogOut, Check, X, ShieldAlert, CreditCard, ChevronRight, Upload,
   Compass, ExternalLink, Navigation, Volume2, VolumeX, Phone, PhoneCall, Copy,
   Camera, Image as ImageIcon, Sparkles, Trash2, Plus, Link as LinkIcon, Eye,
-  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode
+  CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode, AlertTriangle
 } from 'lucide-react';
 import { User, Staff, Booking, CreditTransaction, AppSettings } from '../types';
 import InteractiveMap from './InteractiveMap';
@@ -378,7 +378,7 @@ export default function StaffPanel({
 
   // Auto turn-off availability if credit is insufficient ONLY when staff has NO active/ongoing jobs
   useEffect(() => {
-    const minCredit = settings?.minCredit || 398;
+    const minCredit = Math.max(settings?.minCredit || 398, 398);
 
     // If staff is not online or has sufficient credit, do nothing
     if (!staff || staff.Available !== 'ON' || staff.Credit >= minCredit) {
@@ -418,8 +418,9 @@ export default function StaffPanel({
     if (!staff) return;
     const nextStatus = staff.Available === 'ON' ? 'OFF' : 'ON';
 
-    if (nextStatus === 'ON' && staff.Credit < (settings?.minCredit || 398)) {
-      onShowToast(`❌ เครดิตไม่พอรับงาน (ขั้นต่ำ ${settings?.minCredit || 398} CR) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ`, "error");
+    const minCreditReq = Math.max(settings?.minCredit || 398, 398);
+    if (nextStatus === 'ON' && staff.Credit < minCreditReq) {
+      onShowToast(`❌ เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCreditReq} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ`, "error");
       return;
     }
 
@@ -583,7 +584,7 @@ export default function StaffPanel({
           onUpdateStaffData(data.staff);
           onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
         } else if (staff) {
-          const minCredit = settings?.minCredit || 398;
+          const minCredit = Math.max(settings?.minCredit || 398, 398);
           const willTurnOff = staff.Credit < minCredit;
           onUpdateStaffData({
             ...staff,
@@ -1116,6 +1117,33 @@ export default function StaffPanel({
           </div>
         </button>
       </div>
+
+      {/* Red Low-Credit Alert Banner */}
+      {staff.Credit < Math.max(settings?.minCredit || 398, 398) && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left animate-fade-in shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2.5 bg-rose-500 text-white rounded-xl shrink-0 shadow-xs">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-rose-900">
+                ⚠️ เครดิตไม่พอรับงาน (ขั้นต่ำ {Math.max(settings?.minCredit || 398, 398)} เครดิต)
+              </p>
+              <p className="text-[11px] text-rose-700 font-medium mt-0.5">
+                เครดิตปัจจุบันของคุณมี {staff.Credit.toFixed(0)} เครดิต (ต้องมีขั้นต่ำ {Math.max(settings?.minCredit || 398, 398)} เครดิตเพื่อเปิดสวิตช์รับงาน)
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('credit')}
+            className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-black px-4 py-2 rounded-xl shrink-0 shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5 self-end sm:self-auto"
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>เติมเครดิต</span>
+          </button>
+        </div>
+      )}
 
       {/* Audio Readiness Banner for Mobile Autoplay & Sound Testing */}
       {staff.Available === 'ON' && (

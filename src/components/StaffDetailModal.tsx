@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   X, Phone, Mail, MapPin, Calendar, Star, DollarSign, Award, Clock, 
   CheckCircle, AlertCircle, RefreshCw, Edit2, Shield, Plus, Minus,
-  ExternalLink, Check, Briefcase, Navigation, UserCheck, MessageSquare, History
+  ExternalLink, Check, Briefcase, Navigation, UserCheck, MessageSquare, History,
+  FileText, Image as ImageIcon, ZoomIn, ZoomOut, RotateCw, ChevronLeft, ChevronRight,
+  Download, Eye, AlertTriangle, ShieldCheck, Upload, Trash2, Camera
 } from 'lucide-react';
 import { Staff, User, Service, Booking, Review, CreditTransaction } from '../types';
 
@@ -12,6 +14,59 @@ interface StaffDetailModalProps {
   onShowToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   onRefreshStaffList: () => void;
 }
+
+export interface EvidenceDocument {
+  id: string;
+  type: 'license' | 'idcard' | 'housereg' | 'profile' | 'photo';
+  title: string;
+  category: string;
+  description: string;
+  url: string;
+  required?: boolean;
+}
+
+// Client-side image compression helper
+const compressImageFile = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => reject(new Error('ไม่สามารถประมวลผลรูปภาพได้'));
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
 
 export default function StaffDetailModal({
   staffId,
@@ -28,7 +83,7 @@ export default function StaffDetailModal({
     services: Service[];
   } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'services' | 'wallet' | 'bookings' | 'reviews'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'documents' | 'services' | 'wallet' | 'bookings' | 'reviews'>('profile');
   
   // Credit adjust form state
   const [creditAmount, setCreditAmount] = useState<number>(100);
@@ -43,6 +98,11 @@ export default function StaffDetailModal({
 
   // Booking status filter
   const [bookingFilter, setBookingFilter] = useState<string>('All');
+
+  // Lightbox viewer state
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxZoom, setLightboxZoom] = useState<number>(1);
+  const [lightboxRotation, setLightboxRotation] = useState<number>(0);
 
   const fetchDetails = async () => {
     try {
@@ -71,7 +131,12 @@ export default function StaffDetailModal({
         verifyStatus: json.staff.VerifyStatus || 'Approved',
         available: json.staff.Available || 'OFF',
         status: json.staff.UserStatus || 'Active',
-        offeredServices: json.staff.OfferedServices || json.services.map((s: Service) => s.ServiceID)
+        offeredServices: json.staff.OfferedServices || json.services.map((s: Service) => s.ServiceID),
+        licenseFile: json.staff.LicenseFile || '',
+        idCardFile: json.staff.IdCardFile || '',
+        houseRegFile: json.staff.HouseRegFile || '',
+        profileImage: json.staff.ProfileImage || '',
+        photos: json.staff.Photos || []
       });
     } catch (err: any) {
       onShowToast(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล', 'error');
@@ -191,6 +256,124 @@ export default function StaffDetailModal({
     }
   };
 
+  // Compile all available evidence documents and photos for this therapist
+  const getEvidenceList = useCallback((): EvidenceDocument[] => {
+    if (!data?.staff) return [];
+    const staff = data.staff;
+
+    const list: EvidenceDocument[] = [
+      {
+        id: 'license',
+        type: 'license',
+        title: 'ใบอนุญาต / ประกาศนียบัตรนวดเพื่อสุขภาพ',
+        category: 'เอกสารรับรองมาตรฐานวิชาชีพ',
+        description: 'หลักฐานการผ่านการอบรมหรือใบอนุญาตประกอบวิชาชีพนวดเพื่อสุขภาพ (สบส.)',
+        url: staff.LicenseFile || '',
+        required: true
+      },
+      {
+        id: 'idcard',
+        type: 'idcard',
+        title: 'สำเนาบัตรประจำตัวประชาชน',
+        category: 'เอกสารยืนยันตัวตน',
+        description: 'บัตรประจำตัวประชาชนเพื่อยืนยันชื่อ-นามสกุล อายุ และสัญชาติของผู้สมัคร',
+        url: staff.IdCardFile || '',
+        required: true
+      },
+      {
+        id: 'housereg',
+        type: 'housereg',
+        title: 'สำเนาทะเบียนบ้าน',
+        category: 'หลักฐานที่อยู่อาศัยตามทะเบียนราษฎร์',
+        description: 'เอกสารแสดงที่อยู่ตามทะเบียนบ้านของผู้สมัครเพื่อความถูกต้องและปลอดภัย',
+        url: staff.HouseRegFile || '',
+        required: true
+      },
+      {
+        id: 'profile',
+        type: 'profile',
+        title: 'รูปถ่ายหน้าตรง / รูปโปรไฟล์พนักงาน',
+        category: 'รูปภาพประจำตัว',
+        description: 'ภาพถ่ายหน้าตรงความละเอียดสูงสำหรับแสดงให้ลูกค้าเห็นในหน้ารายชื่อหมอนวด',
+        url: staff.ProfileImage || '',
+        required: false
+      }
+    ];
+
+    if (Array.isArray(staff.Photos) && staff.Photos.length > 0) {
+      staff.Photos.forEach((photoUrl: string, idx: number) => {
+        if (photoUrl) {
+          list.push({
+            id: `photo-${idx}`,
+            type: 'photo',
+            title: `รูปผลงาน & อัลบั้มภาพ #${idx + 1}`,
+            category: 'รูปผลงาน / บรรยากาศการให้บริการ',
+            description: `ภาพถ่ายตัวอย่างการให้บริการนวดและบุคลิกภาพของพนักงาน ภาพที่ ${idx + 1}`,
+            url: photoUrl,
+            required: false
+          });
+        }
+      });
+    }
+
+    return list;
+  }, [data?.staff]);
+
+  const evidenceList = getEvidenceList();
+  // Filter for items that actually have an image URL for lightbox cycling
+  const activeMediaList = evidenceList.filter(item => Boolean(item.url));
+
+  // Handle open lightbox
+  const handleOpenLightbox = (targetUrl: string) => {
+    const foundIdx = activeMediaList.findIndex(item => item.url === targetUrl);
+    if (foundIdx !== -1) {
+      setLightboxIndex(foundIdx);
+      setLightboxZoom(1);
+      setLightboxRotation(0);
+    }
+  };
+
+  const handleCloseLightbox = () => {
+    setLightboxIndex(null);
+    setLightboxZoom(1);
+    setLightboxRotation(0);
+  };
+
+  const handlePrevMedia = () => {
+    if (lightboxIndex === null || activeMediaList.length <= 1) return;
+    setLightboxIndex((lightboxIndex - 1 + activeMediaList.length) % activeMediaList.length);
+    setLightboxZoom(1);
+    setLightboxRotation(0);
+  };
+
+  const handleNextMedia = () => {
+    if (lightboxIndex === null || activeMediaList.length <= 1) return;
+    setLightboxIndex((lightboxIndex + 1) % activeMediaList.length);
+    setLightboxZoom(1);
+    setLightboxRotation(0);
+  };
+
+  // Keyboard navigation for lightbox
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (lightboxIndex === null) return;
+      if (e.key === 'Escape') {
+        handleCloseLightbox();
+      } else if (e.key === 'ArrowLeft') {
+        handlePrevMedia();
+      } else if (e.key === 'ArrowRight') {
+        handleNextMedia();
+      } else if (e.key === '+' || e.key === '=') {
+        setLightboxZoom(prev => Math.min(prev + 0.25, 3));
+      } else if (e.key === '-') {
+        setLightboxZoom(prev => Math.max(prev - 0.25, 0.5));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [lightboxIndex, activeMediaList.length]);
+
   if (loading || !data) {
     return (
       <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -208,19 +391,33 @@ export default function StaffDetailModal({
     ? bookings 
     : bookings.filter(b => b.Status === bookingFilter);
 
+  // Count verified documents
+  const requiredDocsCount = evidenceList.filter(d => d.required).length;
+  const uploadedRequiredDocsCount = evidenceList.filter(d => d.required && Boolean(d.url)).length;
+  const isDocumentsComplete = uploadedRequiredDocsCount >= requiredDocsCount;
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-scale-up border border-slate-200">
+    <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[94vh] animate-scale-up border border-slate-200">
         
         {/* Modal Top Header */}
         <div className="bg-slate-50 border-b border-slate-200 p-4 sm:p-5 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="relative">
+            <div 
+              className="relative cursor-pointer group"
+              onClick={() => staff.ProfileImage && handleOpenLightbox(staff.ProfileImage)}
+              title={staff.ProfileImage ? "คลิกเพื่อดูรูปโปรไฟล์ขนาดใหญ่" : undefined}
+            >
               <img 
                 src={staff.ProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.Nickname || 'พนักงาน')}&background=0D9488&color=fff&size=150`} 
                 alt={staff.Nickname}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-white shadow-md"
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-white shadow-md group-hover:ring-2 group-hover:ring-sky-400 transition-all"
               />
+              {staff.ProfileImage && (
+                <div className="absolute inset-0 rounded-full bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                  <ZoomIn className="w-5 h-5" />
+                </div>
+              )}
               <span className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${
                 staff.Available === 'ON' ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-400'
               }`} />
@@ -253,6 +450,10 @@ export default function StaffDetailModal({
                 <span>•</span>
                 <span className="flex items-center gap-1 text-amber-500 font-black">
                   <Star className="w-3.5 h-3.5 fill-current" /> {staff.Rating?.toFixed(1) || '5.0'} ({staff.ReviewCount || 0} รีวิว)
+                </span>
+                <span>•</span>
+                <span className={`inline-flex items-center gap-1 font-bold ${isDocumentsComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  <FileText className="w-3.5 h-3.5" /> เอกสารหลักฐาน: {uploadedRequiredDocsCount}/{requiredDocsCount}
                 </span>
               </div>
             </div>
@@ -302,7 +503,7 @@ export default function StaffDetailModal({
           </div>
         </div>
 
-        {/* Tab Navigation Menu - Clear Distinct Segmented Pills */}
+        {/* Tab Navigation Menu */}
         <div className="bg-slate-100/95 backdrop-blur-md border-y border-slate-200 py-3 px-3 sm:px-6 sticky top-0 z-20 shadow-xs">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
             <button
@@ -315,6 +516,25 @@ export default function StaffDetailModal({
             >
               <UserCheck className={`w-4 h-4 shrink-0 ${activeTab === 'profile' ? 'text-white' : 'text-sky-600'}`} />
               <span>ข้อมูลทั่วไป &amp; ประวัติ</span>
+            </button>
+
+            <button
+              onClick={() => { setActiveTab('documents'); setIsEditing(false); }}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 shrink-0 transition-all cursor-pointer whitespace-nowrap ${
+                activeTab === 'documents'
+                  ? 'bg-sky-600 text-white shadow-md shadow-sky-500/25 ring-2 ring-sky-600'
+                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 hover:text-sky-600 hover:border-sky-300'
+              }`}
+            >
+              <FileText className={`w-4 h-4 shrink-0 ${activeTab === 'documents' ? 'text-white' : 'text-sky-600'}`} />
+              <span>เอกสารหลักฐานการสมัคร</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                activeTab === 'documents' 
+                  ? 'bg-white/20 text-white' 
+                  : (isDocumentsComplete ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800')
+              }`}>
+                {uploadedRequiredDocsCount}/{requiredDocsCount}
+              </span>
             </button>
 
             <button
@@ -522,17 +742,177 @@ export default function StaffDetailModal({
 
               </div>
 
+              {/* Application Evidence Preview Strip (Quick View) */}
+              <div className="bg-gradient-to-br from-slate-50 to-sky-50/40 border border-sky-200/80 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xs">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-sky-100 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-sky-500 text-white flex items-center justify-center shadow-xs">
+                      <FileText className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                        รูปหลักฐานการสมัครและเอกสารสำคัญ
+                      </h4>
+                      <p className="text-[10px] text-slate-500 font-semibold">
+                        คลิกที่รูปภาพเพื่อเปิดดูภาพขนาดใหญ่ ตรวจสอบความถูกต้องและซูมดูรายละเอียด
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveTab('documents')}
+                    className="text-xs font-bold text-sky-600 hover:text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all self-start sm:self-auto cursor-pointer shadow-xs"
+                  >
+                    <span>ตรวจเอกสารทั้งหมด ({uploadedRequiredDocsCount}/{requiredDocsCount})</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* 1. License Card */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs space-y-2 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-black text-slate-800">1. ใบอนุญาตนวด</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          staff.LicenseFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {staff.LicenseFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium line-clamp-1">ใบรับรองมาตรฐานวิชาชีพ</p>
+                    </div>
+
+                    {staff.LicenseFile ? (
+                      <div 
+                        onClick={() => handleOpenLightbox(staff.LicenseFile)}
+                        className="relative h-28 rounded-lg overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100"
+                      >
+                        <img src={staff.LicenseFile} alt="ใบอนุญาตนวด" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white gap-1.5 text-xs font-bold">
+                          <ZoomIn className="w-4 h-4" /> ดูรูปใหญ่
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-xs gap-1">
+                        <AlertCircle className="w-5 h-5 text-slate-300" />
+                        <span className="text-[10px]">ไม่มีไฟล์</span>
+                      </div>
+                    )}
+
+                    {staff.LicenseFile && (
+                      <button
+                        onClick={() => handleOpenLightbox(staff.LicenseFile)}
+                        className="w-full py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> กดดูรูปขนาดใหญ่
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 2. ID Card */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs space-y-2 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-black text-slate-800">2. สำเนาบัตรประชาชน</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          staff.IdCardFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {staff.IdCardFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium line-clamp-1">เอกสารยืนยันตัวตน</p>
+                    </div>
+
+                    {staff.IdCardFile ? (
+                      <div 
+                        onClick={() => handleOpenLightbox(staff.IdCardFile)}
+                        className="relative h-28 rounded-lg overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100"
+                      >
+                        <img src={staff.IdCardFile} alt="สำเนาบัตรประชาชน" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white gap-1.5 text-xs font-bold">
+                          <ZoomIn className="w-4 h-4" /> ดูรูปใหญ่
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-xs gap-1">
+                        <AlertCircle className="w-5 h-5 text-slate-300" />
+                        <span className="text-[10px]">ไม่มีไฟล์</span>
+                      </div>
+                    )}
+
+                    {staff.IdCardFile && (
+                      <button
+                        onClick={() => handleOpenLightbox(staff.IdCardFile)}
+                        className="w-full py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> กดดูรูปขนาดใหญ่
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 3. House Reg Card */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs space-y-2 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-black text-slate-800">3. สำเนาทะเบียนบ้าน</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          staff.HouseRegFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {staff.HouseRegFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium line-clamp-1">หลักฐานที่อยู่ตามทะเบียนราษฎร์</p>
+                    </div>
+
+                    {staff.HouseRegFile ? (
+                      <div 
+                        onClick={() => handleOpenLightbox(staff.HouseRegFile)}
+                        className="relative h-28 rounded-lg overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100"
+                      >
+                        <img src={staff.HouseRegFile} alt="สำเนาทะเบียนบ้าน" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white gap-1.5 text-xs font-bold">
+                          <ZoomIn className="w-4 h-4" /> ดูรูปใหญ่
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-lg border border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 text-xs gap-1">
+                        <AlertCircle className="w-5 h-5 text-slate-300" />
+                        <span className="text-[10px]">ไม่มีไฟล์</span>
+                      </div>
+                    )}
+
+                    {staff.HouseRegFile && (
+                      <button
+                        onClick={() => handleOpenLightbox(staff.HouseRegFile)}
+                        className="w-full py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> กดดูรูปขนาดใหญ่
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* Staff Photos Gallery (Portfolio) */}
               {staff.Photos && Array.isArray(staff.Photos) && staff.Photos.length > 0 && (
                 <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
                   <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider border-b border-slate-100 pb-2 flex items-center justify-between">
                     <span>คลังรูปภาพและผลงาน ({staff.Photos.length} รูป)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">พนักงานอัปโหลดในระบบ</span>
+                    <span className="text-[10px] text-slate-400 font-normal">คลิกรูปเพื่อดูภาพขนาดใหญ่</span>
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2.5">
                     {staff.Photos.map((photo: string, idx: number) => (
-                      <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group">
+                      <div 
+                        key={idx} 
+                        onClick={() => handleOpenLightbox(photo)}
+                        className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100"
+                        title="คลิกเพื่อดูรูปขนาดใหญ่"
+                      >
                         <img src={photo} alt={`Staff photo ${idx + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                          <ZoomIn className="w-5 h-5" />
+                        </div>
                         {staff.ProfileImage === photo && (
                           <div className="absolute top-1 left-1 bg-sky-500 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md shadow">
                             รูปโปรไฟล์
@@ -601,12 +981,176 @@ export default function StaffDetailModal({
             </div>
           )}
 
-          {/* 1.1 EDIT FORM MODE */}
+          {/* 1.1 DOCUMENTS TAB (FULL INSPECTION VIEW) */}
+          {activeTab === 'documents' && (
+            <div className="space-y-6 animate-fade-in">
+              
+              {/* Inspection Header & Action Bar */}
+              <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-md space-y-4">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-sky-500 text-white flex items-center justify-center shadow-md shrink-0">
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black tracking-tight flex items-center gap-2">
+                        <span>ศูนย์ตรวจสอบหลักฐานและเอกสารการสมัคร</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isDocumentsComplete ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {isDocumentsComplete ? '✓ เอกสารบังคับครบถ้วน' : '⚠️ เอกสารยังไม่ครบ'}
+                        </span>
+                      </h4>
+                      <p className="text-xs text-slate-300 mt-0.5">
+                        ตรวจสอบความถูกต้องของเอกสารประจำตัว ใบอนุญาต และรูปภาพ เพื่อประกอบการอนุมัติสิทธิ์การเปิดรับงาน
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <button
+                      onClick={() => handleVerifyStatusChange('Approved')}
+                      className={`text-xs font-black px-4 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                        staff.VerifyStatus === 'Approved'
+                          ? 'bg-emerald-500 text-white shadow-md ring-2 ring-emerald-400'
+                          : 'bg-white/10 hover:bg-emerald-600 text-white border border-white/10'
+                      }`}
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>อนุมัติพนักงาน</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleVerifyStatusChange('Reject')}
+                      className={`text-xs font-bold px-3 py-2 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+                        staff.VerifyStatus === 'Reject'
+                          ? 'bg-rose-500 text-white shadow-md ring-2 ring-rose-400'
+                          : 'bg-white/10 hover:bg-rose-600 text-white border border-white/10'
+                      }`}
+                    >
+                      <X className="w-4 h-4" />
+                      <span>ไม่อนุมัติ</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Progress Strip */}
+                <div className="bg-white/10 p-3 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-300">ความพร้อมของเอกสาร:</span>
+                    <strong className="text-white font-mono">{uploadedRequiredDocsCount} / {requiredDocsCount} ฉบับ</strong>
+                  </div>
+                  <div className="text-[11px] text-slate-300">
+                    สถานะการตรวจสอบปัจจุบัน: <span className="font-bold text-sky-300 uppercase">{staff.VerifyStatus}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Documents Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {evidenceList.map((doc, idx) => {
+                  const hasFile = Boolean(doc.url);
+                  return (
+                    <div 
+                      key={doc.id}
+                      className={`bg-white border rounded-2xl p-4 space-y-3 shadow-xs flex flex-col justify-between transition-all ${
+                        hasFile ? 'border-slate-200 hover:border-sky-300' : 'border-dashed border-amber-200 bg-amber-50/20'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="text-[10px] font-bold text-sky-600 uppercase tracking-wider block">
+                              {doc.category}
+                            </span>
+                            <h5 className="text-sm font-black text-slate-900 mt-0.5">
+                              {doc.title}
+                            </h5>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {doc.required && (
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                บังคับ
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                              hasFile ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            }`}>
+                              {hasFile ? '✓ แนบแล้ว' : '✕ ยังไม่แนบ'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500 font-medium mt-1">
+                          {doc.description}
+                        </p>
+                      </div>
+
+                      {/* Image Thumbnail Container */}
+                      {hasFile ? (
+                        <div className="space-y-2">
+                          <div 
+                            onClick={() => handleOpenLightbox(doc.url)}
+                            className="relative h-48 rounded-xl overflow-hidden border border-slate-200 group cursor-pointer bg-slate-100 flex items-center justify-center"
+                          >
+                            <img 
+                              src={doc.url} 
+                              alt={doc.title} 
+                              className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" 
+                            />
+                            <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity text-white gap-1.5">
+                              <div className="p-2.5 rounded-full bg-white/20 backdrop-blur-xs">
+                                <ZoomIn className="w-6 h-6" />
+                              </div>
+                              <span className="text-xs font-black drop-shadow">คลิกเพื่อดูรูปขนาดใหญ่</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenLightbox(doc.url)}
+                              className="flex-1 py-2 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <ZoomIn className="w-3.5 h-3.5" />
+                              <span>ดูรูปขนาดใหญ่ (Zoom)</span>
+                            </button>
+
+                            <a
+                              href={doc.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
+                              title="เปิดรูปในแท็บใหม่"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="h-44 rounded-xl border border-dashed border-slate-200 bg-slate-50/70 flex flex-col items-center justify-center text-slate-400 gap-2 p-4 text-center">
+                          <AlertTriangle className="w-7 h-7 text-amber-400" />
+                          <div>
+                            <span className="text-xs font-bold text-slate-600 block">ยังไม่มีเอกสารในส่วนนี้</span>
+                            <span className="text-[10px] text-slate-400 block mt-0.5">พนักงานยังไม่ได้อัปโหลดหลักฐานฉบับนี้เข้ามาในระบบ</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+            </div>
+          )}
+
+          {/* 1.2 EDIT FORM MODE */}
           {activeTab === 'profile' && isEditing && (
             <form onSubmit={handleSaveEdit} className="space-y-4 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 animate-fade-in text-xs">
               <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                <h4 className="font-black text-sm text-slate-900">แก้ไขข้อมูลพนักงาน</h4>
-                <span className="text-[10px] text-slate-500 font-semibold">* แอดมินสามารถปรับปรุงข้อมูลให้ถูกต้องได้</span>
+                <h4 className="font-black text-sm text-slate-900">แก้ไขข้อมูลพนักงานและเอกสาร</h4>
+                <span className="text-[10px] text-slate-500 font-semibold">* แอดมินสามารถปรับปรุงข้อมูลและเอกสารให้ถูกต้องได้</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -725,6 +1269,127 @@ export default function StaffDetailModal({
                   rows={3}
                   className="w-full bg-white border border-slate-200 rounded-xl p-2 font-semibold"
                 />
+              </div>
+
+              {/* Document and Image URL Updates */}
+              <div className="space-y-3 pt-3 border-t border-slate-200">
+                <h5 className="font-bold text-slate-800 text-[11px]">จัดการไฟล์เอกสาร &amp; รูปถ่าย</h5>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* License File upload */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 block">ใบอนุญาตนวด</label>
+                    {editForm.licenseFile && (
+                      <div className="h-20 rounded-lg overflow-hidden border border-slate-200 relative group">
+                        <img src={editForm.licenseFile} alt="License" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, licenseFile: '' })}
+                          className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-md text-[9px]"
+                        >
+                          ลบ
+                        </button>
+                      </div>
+                    )}
+                    <label className="w-full py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors">
+                      <Upload className="w-3 h-3" />
+                      <span>{editForm.licenseFile ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const b64 = await compressImageFile(file);
+                              setEditForm({ ...editForm, licenseFile: b64 });
+                              onShowToast('อัปโหลดใบอนุญาตสำเร็จ', 'success');
+                            } catch (err) {
+                              onShowToast('อัปโหลดไม่สำเร็จ', 'error');
+                            }
+                          }
+                        }} 
+                      />
+                    </label>
+                  </div>
+
+                  {/* ID Card upload */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 block">สำเนาบัตรประชาชน</label>
+                    {editForm.idCardFile && (
+                      <div className="h-20 rounded-lg overflow-hidden border border-slate-200 relative group">
+                        <img src={editForm.idCardFile} alt="ID Card" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, idCardFile: '' })}
+                          className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-md text-[9px]"
+                        >
+                          ลบ
+                        </button>
+                      </div>
+                    )}
+                    <label className="w-full py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors">
+                      <Upload className="w-3 h-3" />
+                      <span>{editForm.idCardFile ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const b64 = await compressImageFile(file);
+                              setEditForm({ ...editForm, idCardFile: b64 });
+                              onShowToast('อัปโหลดสำเนาบัตรประชาชนสำเร็จ', 'success');
+                            } catch (err) {
+                              onShowToast('อัปโหลดไม่สำเร็จ', 'error');
+                            }
+                          }
+                        }} 
+                      />
+                    </label>
+                  </div>
+
+                  {/* House Reg upload */}
+                  <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 block">สำเนาทะเบียนบ้าน</label>
+                    {editForm.houseRegFile && (
+                      <div className="h-20 rounded-lg overflow-hidden border border-slate-200 relative group">
+                        <img src={editForm.houseRegFile} alt="House Reg" className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setEditForm({ ...editForm, houseRegFile: '' })}
+                          className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-md text-[9px]"
+                        >
+                          ลบ
+                        </button>
+                      </div>
+                    )}
+                    <label className="w-full py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors">
+                      <Upload className="w-3 h-3" />
+                      <span>{editForm.houseRegFile ? 'เปลี่ยนรูป' : 'อัปโหลดรูป'}</span>
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            try {
+                              const b64 = await compressImageFile(file);
+                              setEditForm({ ...editForm, houseRegFile: b64 });
+                              onShowToast('อัปโหลดสำเนาทะเบียนบ้านสำเร็จ', 'success');
+                            } catch (err) {
+                              onShowToast('อัปโหลดไม่สำเร็จ', 'error');
+                            }
+                          }
+                        }} 
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
@@ -948,16 +1613,16 @@ export default function StaffDetailModal({
                 </h4>
 
                 {/* Status Filter */}
-                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl text-xs">
-                  {['All', 'Completed', 'Working', 'Accepted', 'Cancel'].map((st) => (
+                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold">
+                  {['All', 'Requested', 'Matched', 'Travelling', 'Ongoing', 'Completed', 'Cancelled'].map((st) => (
                     <button
                       key={st}
                       onClick={() => setBookingFilter(st)}
-                      className={`px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
-                        bookingFilter === st ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        bookingFilter === st ? 'bg-white text-sky-600 shadow-xs' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
-                      {st === 'All' ? 'ทั้งหมด' : st === 'Completed' ? 'สำเร็จ' : st === 'Working' ? 'กำลังนวด' : st === 'Accepted' ? 'รับงานแล้ว' : 'ยกเลิก'}
+                      {st}
                     </button>
                   ))}
                 </div>
@@ -967,54 +1632,49 @@ export default function StaffDetailModal({
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3">รหัสงาน</th>
-                      <th className="py-2.5 px-3">ลูกค้า</th>
+                      <th className="py-2.5 px-3">รหัสจอง</th>
                       <th className="py-2.5 px-3">บริการ</th>
-                      <th className="py-2.5 px-3">วัน-เวลานัด</th>
-                      <th className="py-2.5 px-3">ระยะทาง</th>
-                      <th className="py-2.5 px-3">ยอดเงินรวม</th>
+                      <th className="py-2.5 px-3">ลูกค้า</th>
+                      <th className="py-2.5 px-3">ยอดเงิน</th>
                       <th className="py-2.5 px-3">สถานะ</th>
+                      <th className="py-2.5 px-3">วัน-เวลา</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {filteredBookings.length > 0 ? (
                       filteredBookings.map((b: any) => (
                         <tr key={b.BookingID} className="hover:bg-slate-50/50">
-                          <td className="py-2.5 px-3 font-mono font-bold text-sky-600 text-[11px]">
-                            {b.BookingID}
-                          </td>
-                          <td className="py-2.5 px-3">
-                            <span className="font-bold block">{b.CustomerName}</span>
-                            <span className="text-[10px] text-slate-400 block">{b.CustomerPhone}</span>
+                          <td className="py-2.5 px-3 font-mono font-bold text-sky-600">
+                            #{b.BookingID}
                           </td>
                           <td className="py-2.5 px-3 font-semibold text-slate-800">
                             {b.ServiceName}
                           </td>
-                          <td className="py-2.5 px-3 text-[11px] text-slate-500">
-                            {b.BookingDate} {b.BookingTime}
+                          <td className="py-2.5 px-3">
+                            <span className="font-bold text-slate-800 block">{b.CustomerName}</span>
+                            <span className="text-[10px] text-slate-400 block font-mono">{b.CustomerPhone}</span>
                           </td>
-                          <td className="py-2.5 px-3 font-mono text-[11px]">
-                            {b.Distance ? `${b.Distance.toFixed(1)} กม.` : '-'}
-                          </td>
-                          <td className="py-2.5 px-3 font-black text-slate-900 font-mono">
-                            ฿{b.TotalPrice}
+                          <td className="py-2.5 px-3 font-bold">
+                            ฿{b.TotalPrice || b.ServicePrice}
                           </td>
                           <td className="py-2.5 px-3">
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
                               b.Status === 'Completed' ? 'bg-emerald-100 text-emerald-800' :
-                              b.Status === 'Working' ? 'bg-sky-100 text-sky-800' :
-                              b.Status === 'Accepted' ? 'bg-blue-100 text-blue-800' :
-                              b.Status === 'Cancel' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                              b.Status === 'Ongoing' || b.Status === 'Travelling' ? 'bg-sky-100 text-sky-800' :
+                              b.Status === 'Cancelled' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
                             }`}>
                               {b.Status}
                             </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-[10px] text-slate-400 font-semibold">
+                            {new Date(b.CreatedDate).toLocaleString('th-TH')}
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7} className="py-8 text-center text-slate-400 font-semibold">
-                          ไม่พบประวัติงานจองในเงื่อนไขนี้
+                        <td colSpan={6} className="py-8 text-center text-slate-400 font-semibold">
+                          ไม่พบประวัติงานจองในสถานะนี้
                         </td>
                       </tr>
                     )}
@@ -1080,6 +1740,170 @@ export default function StaffDetailModal({
         </div>
 
       </div>
+
+      {/* FULL-SCREEN / LARGE IMAGE LIGHTBOX MODAL (ป๊อปอัปดูรูปขนาดใหญ่) */}
+      {lightboxIndex !== null && activeMediaList[lightboxIndex] && (
+        <div 
+          className="fixed inset-0 z-[60] bg-slate-950/92 backdrop-blur-md flex flex-col justify-between p-3 sm:p-5 select-none animate-fade-in"
+          onClick={handleCloseLightbox}
+        >
+          {/* Lightbox Top Controls Bar */}
+          <div 
+            className="flex items-center justify-between gap-3 text-white max-w-6xl w-full mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="text-[11px] font-black px-2.5 py-1 rounded-lg bg-sky-500/30 text-sky-300 border border-sky-400/40 shrink-0">
+                {activeMediaList[lightboxIndex].category}
+              </span>
+              <div className="min-w-0">
+                <h3 className="text-xs sm:text-sm font-black text-white truncate">
+                  {activeMediaList[lightboxIndex].title}
+                </h3>
+                <p className="text-[10px] sm:text-[11px] text-slate-300 font-medium truncate">
+                  พนักงาน: พี่{staff.Nickname} ({staff.Name}) • รหัส {staff.StaffID}
+                </p>
+              </div>
+            </div>
+
+            {/* Actions: Zoom, Rotate, Full View, Close */}
+            <div className="flex items-center gap-1.5 shrink-0 bg-white/10 backdrop-blur-md p-1.5 rounded-2xl border border-white/15">
+              <button
+                type="button"
+                onClick={() => setLightboxZoom(prev => Math.max(prev - 0.25, 0.5))}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                title="ย่อรูป (-)"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+
+              <span className="text-[10px] font-mono font-bold px-1.5 text-slate-300">
+                {(lightboxZoom * 100).toFixed(0)}%
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setLightboxZoom(prev => Math.min(prev + 0.25, 3))}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                title="ขยายรูป (+)"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLightboxRotation(prev => (prev + 90) % 360)}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                title="หมุน 90 องศา"
+              >
+                <RotateCw className="w-4 h-4" />
+              </button>
+
+              <a
+                href={activeMediaList[lightboxIndex].url}
+                target="_blank"
+                rel="noreferrer"
+                download={`staff_${staff.StaffID}_${activeMediaList[lightboxIndex].id}.jpg`}
+                className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+                title="เปิดไฟล์ขนาดเดิมในแท็บใหม่"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+
+              <div className="w-px h-4 bg-white/20 mx-0.5" />
+
+              <button
+                type="button"
+                onClick={handleCloseLightbox}
+                className="p-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl transition-colors cursor-pointer"
+                title="ปิดหน้าต่างรูปภาพ (ESC)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Lightbox Main Stage Area */}
+          <div 
+            className="flex-1 flex items-center justify-center relative overflow-hidden py-3 my-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Left Nav Button */}
+            {activeMediaList.length > 1 && (
+              <button
+                type="button"
+                onClick={handlePrevMedia}
+                className="absolute left-2 sm:left-6 z-10 p-3 rounded-full bg-slate-900/80 hover:bg-sky-600 text-white border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xl active:scale-95"
+                title="รูปก่อนหน้า (ลูกศรซ้าย)"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+            )}
+
+            {/* Active Image Viewport */}
+            <div className="max-w-5xl max-h-[75vh] w-full h-full flex items-center justify-center p-2">
+              <img
+                src={activeMediaList[lightboxIndex].url}
+                alt={activeMediaList[lightboxIndex].title}
+                style={{
+                  transform: `scale(${lightboxZoom}) rotate(${lightboxRotation}deg)`,
+                  transition: 'transform 0.2s ease-out'
+                }}
+                className="max-h-[72vh] max-w-[85vw] object-contain rounded-xl shadow-2xl transition-all cursor-grab active:cursor-grabbing select-none"
+              />
+            </div>
+
+            {/* Right Nav Button */}
+            {activeMediaList.length > 1 && (
+              <button
+                type="button"
+                onClick={handleNextMedia}
+                className="absolute right-2 sm:right-6 z-10 p-3 rounded-full bg-slate-900/80 hover:bg-sky-600 text-white border border-white/20 backdrop-blur-md transition-all cursor-pointer shadow-xl active:scale-95"
+                title="รูปถัดไป (ลูกศรขวา)"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+            )}
+          </div>
+
+          {/* Lightbox Bottom Thumbnail Strip & Caption */}
+          <div 
+            className="max-w-4xl w-full mx-auto space-y-2 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-center gap-2 text-xs text-slate-300 font-semibold">
+              <span>{activeMediaList[lightboxIndex].title}</span>
+              <span>•</span>
+              <span className="font-mono text-sky-400">รูปที่ {lightboxIndex + 1} จาก {activeMediaList.length}</span>
+            </div>
+
+            {/* Thumbnails row */}
+            {activeMediaList.length > 1 && (
+              <div className="flex items-center justify-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {activeMediaList.map((item, idx) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setLightboxIndex(idx);
+                      setLightboxZoom(1);
+                      setLightboxRotation(0);
+                    }}
+                    className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all shrink-0 cursor-pointer ${
+                      lightboxIndex === idx
+                        ? 'border-sky-400 ring-2 ring-sky-500/50 scale-105'
+                        : 'border-white/20 opacity-60 hover:opacity-100'
+                    }`}
+                  >
+                    <img src={item.url} alt={item.title} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

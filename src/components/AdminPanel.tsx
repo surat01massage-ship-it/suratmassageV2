@@ -944,9 +944,9 @@ export default function AdminPanel({
                                 onShowToast('กำลังโหลดข้อมูลพนักงาน...', 'info');
                               }
                             }}
-                            className="text-emerald-600 hover:text-emerald-700 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg cursor-pointer transition-colors"
+                            className="text-emerald-700 hover:text-emerald-800 text-xs font-black bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-2.5 py-1 rounded-xl cursor-pointer transition-colors inline-flex items-center gap-1 shadow-2xs"
                           >
-                            ดูโปรไฟล์หมอ
+                            <Eye className="w-3.5 h-3.5" /> ดูโปรไฟล์หมอ
                           </button>
                         )}
                         <button 
@@ -1168,9 +1168,9 @@ export default function AdminPanel({
                       <td className="py-4 px-2 text-right">
                         <button
                           onClick={() => setSelectedStaffIdForDetail(staff.StaffID)}
-                          className="bg-sky-50 hover:bg-sky-100 text-sky-600 font-bold px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs border border-sky-200/60"
                         >
-                          <Eye className="w-3.5 h-3.5" /> ดูข้อมูลเต็ม
+                          <Eye className="w-3.5 h-3.5 text-sky-600" /> ดูโปรไฟล์หมอ & ตรวจเอกสาร
                         </button>
                       </td>
                     </tr>
@@ -1877,7 +1877,7 @@ export default function AdminPanel({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ค่าเดินทางเกินระยะต่อกม. (บาท)</label>
                 <input
@@ -1899,6 +1899,19 @@ export default function AdminPanel({
                   onChange={(e) => setFormSettings({ ...formSettings, commissionRate: parseFloat(e.target.value) || 0 })}
                   required
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">เครดิตขั้นต่ำเปิดรับงาน (CR)</label>
+                <input
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={formSettings.minCredit || 398}
+                  onChange={(e) => setFormSettings({ ...formSettings, minCredit: parseInt(e.target.value) || 398 })}
+                  required
+                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />
               </div>
             </div>

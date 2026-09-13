@@ -293,6 +293,22 @@ async function startServer() {
       };
       db.staff.push(newStaff);
       syncToGoogleSheet('INSERT', 'Staff', newStaff);
+      const staffDocData = {
+        DocID: `DOC-${newStaff.StaffID}`,
+        StaffID: newStaff.StaffID,
+        UserID: newStaff.UserID,
+        StaffName: newUser.Name,
+        Nickname: newStaff.Nickname,
+        Phone: newUser.Phone,
+        VerifyStatus: newStaff.VerifyStatus,
+        LicenseFile: newStaff.LicenseFile || '',
+        IdCardFile: newStaff.IdCardFile || '',
+        HouseRegFile: newStaff.HouseRegFile || '',
+        RegisteredAddress: newStaff.RegisteredAddress,
+        SubmittedDate: new Date().toISOString(),
+        Notes: 'เอกสารหลักฐานการสมัครพนักงานใหม่ (ใบอนุญาตนวด, บัตรประชาชน, ทะเบียนบ้าน)'
+      };
+      syncToGoogleSheet('INSERT', 'StaffDocuments', staffDocData);
 
       // Add welcome bonus credit transaction (398 credits = 1 free job)
       const welcomeTx = {
@@ -439,6 +455,22 @@ async function startServer() {
     syncToGoogleSheet('UPDATE', 'Users', user);
     if (staffDetails) {
       syncToGoogleSheet('UPDATE', 'Staff', staffDetails);
+      const staffDocData = {
+        DocID: `DOC-${staffDetails.StaffID}`,
+        StaffID: staffDetails.StaffID,
+        UserID: staffDetails.UserID,
+        StaffName: user.Name,
+        Nickname: staffDetails.Nickname,
+        Phone: user.Phone,
+        VerifyStatus: staffDetails.VerifyStatus,
+        LicenseFile: staffDetails.LicenseFile || '',
+        IdCardFile: staffDetails.IdCardFile || '',
+        HouseRegFile: staffDetails.HouseRegFile || '',
+        RegisteredAddress: staffDetails.RegisteredAddress || user.Address || '',
+        SubmittedDate: new Date().toISOString(),
+        Notes: 'พนักงานอัปเดตข้อมูลและเอกสารหลักฐานผ่านระบบ'
+      };
+      syncToGoogleSheet('UPDATE', 'StaffDocuments', staffDocData);
     }
     res.json({ success: true, user, staff: staffDetails });
   });
@@ -580,10 +612,29 @@ async function startServer() {
         TotalJobs: 0,
         OfferedServices: db.services.map(s => s.ServiceID),
         MaxJobDistance: 25,
-        Photos: []
+        Photos: Array.isArray(info.photos) ? info.photos : (newUser.ProfileImage ? [newUser.ProfileImage] : []),
+        LicenseFile: info.licenseFile || '',
+        IdCardFile: info.idCardFile || '',
+        HouseRegFile: info.houseRegFile || ''
       };
       db.staff.push(newStaff);
       syncToGoogleSheet('INSERT', 'Staff', newStaff);
+      const staffDocData = {
+        DocID: `DOC-${newStaff.StaffID}`,
+        StaffID: newStaff.StaffID,
+        UserID: newStaff.UserID,
+        StaffName: newUser.Name,
+        Nickname: newStaff.Nickname,
+        Phone: newUser.Phone,
+        VerifyStatus: newStaff.VerifyStatus,
+        LicenseFile: newStaff.LicenseFile,
+        IdCardFile: newStaff.IdCardFile,
+        HouseRegFile: newStaff.HouseRegFile,
+        RegisteredAddress: newStaff.RegisteredAddress,
+        SubmittedDate: new Date().toISOString(),
+        Notes: 'แอดมินสร้างพนักงานใหม่และบันทึกเอกสารหลักฐาน'
+      };
+      syncToGoogleSheet('INSERT', 'StaffDocuments', staffDocData);
 
       const welcomeTx = {
         TransactionID: generateId('TX'),
@@ -660,10 +711,30 @@ async function startServer() {
             TotalIncome: 0,
             TotalJobs: 0,
             OfferedServices: db.services.map(s => s.ServiceID),
-            MaxJobDistance: db.settings.searchRadius || 25
+            MaxJobDistance: db.settings.searchRadius || 25,
+            Photos: [user.ProfileImage].filter(Boolean),
+            LicenseFile: '',
+            IdCardFile: '',
+            HouseRegFile: ''
           };
           db.staff.push(staff);
           syncToGoogleSheet('INSERT', 'Staff', staff);
+          const staffDocData = {
+            DocID: `DOC-${staff.StaffID}`,
+            StaffID: staff.StaffID,
+            UserID: staff.UserID,
+            StaffName: user.Name,
+            Nickname: staff.Nickname,
+            Phone: user.Phone,
+            VerifyStatus: staff.VerifyStatus,
+            LicenseFile: staff.LicenseFile,
+            IdCardFile: staff.IdCardFile,
+            HouseRegFile: staff.HouseRegFile,
+            RegisteredAddress: staff.RegisteredAddress,
+            SubmittedDate: new Date().toISOString(),
+            Notes: 'เปลี่ยนสถานะเป็นพนักงานใหม่'
+          };
+          syncToGoogleSheet('INSERT', 'StaffDocuments', staffDocData);
 
           const welcomeTx = {
             TransactionID: generateId('TX'),
@@ -718,6 +789,7 @@ async function startServer() {
       const deletedStaff = db.staff[sIndex];
       db.staff.splice(sIndex, 1);
       syncToGoogleSheet('DELETE', 'Staff', { StaffID: deletedStaff.StaffID, UserID: id });
+      syncToGoogleSheet('DELETE', 'StaffDocuments', { StaffID: deletedStaff.StaffID, UserID: id });
     }
 
     // Remove user notifications
@@ -750,6 +822,7 @@ async function startServer() {
 
     saveDatabase(db);
     syncToGoogleSheet('DELETE', 'Staff', { StaffID: id, UserID: staff.UserID });
+    syncToGoogleSheet('DELETE', 'StaffDocuments', { StaffID: id, UserID: staff.UserID });
 
     res.json({ success: true, message: `ลบข้อมูลพนักงาน "${staff.Nickname}" เรียบร้อยแล้ว` });
   });
@@ -1010,7 +1083,8 @@ async function startServer() {
     const { 
       name, phone, email, address, province, district, subDistrict,
       nickname, gender, age, weight, height, experience, description, 
-      registeredAddress, offeredServices, maxJobDistance, verifyStatus, available, status
+      registeredAddress, offeredServices, maxJobDistance, verifyStatus, available, status,
+      licenseFile, idCardFile, houseRegFile, photos, profileImage
     } = req.body;
 
     const staffIndex = db.staff.findIndex(s => s.StaffID === id);
@@ -1031,6 +1105,10 @@ async function startServer() {
     if (maxJobDistance !== undefined) staff.MaxJobDistance = parseInt(maxJobDistance) || staff.MaxJobDistance;
     if (verifyStatus !== undefined) staff.VerifyStatus = verifyStatus;
     if (available !== undefined) staff.Available = available;
+    if (licenseFile !== undefined) staff.LicenseFile = licenseFile;
+    if (idCardFile !== undefined) staff.IdCardFile = idCardFile;
+    if (houseRegFile !== undefined) staff.HouseRegFile = houseRegFile;
+    if (photos !== undefined) staff.Photos = photos;
 
     // Update user record
     const userIndex = db.users.findIndex(u => u.UserID === staff.UserID);
@@ -1045,11 +1123,30 @@ async function startServer() {
       if (district !== undefined) user.District = district;
       if (subDistrict !== undefined) user.SubDistrict = subDistrict;
       if (status !== undefined) user.Status = status;
+      if (profileImage !== undefined) {
+        user.ProfileImage = profileImage;
+      }
       updatedUser = user;
     }
 
     saveDatabase(db);
     syncToGoogleSheet('UPDATE', 'Staff', staff);
+    const staffDocData = {
+      DocID: `DOC-${staff.StaffID}`,
+      StaffID: staff.StaffID,
+      UserID: staff.UserID,
+      StaffName: updatedUser?.Name || staff.Nickname,
+      Nickname: staff.Nickname,
+      Phone: updatedUser?.Phone || '',
+      VerifyStatus: staff.VerifyStatus,
+      LicenseFile: staff.LicenseFile || '',
+      IdCardFile: staff.IdCardFile || '',
+      HouseRegFile: staff.HouseRegFile || '',
+      RegisteredAddress: staff.RegisteredAddress || updatedUser?.Address || '',
+      SubmittedDate: new Date().toISOString(),
+      Notes: `อัปเดตข้อมูลและเอกสารหลักฐาน (${staff.VerifyStatus})`
+    };
+    syncToGoogleSheet('UPDATE', 'StaffDocuments', staffDocData);
     if (updatedUser) {
       syncToGoogleSheet('UPDATE', 'Users', updatedUser);
     }
@@ -1085,9 +1182,9 @@ async function startServer() {
     }
 
     if (available === 'ON') {
-      const minCredit = db.settings?.minCredit || 398;
+      const minCredit = Math.max(db.settings?.minCredit || 398, 398);
       if (db.staff[index].Credit < minCredit) {
-        return res.status(400).json({ error: `เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCredit} CR)` });
+        return res.status(400).json({ error: `เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCredit} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ` });
       }
     }
 
@@ -1128,6 +1225,23 @@ async function startServer() {
 
     saveDatabase(db);
     syncToGoogleSheet('UPDATE', 'Staff', db.staff[index]);
+    const staffUser = db.users.find(u => u.UserID === db.staff[index].UserID);
+    const staffDocData = {
+      DocID: `DOC-${db.staff[index].StaffID}`,
+      StaffID: db.staff[index].StaffID,
+      UserID: db.staff[index].UserID,
+      StaffName: staffUser?.Name || db.staff[index].Nickname,
+      Nickname: db.staff[index].Nickname,
+      Phone: staffUser?.Phone || '',
+      VerifyStatus: db.staff[index].VerifyStatus,
+      LicenseFile: db.staff[index].LicenseFile || '',
+      IdCardFile: db.staff[index].IdCardFile || '',
+      HouseRegFile: db.staff[index].HouseRegFile || '',
+      RegisteredAddress: db.staff[index].RegisteredAddress || staffUser?.Address || '',
+      SubmittedDate: new Date().toISOString(),
+      Notes: `อัปเดตสถานะการอนุมัติ: ${db.staff[index].VerifyStatus}`
+    };
+    syncToGoogleSheet('UPDATE', 'StaffDocuments', staffDocData);
     syncToGoogleSheet('INSERT', 'Notification', notif);
     res.json({ success: true, staff: db.staff[index] });
   });
@@ -1646,7 +1760,7 @@ async function startServer() {
             NotificationID: generateId('N'),
             UserID: staff.UserID,
             Title: "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว)",
-            Detail: `งาน #${booking.BookingID} เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่นะคะ`,
+            Detail: `งาน #${booking.BookingID} เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำ (${minCredit} เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่นะคะ`,
             ReadStatus: 'Unread' as const,
             CreatedDate: new Date().toISOString()
           };
@@ -2544,6 +2658,24 @@ async function startServer() {
         tables: {
           Users: db.users,
           Staff: db.staff,
+          StaffDocuments: db.staff.map(s => {
+            const u = db.users.find(user => user.UserID === s.UserID);
+            return {
+              DocID: `DOC-${s.StaffID}`,
+              StaffID: s.StaffID,
+              UserID: s.UserID,
+              StaffName: u?.Name || s.Nickname,
+              Nickname: s.Nickname,
+              Phone: u?.Phone || '',
+              VerifyStatus: s.VerifyStatus,
+              LicenseFile: s.LicenseFile || '',
+              IdCardFile: s.IdCardFile || '',
+              HouseRegFile: s.HouseRegFile || '',
+              RegisteredAddress: s.RegisteredAddress || u?.Address || '',
+              SubmittedDate: s.LastLocationUpdate || new Date().toISOString(),
+              Notes: `สถานะ: ${s.VerifyStatus} | ประสบการณ์: ${s.Experience} ปี`
+            };
+          }),
           Services: db.services,
           Booking: db.bookings,
           CreditTransaction: db.transactions,
@@ -2576,7 +2708,7 @@ async function startServer() {
 
       if (req.body?.token && req.body?.adminId) { db.settings = { ...db.settings, lineChannelAccessToken: req.body.token.trim(), lineAdminUserId: req.body.adminId.trim() }; saveDatabase(db); } res.json({ 
         success: true, 
-        message: 'ซิงค์ข้อมูลทั้งหมด 8 ตารางเข้า Google Sheets สำเร็จเรียบร้อยแล้ว!' 
+        message: 'ซิงค์ข้อมูลทั้งหมด 9 ตาราง (รวมเอกสารหลักฐานพนักงาน: ใบอนุญาต, บัตรประชาชน, ทะเบียนบ้าน) เข้า Google Sheets สำเร็จเรียบร้อยแล้ว!' 
       });
     } catch (err: any) {
       console.error('Failed to push to Google Apps Script:', err);

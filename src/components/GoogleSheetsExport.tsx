@@ -48,12 +48,33 @@ export default function GoogleSheetsExport({ rawDb, onShowToast }: Props) {
   };
 
   const handleDownloadCsv = (tableName: string) => {
-    if (!rawDb || !rawDb[tableName] || rawDb[tableName].length === 0) {
+    let rows = rawDb ? rawDb[tableName] : [];
+    if (tableName === 'StaffDocuments' && (!rows || rows.length === 0) && rawDb?.staff) {
+      rows = rawDb.staff.map((s: any) => {
+        const u = rawDb.users?.find((user: any) => user.UserID === s.UserID);
+        return {
+          DocID: `DOC-${s.StaffID}`,
+          StaffID: s.StaffID,
+          UserID: s.UserID,
+          StaffName: u?.Name || s.Nickname,
+          Nickname: s.Nickname,
+          Phone: u?.Phone || '',
+          VerifyStatus: s.VerifyStatus,
+          LicenseFile: s.LicenseFile || '',
+          IdCardFile: s.IdCardFile || '',
+          HouseRegFile: s.HouseRegFile || '',
+          RegisteredAddress: s.RegisteredAddress || u?.Address || '',
+          SubmittedDate: s.LastLocationUpdate || new Date().toISOString(),
+          Notes: `สถานะ: ${s.VerifyStatus}`
+        };
+      });
+    }
+
+    if (!rows || rows.length === 0) {
       onShowToast(`ตาราง ${tableName} ไม่มีข้อมูลสำหรับดาวน์โหลด`, 'info');
       return;
     }
 
-    const rows = rawDb[tableName];
     const headers = Object.keys(rows[0]);
     const csvContent = [
       headers.join(','),
@@ -99,7 +120,7 @@ export default function GoogleSheetsExport({ rawDb, onShowToast }: Props) {
             ระบบซิงค์และบันทึกข้อมูลเข้า Google Sheets (Google Sheets Auto-Sync)
           </h4>
           <p className="text-xs text-slate-500 font-semibold mt-1">
-            บันทึกข้อมูลลูกค้า, พนักงานนวด, รายการบริการ, การจอง, สลิปเติมเครดิต, รีวิว และการตั้งค่าลง Google Sheets อัตโนมัติ
+            บันทึกข้อมูลลูกค้า, พนักงานนวด, เอกสารหลักฐานสมัครงาน (ใบอนุญาต, บัตรประชาชน, ทะเบียนบ้าน), รายการบริการ, การจอง, สลิปเติมเครดิต, รีวิว และการตั้งค่าลง Google Sheets อัตโนมัติ
           </p>
         </div>
 
@@ -196,23 +217,31 @@ export default function GoogleSheetsExport({ rawDb, onShowToast }: Props) {
           หรือดาวน์โหลดไฟล์ตาราง (.CSV) เพื่อนำไปเปิดหรืออิมพอร์ตใน Google Sheets โดยตรง:
         </h5>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {rawDb && Object.keys(rawDb).map((tableKey) => (
-            <button
-              key={tableKey}
-              onClick={() => handleDownloadCsv(tableKey)}
-              className="bg-slate-50 hover:bg-slate-100 border border-slate-200 p-2.5 rounded-xl text-left transition-all flex items-center justify-between cursor-pointer group"
-            >
-              <div>
-                <span className="text-[11px] font-bold text-slate-800 capitalize block group-hover:text-sky-600">
-                  {tableKey}
-                </span>
-                <span className="text-[9px] text-slate-500 block">
-                  {Array.isArray(rawDb[tableKey]) ? `${rawDb[tableKey].length} รายการ` : 'การตั้งค่า'}
-                </span>
-              </div>
-              <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600" />
-            </button>
-          ))}
+          {rawDb && [...new Set([...Object.keys(rawDb), 'StaffDocuments'])].map((tableKey) => {
+            const isDocs = tableKey === 'StaffDocuments';
+            const count = isDocs 
+              ? (rawDb.staff ? rawDb.staff.length : 0)
+              : (Array.isArray(rawDb[tableKey]) ? rawDb[tableKey].length : 'การตั้งค่า');
+            return (
+              <button
+                key={tableKey}
+                onClick={() => handleDownloadCsv(tableKey)}
+                className={`border p-2.5 rounded-xl text-left transition-all flex items-center justify-between cursor-pointer group ${
+                  isDocs ? 'bg-amber-50/70 border-amber-200 hover:bg-amber-100/70' : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                }`}
+              >
+                <div>
+                  <span className={`text-[11px] font-bold capitalize block ${isDocs ? 'text-amber-900 group-hover:text-amber-700' : 'text-slate-800 group-hover:text-sky-600'}`}>
+                    {isDocs ? 'StaffDocuments (เอกสาร)' : tableKey}
+                  </span>
+                  <span className={`text-[9px] block ${isDocs ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}>
+                    {typeof count === 'number' ? `${count} รายการ` : count}
+                  </span>
+                </div>
+                <Download className={`w-3.5 h-3.5 ${isDocs ? 'text-amber-600 group-hover:text-amber-800' : 'text-slate-400 group-hover:text-emerald-600'}`} />
+              </button>
+            );
+          })}
         </div>
       </div>
 
