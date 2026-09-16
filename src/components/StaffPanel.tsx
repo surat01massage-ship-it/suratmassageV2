@@ -7,7 +7,7 @@ import {
   CheckCheck, RefreshCw, ZoomIn, AlertCircle, Zap, Bot, Download, QrCode, AlertTriangle,
   FileBadge, ShieldCheck, Home, FileText, Banknote, Receipt
 } from 'lucide-react';
-import { User, Staff, Booking, CreditTransaction, AppSettings } from '../types';
+import { User, Staff, Booking, CreditTransaction, AppSettings, DEFAULT_BLANK_AVATAR } from '../types';
 import InteractiveMap from './InteractiveMap';
 import { calculateDistance, formatDistance, formatDistanceCompact, getGoogleMapsDirectionsUrl } from '../utils/distance';
 import { getRealCurrentLocation, watchRealLocation } from '../utils/geolocation';
@@ -1582,8 +1582,8 @@ export default function StaffPanel({
               <div className="bg-white border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-3 overflow-hidden">
                   <img 
-                    src={ongoingBooking.CustomerProfileImage || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e'} 
-                    className="w-12 h-12 rounded-full border-2 border-amber-300 object-cover shrink-0" 
+                    src={ongoingBooking.CustomerProfileImage || DEFAULT_BLANK_AVATAR} 
+                    className="w-12 h-12 rounded-full border-2 border-amber-300 object-cover shrink-0 bg-slate-100" 
                     alt="Customer" 
                   />
                   <div className="overflow-hidden">
@@ -2898,7 +2898,7 @@ export default function StaffPanel({
               
               {/* Show Customer Details During Testing */}
               <div className="flex flex-col items-center gap-2 mt-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                <img src={incomingBooking.CustomerProfileImage || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e'} className="w-12 h-12 rounded-full border-2 border-sky-500 object-cover" alt="Customer" />
+                <img src={incomingBooking.CustomerProfileImage || DEFAULT_BLANK_AVATAR} className="w-12 h-12 rounded-full border-2 border-sky-500 object-cover bg-slate-100" alt="Customer" />
                 <div>
                   <h3 className="text-sm font-black text-slate-800">{incomingBooking.CustomerName}</h3>
                   {incomingBooking.CustomerPhone && (

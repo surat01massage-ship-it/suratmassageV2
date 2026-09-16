@@ -4,7 +4,7 @@ import {
   MapPin, Phone, Lock, Moon, Sun, Bell, Volume2, ShieldAlert, CheckCircle, Info,
   Camera, Upload, Plus, Trash2, Check, Image as ImageIcon, Link as LinkIcon
 } from 'lucide-react';
-import { User, Staff, AppSettings } from './types';
+import { User, Staff, AppSettings, DEFAULT_BLANK_AVATAR } from './types';
 import CustomerPanel from './components/CustomerPanel';
 import StaffPanel from './components/StaffPanel';
 import AdminPanel from './components/AdminPanel';
@@ -438,7 +438,7 @@ export default function App() {
 
       const finalProfileImage = currentRole === 'Staff'
         ? (regProfileImage || "")
-        : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150";
+        : (regProfileImage || DEFAULT_BLANK_AVATAR);
 
       const finalStaffPhotos = currentRole === 'Staff'
         ? (regPhotos.length > 0 ? regPhotos : (finalProfileImage ? [finalProfileImage] : []))
@@ -620,6 +620,7 @@ export default function App() {
                     onClick={() => {
                       setAuthMode('register_customer');
                       setRegRole('Customer');
+                      setRegProfileImage('');
                     }}
                     className="w-full bg-sky-500 hover:bg-sky-600 text-white font-black text-xs py-4 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                   >
@@ -733,7 +734,7 @@ export default function App() {
                 <div className="grid grid-cols-1 gap-3">
                   <button
                     type="button"
-                    onClick={() => { setAuthMode('register_customer'); setRegRole('Customer'); }}
+                    onClick={() => { setAuthMode('register_customer'); setRegRole('Customer'); setRegProfileImage(''); }}
                     className="flex items-center gap-4 bg-white hover:bg-sky-50/50 border border-slate-200 p-4 rounded-2xl cursor-pointer transition-all"
                   >
                     <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center shrink-0 text-xl">
@@ -826,6 +827,81 @@ export default function App() {
                     required
                     className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
                   />
+                </div>
+
+                {/* 🖼️ รูปโปรไฟล์ลูกค้า (ไม่บังคับ - จะเพิ่มหรือไม่เพิ่มก็ได้ หากไม่เพิ่มจะใช้รูปคนเปล่าๆ) */}
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      รูปโปรไฟล์ <span className="text-slate-400 font-normal lowercase">(ไม่บังคับ - เพิ่มหรือไม่เพิ่มก็ได้)</span>
+                    </label>
+                    <span className={`text-[10px] font-semibold ${regProfileImage ? 'text-sky-600' : 'text-slate-400'}`}>
+                      {regProfileImage ? '✓ เลือกรูปภาพแล้ว' : 'รูปคนเปล่าๆ (ค่าเริ่มต้น)'}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex items-center gap-3.5">
+                    <div className="relative shrink-0">
+                      <img 
+                        src={regProfileImage || DEFAULT_BLANK_AVATAR} 
+                        alt="Customer Avatar Preview" 
+                        className={`w-16 h-16 rounded-full object-cover shadow-2xs border-2 ${
+                          regProfileImage ? 'border-sky-500 ring-2 ring-sky-200' : 'border-slate-300 bg-slate-100'
+                        }`}
+                      />
+                      {regProfileImage ? (
+                        <span className="absolute bottom-0 right-0 bg-sky-500 text-white p-0.5 rounded-full border-2 border-white shadow">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      ) : (
+                        <span className="absolute bottom-0 right-0 bg-slate-400 text-white p-0.5 rounded-full border-2 border-white shadow">
+                          <UserIcon className="w-3 h-3" />
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs font-bold text-slate-800 truncate">
+                        {regName ? `คุณ ${regName}` : 'รูปโปรไฟล์สำหรับใช้งาน'}
+                      </p>
+                      <p className="text-[10px] text-slate-500 leading-snug">
+                        {regProfileImage 
+                          ? 'จะแสดงรูปโปรไฟล์นี้เมื่อเรียกบริการนวด' 
+                          : 'หากไม่ต้องการเพิ่ม ระบบจะแสดงเป็นรูปคนเปล่าๆ ให้ค่ะ'}
+                      </p>
+
+                      <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                        <label className="relative inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all shadow-2xs">
+                          <Camera className="w-3 h-3 text-sky-600" />
+                          <span>{isCompressingPhoto ? "กำลังประมวลผล..." : (regProfileImage ? "เปลี่ยนรูปโปรไฟล์" : "ถ่ายรูป / เลือกรูปโปรไฟล์")}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={isCompressingPhoto}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleRegPhotoUpload(file, true);
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                        </label>
+
+                        {regProfileImage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRegProfileImage('');
+                              showToast("เปลี่ยนเป็นรูปคนเปล่าๆ เรียบร้อยค่ะ", "info");
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>ใช้รูปคนเปล่าๆ</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <button
@@ -1320,7 +1396,7 @@ export default function App() {
                 <div className="pt-2 text-center space-y-1.5">
                   <button
                     type="button"
-                    onClick={() => { setAuthMode('register_customer'); setRegRole('Customer'); }}
+                    onClick={() => { setAuthMode('register_customer'); setRegRole('Customer'); setRegProfileImage(''); }}
                     className="text-[11px] font-bold text-sky-600 hover:text-sky-700 transition-colors cursor-pointer block w-full"
                   >
                     ต้องการสมัครเป็นลูกค้าทั่วไป? คลิกที่นี่

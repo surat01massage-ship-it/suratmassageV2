@@ -3,13 +3,14 @@ import {
   MapPin, Phone, Star, Sparkles, MessageSquare, Clock, Shield, CheckCircle, 
   ChevronRight, AlertTriangle, X, ShoppingBag, Send, ListCollapse, Award, Compass,
   Navigation, ExternalLink, Filter, Search, Eye, EyeOff, Check,
-  ShieldCheck, Home, ZoomIn, Banknote
+  ShieldCheck, Home, ZoomIn, Banknote, Camera, Upload, Trash2
 } from 'lucide-react';
-import { User, Staff, Service, Booking, Review, Notification, AppSettings } from '../types';
+import { User, Staff, Service, Booking, Review, Notification, AppSettings, DEFAULT_BLANK_AVATAR } from '../types';
 import InteractiveMap from './InteractiveMap';
 import MobileBottomNav, { CustomerNavTab } from './MobileBottomNav';
 import { calculateDistance, formatDistance, formatDistanceCompact, calculateTravelFee, getGoogleMapsDirectionsUrl } from '../utils/distance';
 import { getRealCurrentLocation } from '../utils/geolocation';
+import { compressImageFile } from '../utils/imageUtils';
 
 interface CustomerPanelProps {
   currentUser: User | null;
@@ -78,6 +79,22 @@ export default function CustomerPanel({
   const [editPhone, setEditPhone] = useState("");
   const [editProfileImage, setEditProfileImage] = useState("");
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+
+  const handleProfilePhotoUpload = async (file: File) => {
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    onShowToast("🖼️ กำลังประมวลผลรูปภาพ...", "info");
+    try {
+      const base64 = await compressImageFile(file);
+      setEditProfileImage(base64);
+      onShowToast("📸 อัปโหลดรูปภาพโปรไฟล์เรียบร้อยแล้ว", "success");
+    } catch (e: any) {
+      onShowToast(e.message || "ไม่สามารถอัปโหลดรูปภาพได้", "error");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   const startEditProfile = () => {
     if (currentUser) {
@@ -1544,6 +1561,54 @@ export default function CustomerPanel({
             {isEditingProfile ? (
               <div className="w-full space-y-5">
                 
+                {/* Edit Profile Image */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">
+                    รูปโปรไฟล์ <span className="text-slate-400 font-normal lowercase">(หรือใช้รูปคนเปล่าๆ)</span>
+                  </label>
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 flex items-center gap-3.5">
+                    <img 
+                      src={editProfileImage || DEFAULT_BLANK_AVATAR} 
+                      alt="Profile Preview"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-sky-400 shadow-2xs bg-slate-100 shrink-0" 
+                    />
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <p className="text-xs font-bold text-slate-800">
+                        {editProfileImage ? 'รูปโปรไฟล์ที่ตั้งไว้' : 'รูปคนเปล่าๆ (ค่าเริ่มต้น)'}
+                      </p>
+                      <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                        <label className="relative inline-flex items-center gap-1 text-[10px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all">
+                          <Camera className="w-3 h-3 text-sky-600" />
+                          <span>{isUploadingPhoto ? "กำลังประมวลผล..." : (editProfileImage ? "เปลี่ยนรูป" : "ถ่ายรูป / อัปโหลด")}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={isUploadingPhoto}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) handleProfilePhotoUpload(file);
+                            }}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          />
+                        </label>
+                        {editProfileImage && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditProfileImage('');
+                              onShowToast("เปลี่ยนเป็นรูปคนเปล่าๆ เรียบร้อยค่ะ", "info");
+                            }}
+                            className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>ใช้รูปคนเปล่าๆ</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
 
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 block mb-1">ชื่อ-นามสกุล</label>
@@ -1584,7 +1649,13 @@ export default function CustomerPanel({
               </div>
             ) : (
               <>
-                <div className="w-20 h-20 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center text-3xl font-black shadow-sm mb-4">{currentUser.Name ? currentUser.Name[0] : "ล"}</div>
+                <div className="relative mb-4">
+                  <img 
+                    src={currentUser.ProfileImage || DEFAULT_BLANK_AVATAR} 
+                    alt={currentUser.Name}
+                    className="w-20 h-20 rounded-full object-cover border-2 border-sky-400 shadow-md bg-slate-100"
+                  />
+                </div>
                 <h3 className="text-xl font-black text-slate-900">{currentUser.Name}</h3>
                 <span className="bg-sky-100 text-sky-700 text-xs font-bold px-3 py-1 rounded-full mt-2">ลูกค้าสมาชิก</span>
                 

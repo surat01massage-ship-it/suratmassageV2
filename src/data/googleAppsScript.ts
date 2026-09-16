@@ -566,7 +566,7 @@ function handleRegister(payload) {
     SubDistrict: payload.subDistrict || "",
     Latitude: payload.latitude || 9.138244,
     Longitude: payload.longitude || 99.321748,
-    ProfileImage: payload.profileImage || "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150",
+    ProfileImage: payload.profileImage || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%23F1F5F9'/%3E%3Ccircle cx='64' cy='52' r='24' fill='%2394A3B8'/%3E%3Cpath fill='%2394A3B8' d='M64 82c-23.2 0-42 14.5-45 33.2 10.7 7.9 23.9 12.8 38.3 12.8 17 0 32.3-6.4 43.8-16.9C97.5 95 78.8 82 64 82z'/%3E%3C/svg%3E",
     Role: payload.role, // Customer / Staff
     Status: "Active",
     CreatedDate: new Date().toISOString()

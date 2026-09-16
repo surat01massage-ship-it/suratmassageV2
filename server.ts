@@ -4,7 +4,7 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { getDatabase, saveDatabase, DatabaseSchema, defaultSettings } from './server/db';
-import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings } from './src/types';
+import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings, DEFAULT_BLANK_AVATAR } from './src/types';
 import { scanSlipQRCode, DecodedSlipQR } from './server/slipQrScanner';
 
 // Simple unique ID generator
@@ -250,7 +250,7 @@ async function startServer() {
       SubDistrict: subDistrict || '',
       Latitude: parseFloat(latitude) || 9.138244,
       Longitude: parseFloat(longitude) || 99.321748,
-      ProfileImage: req.body.profileImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=60',
+      ProfileImage: req.body.profileImage || DEFAULT_BLANK_AVATAR,
       Role: role,
       Status: 'Active',
       CreatedDate: new Date().toISOString()
@@ -579,7 +579,7 @@ async function startServer() {
       SubDistrict: subDistrict || '',
       Latitude: parseFloat(latitude) || 9.138244,
       Longitude: parseFloat(longitude) || 99.321748,
-      ProfileImage: req.body.profileImage || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=60',
+      ProfileImage: req.body.profileImage || DEFAULT_BLANK_AVATAR,
       Role: userRole,
       Status: 'Active',
       CreatedDate: new Date().toISOString()
@@ -1572,7 +1572,7 @@ async function startServer() {
         ...b,
         CustomerName: customer ? customer.Name : 'ลูกค้า',
         CustomerPhone: customer ? customer.Phone : '',
-        CustomerProfileImage: customer ? customer.ProfileImage : '',
+        CustomerProfileImage: customer ? (customer.ProfileImage || DEFAULT_BLANK_AVATAR) : DEFAULT_BLANK_AVATAR,
         StaffNickname: staff ? staff.Nickname : '',
         StaffPhone: staffUser ? staffUser.Phone : '',
         StaffProfileImage: staffUser ? staffUser.ProfileImage : '',
@@ -2515,7 +2515,7 @@ async function startServer() {
       return {
         ...r,
         CustomerName: customer ? customer.Name : 'ลูกค้า',
-        CustomerProfileImage: customer ? customer.ProfileImage : '',
+        CustomerProfileImage: customer ? (customer.ProfileImage || DEFAULT_BLANK_AVATAR) : DEFAULT_BLANK_AVATAR,
         StaffNickname: staff ? staff.Nickname : 'พนักงาน'
       };
     }).sort((a, b) => new Date(b.CreatedDate).getTime() - new Date(a.CreatedDate).getTime());
