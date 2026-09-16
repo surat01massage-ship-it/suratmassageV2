@@ -161,6 +161,7 @@ async function sendLineNotification(message: string) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`
       },
+      signal: AbortSignal.timeout(4000),
       body: JSON.stringify({
         to: adminId.trim(),
         messages: [{ type: 'text', text: message }]
@@ -190,6 +191,7 @@ async function syncToGoogleSheet(action: 'INSERT' | 'UPDATE' | 'DELETE' | 'SYNC_
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       redirect: 'follow',
+      signal: AbortSignal.timeout(4000),
       body: JSON.stringify({
         action,
         table,
@@ -1896,18 +1898,6 @@ async function startServer() {
           };
           db.notifications.push(notif);
           syncToGoogleSheet('INSERT', 'Notification', notif);
-
-          // If credit < minCredit and no other active jobs, turn off availability
-          const minCredit = db.settings?.minCredit || 398;
-          const otherActive = db.bookings.some(b => 
-            b.StaffID === staffObj.StaffID && 
-            b.BookingID !== booking.BookingID && 
-            (b.Status === 'Accepted' || b.Status === 'Working')
-          );
-          if (!otherActive && staffObj.Credit < minCredit && staffObj.Available === 'ON') {
-            staffObj.Available = 'OFF';
-            syncToGoogleSheet('UPDATE', 'Staff', staffObj);
-          }
         }
       }
     }

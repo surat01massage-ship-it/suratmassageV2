@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   DollarSign, Clock, Star, MapPin, CheckCircle, Bell, History, TrendingUp, 
   User as UserIcon, LogOut, Check, X, ShieldAlert, CreditCard, ChevronRight, Upload,
@@ -104,6 +104,8 @@ export default function StaffPanel({
   const [cancelReasonInput, setCancelReasonInput] = useState('');
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const isFetchingStaffDataRef = useRef(false);
+  const isUpdatingStatusRef = useRef(false);
 
   // Countdown timer for incoming offer
   const [countdown, setCountdown] = useState(30);
@@ -290,64 +292,79 @@ export default function StaffPanel({
 
   const fetchStaffData = async () => {
     if (!staff) return;
+    if (isFetchingStaffDataRef.current) return;
+    isFetchingStaffDataRef.current = true;
+
     try {
-      // 0. Fetch latest staff profile data from server to keep Credit, Jobs, Income 100% accurate
-      try {
-        const staffRes = await fetch(`/api/staff/${staff.StaffID}/details`);
-        if (staffRes.ok) {
-          const staffDetails = await staffRes.json();
-          if (staffDetails.staff) {
-            onUpdateStaffData(staffDetails.staff);
+      // Parallelize requests to eliminate waterfall delay
+      const [staffRes, bRes, txRes] = await Promise.all([
+        fetch(`/api/staff/${staff.StaffID}/details`, { signal: AbortSignal.timeout(5000) }).catch(() => null),
+        fetch('/api/bookings', { signal: AbortSignal.timeout(5000) }).catch(() => null),
+        fetch('/api/credits/transactions', { signal: AbortSignal.timeout(5000) }).catch(() => null)
+      ]);
+
+      // 0. Update staff details
+      if (staffRes && staffRes.ok) {
+        const staffDetails = await staffRes.json().catch(() => null);
+        if (staffDetails?.staff) {
+          onUpdateStaffData(staffDetails.staff);
+        }
+      }
+
+      // 1. Update bookings and alerts
+      if (bRes && bRes.ok) {
+        const bData = await bRes.json().catch(() => []);
+        if (Array.isArray(bData)) {
+          const staffJobs = bData.filter((b: any) => b.StaffID === staff.StaffID);
+          setBookings(staffJobs);
+
+          // 2. Identify Incoming Booking (Status Waiting, offered to this Staff specifically)
+          const incoming = bData.find((b: any) => 
+            b.StaffID === staff.StaffID && 
+            b.Status === 'Waiting'
+          );
+          
+          if (incoming) {
+            if (!incomingBooking || incomingBooking.BookingID !== incoming.BookingID) {
+              // Start energetic repeating ringtone alert (Grab/LineMan style) + mobile vibration
+              startJobAlertRingtone({
+                title: `🔔 มีงานนวดใหม่เรียกตัวด่วน (${incoming.ServiceName})!`,
+                message: `ลูกค้า ${incoming.CustomerName} เรียกงาน รายได้ ฿${incoming.NetIncome || incoming.TotalPrice} บาท`
+              });
+              if (onPlayNotificationSound) onPlayNotificationSound();
+              onShowToast(`🚨 มีงานนวดใหม่เรียกตัวด่วน! ${incoming.ServiceName} จากคุณ ${incoming.CustomerName}`, "success");
+              setCountdown(30); // reset timer
+              setIncomingBooking(incoming);
+            }
+          } else {
+            if (incomingBooking) {
+              stopJobAlertRingtone();
+              setIncomingBooking(null);
+            }
+          }
+
+          // 3. Identify Ongoing active booking (Only if user is not actively executing status button action)
+          if (!isUpdatingStatusRef.current) {
+            const ongoing = staffJobs.find((b: any) => 
+              b.Status === 'Accepted' || b.Status === 'Working'
+            );
+            setOngoingBooking(ongoing || null);
           }
         }
-      } catch (err) {
-        console.warn("Could not sync staff details:", err);
       }
 
-      // 1. Fetch Bookings list
-      const bRes = await fetch('/api/bookings');
-      const bData = await bRes.json();
-      const staffJobs = bData.filter((b: any) => b.StaffID === staff.StaffID);
-      setBookings(staffJobs);
-
-      // 2. Identify Incoming Booking (Status Waiting, offered to this Staff specifically)
-      const incoming = bData.find((b: any) => 
-        b.StaffID === staff.StaffID && 
-        b.Status === 'Waiting'
-      );
-      
-      if (incoming) {
-        if (!incomingBooking || incomingBooking.BookingID !== incoming.BookingID) {
-          // Start energetic repeating ringtone alert (Grab/LineMan style) + mobile vibration
-          startJobAlertRingtone({
-            title: `🔔 มีงานนวดใหม่เรียกตัวด่วน (${incoming.ServiceName})!`,
-            message: `ลูกค้า ${incoming.CustomerName} เรียกงาน รายได้ ฿${incoming.NetIncome || incoming.TotalPrice} บาท`
-          });
-          if (onPlayNotificationSound) onPlayNotificationSound();
-          onShowToast(`🚨 มีงานนวดใหม่เรียกตัวด่วน! ${incoming.ServiceName} จากคุณ ${incoming.CustomerName}`, "success");
-          setCountdown(30); // reset timer
-          setIncomingBooking(incoming);
-        }
-      } else {
-        if (incomingBooking) {
-          stopJobAlertRingtone();
-          setIncomingBooking(null);
+      // 4. Update Credit Transactions
+      if (txRes && txRes.ok) {
+        const txData = await txRes.json().catch(() => []);
+        if (Array.isArray(txData)) {
+          setTransactions(txData.filter((t: any) => t.StaffID === staff.StaffID));
         }
       }
-
-      // 3. Identify Ongoing active booking (Accepted or Working)
-      const ongoing = staffJobs.find((b: any) => 
-        b.Status === 'Accepted' || b.Status === 'Working'
-      );
-      setOngoingBooking(ongoing || null);
-
-      // 4. Fetch Credit Transactions
-      const txRes = await fetch('/api/credits/transactions');
-      const txData = await txRes.json();
-      setTransactions(txData.filter((t: any) => t.StaffID === staff.StaffID));
 
     } catch (e) {
-      console.error(e);
+      console.error("fetchStaffData error:", e);
+    } finally {
+      isFetchingStaffDataRef.current = false;
     }
   };
 
@@ -417,46 +434,6 @@ export default function StaffPanel({
       if (unwatch) unwatch();
     };
   }, [staff?.Available, staff?.StaffID, !!ongoingBooking]);
-
-  // Auto turn-off availability if credit is insufficient ONLY when staff has NO active/ongoing jobs
-  useEffect(() => {
-    const minCredit = Math.max(settings?.minCredit || 398, 398);
-
-    // If staff is not online or has sufficient credit (> 0 and >= minCredit), do nothing
-    if (!staff || staff.Available !== 'ON' || (staff.Credit >= minCredit && staff.Credit > 0)) {
-      return;
-    }
-
-    // Do NOT turn off if staff is currently working on an ongoing job (Accepted or Working)
-    // or has an incoming offer, or has ANY remaining active job!
-    const hasActiveJob = 
-      Boolean(ongoingBooking && (ongoingBooking.Status === 'Accepted' || ongoingBooking.Status === 'Working')) ||
-      Boolean(incomingBooking && incomingBooking.Status === 'Waiting') ||
-      bookings.some((b: any) => b.Status === 'Accepted' || b.Status === 'Working');
-
-    if (hasActiveJob) {
-      return;
-    }
-
-    const turnOff = async () => {
-      try {
-        const res = await fetch('/api/staff/availability', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ staffId: staff.StaffID, available: 'OFF', onlyIfNoActiveJobs: true })
-        });
-        if (res.ok) {
-          const resData = await res.json();
-          if (resData.success && resData.staff?.Available === 'OFF') {
-            onUpdateStaffData({ ...staff, Available: 'OFF' });
-          }
-        }
-      } catch (e) {
-        console.error("Failed to auto turn off availability:", e);
-      }
-    };
-    turnOff();
-  }, [staff?.Credit, staff?.Available, settings?.minCredit, ongoingBooking, incomingBooking, bookings]);
 
   // Toggle online/offline status
   const handleToggleOnline = async () => {
@@ -605,21 +582,34 @@ export default function StaffPanel({
           TotalJobs: (staff.TotalJobs || 0) + 1
         });
       }
-      await fetchStaffData();
+      fetchStaffData();
     } catch (e: any) {
       onShowToast(e.message, "error");
     }
   };
 
-  // Advance ongoing work status
+  // Advance ongoing work status (Instant response, zero lag, no hanging)
   const handleUpdateOngoingStatus = async (actionName: 'start_travel' | 'complete') => {
-    if (!ongoingBooking) return;
+    if (!ongoingBooking || isUpdatingStatus) return;
     setIsUpdatingStatus(true);
+    isUpdatingStatusRef.current = true;
+
+    const previousOngoing = ongoingBooking;
+    const bookingId = ongoingBooking.BookingID;
+
+    // 1. Optimistic instant response for "start_travel"
+    if (actionName === 'start_travel') {
+      const optimisticBooking = { ...previousOngoing, Status: 'Working' as const };
+      setOngoingBooking(optimisticBooking);
+      setBookings(prev => prev.map(b => b.BookingID === bookingId ? optimisticBooking : b));
+      onShowToast("🛵 อัปเดตสถานะ: พนักงานนวดกำลังเดินทางไปพบบ้านลูกค้าแล้วค่ะ", "info");
+    }
 
     try {
-      const res = await fetch(`/api/bookings/${ongoingBooking.BookingID}/action`, {
+      const res = await fetch(`/api/bookings/${bookingId}/action`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8000),
         body: JSON.stringify({
           action: actionName,
           staffId: staff?.StaffID
@@ -627,10 +617,9 @@ export default function StaffPanel({
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || 'ไม่สามารถอัปเดตสถานะได้');
 
       if (actionName === 'start_travel') {
-        onShowToast("🛵 อัปเดตสถานะ: พนักงานนวดกำลังเดินทางไปพบบ้านลูกค้าแล้วค่ะ", "info");
         if (data.booking) {
           setOngoingBooking(data.booking);
           setBookings(prev => prev.map(b => b.BookingID === data.booking.BookingID ? data.booking : b));
@@ -639,7 +628,7 @@ export default function StaffPanel({
           onUpdateStaffData(data.staff);
         }
       } else {
-        const completedBooking = data.booking || { ...ongoingBooking, Status: 'Completed', PaymentStatus: 'Paid' };
+        const completedBooking = data.booking || { ...previousOngoing, Status: 'Completed', PaymentStatus: 'Paid' };
         setBookings(prev => prev.map(b => b.BookingID === completedBooking.BookingID ? completedBooking : b));
 
         // Check if there are other active jobs remaining for this staff
@@ -652,7 +641,7 @@ export default function StaffPanel({
         const minCredit = Math.max(settings?.minCredit || 398, 398);
         const finalStaff = data.staff || (staff ? {
           ...staff,
-          TotalIncome: staff.TotalIncome + (ongoingBooking.NetIncome || ongoingBooking.TotalPrice),
+          TotalIncome: staff.TotalIncome + (previousOngoing.NetIncome || previousOngoing.TotalPrice),
           TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
         } : null);
 
@@ -682,11 +671,22 @@ export default function StaffPanel({
           }
         }
       }
-      await fetchStaffData();
+
+      // Sync latest server state in background without blocking the UI
+      setTimeout(() => {
+        fetchStaffData();
+      }, 300);
+
     } catch (e: any) {
-      onShowToast(e.message, "error");
+      // Revert optimistic state if request failed
+      if (actionName === 'start_travel') {
+        setOngoingBooking(previousOngoing);
+        setBookings(prev => prev.map(b => b.BookingID === bookingId ? previousOngoing : b));
+      }
+      onShowToast(e.message || 'เกิดข้อผิดพลาดในการอัปเดตสถานะ', "error");
     } finally {
       setIsUpdatingStatus(false);
+      isUpdatingStatusRef.current = false;
     }
   };
 
