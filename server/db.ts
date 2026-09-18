@@ -51,7 +51,10 @@ export const defaultSettings: AppSettings = {
   bankName: "ธนาคารกสิกรไทย",
   bankAccount: "123-4-56789-0",
   bankAccountName: "บจก. สบายดี มาสสาจ",
-  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg",
+  lineChannelAccessToken: "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=",
+  lineAdminUserId: "Cf544171f0f9753863ade1ddd1acd67a7",
+  enableLineAdminNotify: true
 };
 
 const defaultServices: Service[] = [

@@ -1,5 +1,6 @@
 import express from 'express';
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -148,8 +149,15 @@ Carefully inspect this image and extract verification data:
 async function sendLineNotification(message: string) {
   try {
     const db = getDatabase();
-    const dbToken = (db.settings?.lineChannelAccessToken || '').trim(); const envToken = (process.env.LINE_CHANNEL_ACCESS_TOKEN || '').trim(); const token = dbToken ? dbToken : envToken;
-    const dbAdminId = (db.settings?.lineAdminUserId || '').trim(); const envAdminId = (process.env.LINE_ADMIN_USER_ID || '').trim(); const adminId = dbAdminId ? dbAdminId : envAdminId;
+    const dbToken = (db.settings?.lineChannelAccessToken || '').trim();
+    const envToken = (process.env.LINE_CHANNEL_ACCESS_TOKEN || '').trim();
+    const token = dbToken || envToken || 'b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=';
+    
+    let adminId = (db.settings?.lineAdminUserId || '').trim();
+    if (!adminId || adminId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+      const envId = (process.env.LINE_ADMIN_USER_ID || '').trim();
+      adminId = (envId && envId !== 'Cda36ab1f3de2811e584a5b62d652a97d') ? envId : 'Cf544171f0f9753863ade1ddd1acd67a7';
+    }
     
     if (!token || !adminId) {
       return;
@@ -903,15 +911,28 @@ async function startServer() {
   // 3. Settings APIs
   app.get('/api/settings', (req, res) => {
     const db = getDatabase();
-    res.json(db.settings);
+    const settings = { ...db.settings };
+    if (!settings.lineChannelAccessToken) {
+      settings.lineChannelAccessToken = (process.env.LINE_CHANNEL_ACCESS_TOKEN || 'b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=').trim();
+    }
+    if (!settings.lineAdminUserId || settings.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+      const envAdmin = (process.env.LINE_ADMIN_USER_ID || '').trim();
+      settings.lineAdminUserId = (envAdmin && envAdmin !== 'Cda36ab1f3de2811e584a5b62d652a97d') ? envAdmin : 'Cf544171f0f9753863ade1ddd1acd67a7';
+    }
+    res.json(settings);
   });
 
   app.put('/api/settings', (req, res) => {
     const db = getDatabase();
     const isCustom = req.body?.isCustomized !== undefined ? req.body.isCustomized : true;
+    let newAdminId = (req.body?.lineAdminUserId || db.settings?.lineAdminUserId || '').trim();
+    if (newAdminId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+      newAdminId = 'Cf544171f0f9753863ade1ddd1acd67a7';
+    }
     db.settings = {
       ...db.settings,
       ...req.body,
+      lineAdminUserId: newAdminId,
       isCustomized: isCustom,
       updatedAt: req.body?.updatedAt || new Date().toISOString()
     };
@@ -2749,8 +2770,11 @@ async function startServer() {
   // Test LINE Push Notification to Admin (Verify that only Admin receives message)
   app.post('/api/admin/test-line-notification', async (req, res) => {
     const db = getDatabase();
-    const token = (req.body?.token || process.env.LINE_CHANNEL_ACCESS_TOKEN || db.settings?.lineChannelAccessToken || '').trim();
-    const adminId = (req.body?.adminId || process.env.LINE_ADMIN_USER_ID || db.settings?.lineAdminUserId || '').trim();
+    let token = (req.body?.token || db.settings?.lineChannelAccessToken || process.env.LINE_CHANNEL_ACCESS_TOKEN || 'b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=').trim();
+    let adminId = (req.body?.adminId || db.settings?.lineAdminUserId || process.env.LINE_ADMIN_USER_ID || 'Cf544171f0f9753863ade1ddd1acd67a7').trim();
+    if (adminId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+      adminId = 'Cf544171f0f9753863ade1ddd1acd67a7';
+    }
 
     if (!token || !adminId) {
       return res.status(400).json({ 

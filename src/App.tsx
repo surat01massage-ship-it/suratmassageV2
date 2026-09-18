@@ -82,7 +82,10 @@ const defaultAppSettings: AppSettings = {
   bankName: "ธนาคารกสิกรไทย",
   bankAccount: "123-4-56789-0",
   bankAccountName: "บจก. สบายดี มาสสาจ",
-  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg",
+  lineChannelAccessToken: "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=",
+  lineAdminUserId: "Cf544171f0f9753863ade1ddd1acd67a7",
+  enableLineAdminNotify: true
 };
 
 const getPersistedSettings = (): AppSettings => {
@@ -95,6 +98,13 @@ const getPersistedSettings = (): AppSettings => {
           const merged = { ...defaultAppSettings, ...parsed };
           if (!merged.minCredit || merged.minCredit < 398) {
             merged.minCredit = 398;
+          }
+          // Prevent bouncing back to old test group
+          if (!merged.lineAdminUserId || merged.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+            merged.lineAdminUserId = 'Cf544171f0f9753863ade1ddd1acd67a7';
+          }
+          if (!merged.lineChannelAccessToken) {
+            merged.lineChannelAccessToken = defaultAppSettings.lineChannelAccessToken;
           }
           return merged;
         }
@@ -241,6 +251,16 @@ export default function App() {
           if (localStr) {
             try {
               const localSettings: AppSettings = JSON.parse(localStr);
+              // Clean up old test group ID from local storage
+              if (localSettings.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+                localSettings.lineAdminUserId = 'Cf544171f0f9753863ade1ddd1acd67a7';
+                localStorage.setItem('sabaidee_app_settings', JSON.stringify(localSettings));
+              }
+              if (!localSettings.lineChannelAccessToken) {
+                localSettings.lineChannelAccessToken = defaultAppSettings.lineChannelAccessToken;
+                localStorage.setItem('sabaidee_app_settings', JSON.stringify(localSettings));
+              }
+
               // If local settings were customized by admin and server returned uncustomized or older defaults
               if (localSettings.isCustomized && !serverData.isCustomized) {
                 console.log("Restoring customized settings from localStorage to server...");
@@ -263,6 +283,12 @@ export default function App() {
 
           if (!serverData.minCredit || serverData.minCredit < 398) {
             serverData.minCredit = 398;
+          }
+          if (serverData.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
+            serverData.lineAdminUserId = 'Cf544171f0f9753863ade1ddd1acd67a7';
+          }
+          if (!serverData.lineChannelAccessToken) {
+            serverData.lineChannelAccessToken = defaultAppSettings.lineChannelAccessToken;
           }
           setSettings(serverData);
           try {
