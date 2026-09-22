@@ -50,6 +50,23 @@
       "Role": "Staff",
       "Status": "Active",
       "CreatedDate": "2026-09-08T08:26:40.273Z"
+    },
+    {
+      "UserID": "U347114",
+      "Name": "ทดสอบ แอดมินอนุมัติ",
+      "Phone": "0899990001",
+      "PasswordHash": "pass",
+      "Email": "",
+      "Address": "",
+      "Province": "",
+      "District": "",
+      "SubDistrict": "",
+      "Latitude": 9.138244,
+      "Longitude": 99.321748,
+      "ProfileImage": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%23F1F5F9'/%3E%3Ccircle cx='64' cy='52' r='24' fill='%2394A3B8'/%3E%3Cpath fill='%2394A3B8' d='M64 82c-23.2 0-42 14.5-45 33.2 10.7 7.9 23.9 12.8 38.3 12.8 17 0 32.3-6.4 43.8-16.9C97.5 95 78.8 82 64 82z'/%3E%3C/svg%3E",
+      "Role": "Staff",
+      "Status": "Active",
+      "CreatedDate": "2026-09-22T07:35:04.801Z"
     }
   ],
   "staff": [
@@ -123,6 +140,40 @@
       "LicenseFile": "https://images.unsplash.com/photo-1589330694653-dad6d3240a2b?w=1000&auto=format&fit=crop&q=80",
       "IdCardFile": "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1000&auto=format&fit=crop&q=80",
       "HouseRegFile": "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=1000&auto=format&fit=crop&q=80"
+    },
+    {
+      "StaffID": "SFT738787",
+      "UserID": "U347114",
+      "Nickname": "หมอทดสอบ",
+      "Gender": "Female",
+      "Age": 28,
+      "Weight": 50,
+      "Height": 160,
+      "RegisteredAddress": "",
+      "Experience": 2,
+      "Description": "ยินดีให้บริการนวดเพื่อสุขภาพค่ะ",
+      "Rating": 5,
+      "ReviewCount": 0,
+      "Credit": 398,
+      "Available": "ON",
+      "VerifyStatus": "Approved",
+      "CurrentLatitude": 9.138244,
+      "CurrentLongitude": 99.321748,
+      "LastLocationUpdate": "2026-09-22T07:35:04.860Z",
+      "TotalIncome": 0,
+      "TotalJobs": 0,
+      "OfferedServices": [
+        "S001",
+        "S002",
+        "S003"
+      ],
+      "MaxJobDistance": 25,
+      "Photos": [
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%23F1F5F9'/%3E%3Ccircle cx='64' cy='52' r='24' fill='%2394A3B8'/%3E%3Cpath fill='%2394A3B8' d='M64 82c-23.2 0-42 14.5-45 33.2 10.7 7.9 23.9 12.8 38.3 12.8 17 0 32.3-6.4 43.8-16.9C97.5 95 78.8 82 64 82z'/%3E%3C/svg%3E"
+      ],
+      "LicenseFile": "data:image/png;base64,dummy",
+      "IdCardFile": "data:image/png;base64,dummy",
+      "HouseRegFile": "data:image/png;base64,dummy"
     }
   ],
   "services": [
@@ -219,6 +270,18 @@
       "Status": "Approved",
       "AdminRemark": "หักค่าคอมมิชชันล่วงหน้าสำหรับ Booking #B959790",
       "CreatedDate": "2026-09-08T08:26:40.361Z"
+    },
+    {
+      "TransactionID": "TX750787",
+      "StaffID": "SFT738787",
+      "Amount": 398,
+      "BeforeCredit": 0,
+      "AfterCredit": 398,
+      "Type": "Topup",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)",
+      "CreatedDate": "2026-09-22T07:35:04.811Z"
     }
   ],
   "reviews": [],
@@ -286,6 +349,38 @@
       "Detail": "พี่พนักงานกำลังเดินทางไปยังที่อยู่ของคุณ ระยะทางประมาณ 0.84 กม.",
       "ReadStatus": "Unread",
       "CreatedDate": "2026-09-16T08:48:00.420Z"
+    },
+    {
+      "NotificationID": "N844610",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-22T07:34:48.741Z"
+    },
+    {
+      "NotificationID": "N645765",
+      "UserID": "U347114",
+      "Title": "⏳ ใบสมัครพนักงานของคุณอยู่ระหว่างรอแอดมินอนุมัติ",
+      "Detail": "ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 398 เครดิตฟรีค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-22T07:35:04.812Z"
+    },
+    {
+      "NotificationID": "N281293",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่ (รอการอนุมัติ)",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) เบอร์ 0899990001 ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-22T07:35:04.812Z"
+    },
+    {
+      "NotificationID": "N312668",
+      "UserID": "U347114",
+      "Title": "🎉 บัญชีพนักงานของคุณได้รับการอนุมัติแล้ว!",
+      "Detail": "แอดมินได้อนุมัติบัญชีของคุณเรียบร้อยแล้ว ขณะนี้คุณสามารถเปิดสถานะออนไลน์เพื่อเริ่มรับงานจากลูกค้าได้ทันทีค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-22T07:35:04.848Z"
     }
   ],
   "settings": {
@@ -330,6 +425,6 @@
     "lineAdminUserId": "Cf544171f0f9753863ade1ddd1acd67a7",
     "enableLineAdminNotify": true,
     "isCustomized": true,
-    "updatedAt": "2026-09-18T09:20:56.049Z"
+    "updatedAt": "2026-09-18T09:20:56.033Z"
   }
 }

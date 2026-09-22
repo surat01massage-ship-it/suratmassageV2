@@ -518,7 +518,7 @@ export default function CustomerPanel({
   const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
   const minCreditRequirement = Math.max(settings.minCredit || 398, 398);
   const activeOnlineStaff = allStaff
-    .filter((s) => s.Available === 'ON' && s.VerifyStatus !== 'Reject' && (s.Credit ?? 0) >= minCreditRequirement)
+    .filter((s) => s.Available === 'ON' && s.VerifyStatus === 'Approved' && (s.Credit ?? 0) >= minCreditRequirement)
     .map((s) => {
       const staffLat = typeof s.CurrentLatitude === 'number' ? s.CurrentLatitude : 9.138244;
       const staffLng = typeof s.CurrentLongitude === 'number' ? s.CurrentLongitude : 99.321748;

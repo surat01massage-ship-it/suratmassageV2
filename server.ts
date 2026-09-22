@@ -285,8 +285,8 @@ async function startServer() {
         Rating: 5.0,
         ReviewCount: 0,
         Credit: 398, // เครดิตเริ่มต้น 398 เครดิตสำหรับพนักงานใหม่เพื่อรับงานฟรีได้ 1 ครั้ง
-        Available: 'ON', // Auto online so staff is immediately visible
-        VerifyStatus: 'Approved', // Auto-approved for instant visibility
+        Available: 'OFF', // พนักงานใหม่เริ่มต้นสถานะ OFF (ต้องรอแอดมินอนุมัติก่อนเปิดรับงาน)
+        VerifyStatus: 'Pending', // ต้องให้แอดมินอนุมัติก่อนถึงจะเริ่มทำงานได้
         CurrentLatitude: newUser.Latitude || 9.138244,
         CurrentLongitude: newUser.Longitude || 99.321748,
         LastLocationUpdate: new Date().toISOString(),
@@ -316,7 +316,7 @@ async function startServer() {
         HouseRegFile: newStaff.HouseRegFile || '',
         RegisteredAddress: newStaff.RegisteredAddress,
         SubmittedDate: new Date().toISOString(),
-        Notes: 'เอกสารหลักฐานการสมัครพนักงานใหม่ (ใบอนุญาตนวด, บัตรประชาชน, ทะเบียนบ้าน)'
+        Notes: 'เอกสารหลักฐานการสมัครพนักงานใหม่ (ใบอนุญาตนวด, บัตรประชาชน, ทะเบียนบ้าน) - รอแอดมินอนุมัติ'
       };
       syncToGoogleSheet('INSERT', 'StaffDocuments', staffDocData);
 
@@ -330,7 +330,7 @@ async function startServer() {
         Type: 'Topup' as const,
         SlipImage: '',
         Status: 'Approved' as const,
-        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้ง)',
+        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)',
         CreatedDate: new Date().toISOString()
       };
       db.transactions.push(welcomeTx);
@@ -340,8 +340,8 @@ async function startServer() {
       const staffWelcomeNotif = {
         NotificationID: generateId('N'),
         UserID: newUserID,
-        Title: '🎁 ยินดีต้อนรับ! คุณได้รับ 398 เครดิตฟรี',
-        Detail: 'ยินดีต้อนรับสู่ SabaiDee Massage! คุณได้รับเครดิตฟรี 398 เครดิต สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งทันทีค่ะ',
+        Title: '⏳ ใบสมัครพนักงานของคุณอยู่ระหว่างรอแอดมินอนุมัติ',
+        Detail: 'ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 398 เครดิตฟรีค่ะ',
         ReadStatus: 'Unread' as const,
         CreatedDate: new Date().toISOString()
       };
@@ -354,8 +354,8 @@ async function startServer() {
         const notif = {
           NotificationID: generateId('N'),
           UserID: admin.UserID,
-          Title: "มีผู้สมัครเป็นพนักงานใหม่",
-          Detail: `พนักงานนวดคนใหม่ คุณ ${name} (ชื่อเล่น ${newStaff.Nickname}) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR`,
+          Title: "มีผู้สมัครเป็นพนักงานใหม่ (รอการอนุมัติ)",
+          Detail: `พนักงานนวดคนใหม่ คุณ ${name} (ชื่อเล่น ${newStaff.Nickname}) เบอร์ ${phone} ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ`,
           ReadStatus: 'Unread' as const,
           CreatedDate: new Date().toISOString()
         };
@@ -365,7 +365,7 @@ async function startServer() {
     }
 
     if (role === 'Staff') {
-      sendLineNotification(`🎉 มีพนักงานใหม่สมัครใช้งาน!\nชื่อ: ${name}\nเบอร์โทร: ${phone}\n(รอการอนุมัติ)`);
+      sendLineNotification(`🎉 มีพนักงานใหม่สมัครใช้งาน!\nชื่อ: ${name}\nเบอร์โทร: ${phone}\nสถานะ: ⏳ รอแอดมินตรวจสอบและอนุมัติในระบบก่อนเริ่มงาน`);
     } else {
       sendLineNotification(`🎉 มีลูกค้าใหม่สมัครใช้งาน!\nชื่อ: ${name}\nเบอร์โทร: ${phone}`);
     }
@@ -1205,6 +1205,13 @@ async function startServer() {
     }
 
     if (available === 'ON') {
+      if (db.staff[index].VerifyStatus !== 'Approved') {
+        const errorMsg = db.staff[index].VerifyStatus === 'Pending'
+          ? 'ไม่สามารถเปิดรับงานได้ บัญชีของคุณอยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติก่อนค่ะ'
+          : 'ไม่สามารถเปิดรับงานได้ บัญชีของคุณไม่ได้รับการอนุมัติ กรุณาติดต่อผู้ดูแลระบบค่ะ';
+        return res.status(403).json({ error: errorMsg, verifyStatus: db.staff[index].VerifyStatus });
+      }
+
       const minCredit = Math.max(db.settings?.minCredit || 398, 398);
       if (db.staff[index].Credit < minCredit) {
         return res.status(400).json({ error: `เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCredit} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ` });
@@ -1245,23 +1252,41 @@ async function startServer() {
 
     db.staff[index].VerifyStatus = status;
 
+    // If status is not Approved, immediately force Available to 'OFF'
+    if (status !== 'Approved') {
+      db.staff[index].Available = 'OFF';
+    }
+
     // Send notification to staff user
     const staff = db.staff[index];
+    const staffUser = db.users.find(u => u.UserID === staff.UserID);
     const notif = {
       NotificationID: generateId('N'),
       UserID: staff.UserID,
-      Title: status === 'Approved' ? "🎉 บัญชีผู้ใช้ของคุณได้รับอนุมัติแล้ว!" : "⚠️ บัญชีผู้ใช้ไม่ได้รับการอนุมัติ",
+      Title: status === 'Approved' 
+        ? "🎉 บัญชีพนักงานของคุณได้รับการอนุมัติแล้ว!" 
+        : status === 'Pending'
+        ? "⏳ บัญชีพนักงานอยู่ระหว่างรอการตรวจสอบ"
+        : "⚠️ บัญชีพนักงานไม่ได้รับการอนุมัติ",
       Detail: status === 'Approved' 
-        ? "ขณะนี้คุณสามารถเปิดสถานะออนไลน์เพื่อเริ่มรับงานจากลูกค้าได้แล้วค่ะ" 
-        : "กรุณาแก้ไขเอกสารข้อมูลหรือรูปโปรไฟล์ของคุณ หรือติดต่อฝ่ายบริการลูกค้าเพื่อสอบถามเพิ่มเติม",
+        ? "แอดมินได้อนุมัติบัญชีของคุณเรียบร้อยแล้ว ขณะนี้คุณสามารถเปิดสถานะออนไลน์เพื่อเริ่มรับงานจากลูกค้าได้ทันทีค่ะ" 
+        : status === 'Pending'
+        ? "ข้อมูลและเอกสารของคุณอยู่ระหว่างรอแอดมินตรวจสอบค่ะ"
+        : "กรุณาแก้ไขเอกสารข้อมูลหรือรูปโปรไฟล์ของคุณ หรือติดต่อฝ่ายบริการลูกค้าเพื่อสอบถามเพิ่มเติมค่ะ",
       ReadStatus: 'Unread' as const,
       CreatedDate: new Date().toISOString()
     };
     db.notifications.push(notif);
 
+    // Send LINE alert
+    if (status === 'Approved') {
+      sendLineNotification(`✅ [อนุมัติพนักงานแล้ว]\nชื่อ: ${staffUser?.Name || ''} (พี่${staff.Nickname})\nเบอร์: ${staffUser?.Phone || ''}\nสถานะ: แอดมินอนุมัติเรียบร้อย พนักงานสามารถเปิดรับงานได้แล้ว 🎉`);
+    } else if (status === 'Reject') {
+      sendLineNotification(`🚫 [ปฏิเสธการอนุมัติพนักงาน]\nชื่อ: ${staffUser?.Name || ''} (พี่${staff.Nickname})\nเบอร์: ${staffUser?.Phone || ''}\nสถานะ: ไม่อนุมัติ`);
+    }
+
     saveDatabase(db);
     syncToGoogleSheet('UPDATE', 'Staff', db.staff[index]);
-    const staffUser = db.users.find(u => u.UserID === db.staff[index].UserID);
     const staffDocData = {
       DocID: `DOC-${db.staff[index].StaffID}`,
       StaffID: db.staff[index].StaffID,
@@ -1388,7 +1413,7 @@ async function startServer() {
         const maxDist = Math.min(staffDistanceLimit, maxSearchRadius);
         return (
           s.Available === 'ON' &&
-          s.VerifyStatus !== 'Reject' &&
+          s.VerifyStatus === 'Approved' &&
           s.Credit >= (settings.minCredit || 398) &&
           dist <= maxDist &&
           offersService
@@ -1656,6 +1681,11 @@ async function startServer() {
       const staff = db.staff.find(s => s.StaffID === staffId);
       if (!staff) return res.status(404).json({ error: 'ไม่พบพนักงานผู้ให้บริการ' });
       if (!service) return res.status(404).json({ error: 'ไม่พบข้อมูลบริการ' });
+
+      // Ensure staff is approved by admin before accepting work
+      if (staff.VerifyStatus !== 'Approved') {
+        return res.status(403).json({ error: 'คุณยังไม่ได้รับการอนุมัติจากแอดมิน จึงยังไม่สามารถรับงานได้ค่ะ' });
+      }
 
       // Double-check credit requirements
       if (staff.Credit < service.CreditRequired) {

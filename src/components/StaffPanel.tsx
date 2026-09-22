@@ -438,6 +438,17 @@ export default function StaffPanel({
   // Toggle online/offline status
   const handleToggleOnline = async () => {
     if (!staff) return;
+
+    if (staff.Available !== 'ON' && staff.VerifyStatus !== 'Approved') {
+      onShowToast(
+        staff.VerifyStatus === 'Pending'
+          ? "⏳ บัญชีของคุณอยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติก่อน จึงยังไม่สามารถเปิดรับงานได้ค่ะ"
+          : "❌ บัญชีของคุณไม่ได้รับการอนุมัติ กรุณาติดต่อฝ่ายบริการลูกค้าหรือแอดมินค่ะ",
+        "error"
+      );
+      return;
+    }
+
     const nextStatus = staff.Available === 'ON' ? 'OFF' : 'ON';
 
     const minCreditReq = Math.max(settings?.minCredit || 398, 398);
@@ -1170,8 +1181,14 @@ export default function StaffPanel({
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-black text-sm text-slate-900">พี่{staff.Nickname}</span>
               <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded ${
-                staff.VerifyStatus === 'Approved' ? 'bg-sky-100 text-sky-800' : 'bg-amber-100 text-amber-800'
-              }`}>{staff.VerifyStatus}</span>
+                staff.VerifyStatus === 'Approved' 
+                  ? 'bg-sky-100 text-sky-800' 
+                  : staff.VerifyStatus === 'Reject'
+                  ? 'bg-rose-100 text-rose-800'
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {staff.VerifyStatus === 'Approved' ? 'อนุมัติแล้ว' : staff.VerifyStatus === 'Reject' ? 'ไม่อนุมัติ' : 'รอแอดมินอนุมัติ'}
+              </span>
               <button
                 onClick={() => setShowPhotoModal(true)}
                 type="button"
@@ -1181,7 +1198,9 @@ export default function StaffPanel({
               </button>
             </div>
             <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
-              {staff.Available === 'ON' ? '🟢 พร้อมรับงานนวดแบบเรียลไทม์' : '⚪ ออฟไลน์พักผ่อน'}
+              {staff.VerifyStatus !== 'Approved'
+                ? (staff.VerifyStatus === 'Pending' ? '⏳ อยู่ระหว่างรอแอดมินอนุมัติเพื่อเริ่มงาน' : '❌ บัญชีไม่ได้รับการอนุมัติ')
+                : (staff.Available === 'ON' ? '🟢 พร้อมรับงานนวดแบบเรียลไทม์' : '⚪ ออฟไลน์พักผ่อน')}
             </p>
           </div>
         </div>
@@ -1189,16 +1208,25 @@ export default function StaffPanel({
         {/* Sliding Toggle Switch (slide left/right) */}
         <button
           onClick={handleToggleOnline}
-          className="flex items-center gap-2.5 cursor-pointer group select-none"
+          className={`flex items-center gap-2.5 select-none transition-opacity ${
+            staff.VerifyStatus !== 'Approved' ? 'cursor-not-allowed opacity-80' : 'cursor-pointer group'
+          }`}
           aria-label="Toggle Job Acceptance Status"
+          title={staff.VerifyStatus !== 'Approved' ? 'ต้องได้รับการอนุมัติจากแอดมินก่อนจึงจะเปิดรับงานได้' : ''}
         >
           <span className={`text-xs font-black transition-colors ${
-            staff.Available === 'ON' ? 'text-sky-600' : 'text-slate-400 group-hover:text-slate-600'
+            staff.VerifyStatus !== 'Approved'
+              ? 'text-amber-600'
+              : (staff.Available === 'ON' ? 'text-sky-600' : 'text-slate-400 group-hover:text-slate-600')
           }`}>
-            {staff.Available === 'ON' ? 'เปิดรับงานอยู่' : 'ปิดรับงาน'}
+            {staff.VerifyStatus !== 'Approved' 
+              ? 'รออนุมัติ' 
+              : (staff.Available === 'ON' ? 'เปิดรับงานอยู่' : 'ปิดรับงาน')}
           </span>
           <div className={`w-14 h-7 flex items-center rounded-full p-1 transition-all duration-300 ease-in-out ${
-            staff.Available === 'ON' ? 'bg-sky-500' : 'bg-slate-200'
+            staff.VerifyStatus !== 'Approved' 
+              ? 'bg-amber-100 border border-amber-300' 
+              : (staff.Available === 'ON' ? 'bg-sky-500' : 'bg-slate-200')
           }`}>
             <div className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-all duration-300 ease-in-out ${
               staff.Available === 'ON' ? 'translate-x-7' : 'translate-x-0'
@@ -1206,6 +1234,49 @@ export default function StaffPanel({
           </div>
         </button>
       </div>
+
+      {/* Pending Admin Approval Banner */}
+      {staff.VerifyStatus === 'Pending' && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left animate-fade-in shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2.5 bg-amber-500 text-white rounded-xl shrink-0 shadow-xs">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-xs font-black text-amber-950">
+                  ⏳ ใบสมัครของคุณอยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติ
+                </p>
+                <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full font-extrabold">
+                  รอเริ่มงาน
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-800 font-medium mt-0.5 leading-relaxed">
+                ข้อมูลและเอกสารของคุณถูกส่งถึงผู้ดูแลระบบแล้ว เมื่อแอดมินทำการอนุมัติ คุณจะสามารถเปิดสวิตช์รับงาน (Online) เพื่อเริ่มให้บริการได้ทันที พร้อมรับเครดิตฟรี 398 CR ค่ะ
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rejected Status Banner */}
+      {staff.VerifyStatus === 'Reject' && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left animate-fade-in shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2.5 bg-rose-500 text-white rounded-xl shrink-0 shadow-xs">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-rose-950">
+                ❌ บัญชีผู้ให้บริการไม่ได้รับการอนุมัติ
+              </p>
+              <p className="text-[11px] text-rose-800 font-medium mt-0.5 leading-relaxed">
+                เอกสารหรือข้อมูลการสมัครไม่ผ่านเกณฑ์การตรวจสอบ กรุณาติดต่อผู้ดูแลระบบเพื่อขอคำแนะนำและส่งเอกสารตรวจสอบใหม่ค่ะ
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Red Low-Credit Alert Banner */}
       {staff.Credit < Math.max(settings?.minCredit || 398, 398) && (

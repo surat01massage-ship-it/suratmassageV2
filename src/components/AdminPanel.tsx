@@ -3,7 +3,7 @@ import {
   Users, Briefcase, Calendar, DollarSign, Settings, Eye, Edit, Trash2, 
   Check, X, Plus, ShieldCheck, Database, FileCode, Copy, Download, RefreshCw, BarChart2, ChevronRight,
   MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw, Navigation,
-  Bot, Sparkles, Cpu, Zap, Upload, FileCheck, FileBadge, Home, ZoomIn, FileText
+  Bot, Sparkles, Cpu, Zap, Upload, FileCheck, FileBadge, Home, ZoomIn, FileText, Clock
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
 import { googleAppsScriptFiles } from '../data/googleAppsScript';
@@ -617,11 +617,19 @@ export default function AdminPanel({
 
         <button 
           onClick={() => setActiveTab('staff')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer relative ${
             activeTab === 'staff' ? 'bg-sky-500 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
           }`}
         >
-          <Users className="w-4 h-4" /> จัดการผู้ให้บริการ ({allStaff.length})
+          <Users className="w-4 h-4" /> 
+          <span>จัดการผู้ให้บริการ ({allStaff.length})</span>
+          {allStaff.filter(s => s.VerifyStatus === 'Pending').length > 0 && (
+            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-xs animate-pulse ${
+              activeTab === 'staff' ? 'bg-amber-400 text-amber-950' : 'bg-amber-500 text-white'
+            }`}>
+              รออนุมัติ {allStaff.filter(s => s.VerifyStatus === 'Pending').length}
+            </span>
+          )}
         </button>
 
         <button 
@@ -1002,6 +1010,33 @@ export default function AdminPanel({
               </span>
             </div>
           </div>
+
+          {/* Pending Approval Alert Banner */}
+          {allStaff.filter(s => s.VerifyStatus === 'Pending').length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in shadow-xs">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs shrink-0">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-amber-950 flex items-center gap-2">
+                    <span>มีผู้สมัครพนักงานใหม่รอการตรวจสอบและอนุมัติ {allStaff.filter(s => s.VerifyStatus === 'Pending').length} ท่าน</span>
+                    <span className="bg-amber-200 text-amber-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full">รอแอดมินอนุมัติ</span>
+                  </p>
+                  <p className="text-[11px] text-amber-800 font-medium mt-0.5">
+                    พนักงานใหม่จะไม่สามารถเปิดสวิตช์รับงาน (Online) ได้จนกว่าแอดมินจะกดอนุมัติ
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStaffVerifyFilter('Pending')}
+                className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-black px-3.5 py-2 rounded-xl cursor-pointer transition-colors shadow-xs shrink-0 self-end sm:self-auto"
+              >
+                กรองดูเฉพาะรออนุมัติ ({allStaff.filter(s => s.VerifyStatus === 'Pending').length})
+              </button>
+            </div>
+          )}
 
           {/* Search & Filter Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs">
