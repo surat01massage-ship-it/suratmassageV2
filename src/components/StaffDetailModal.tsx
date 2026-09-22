@@ -428,181 +428,206 @@ export default function StaffDetailModal({
           : 'max-w-6xl xl:max-w-7xl w-full max-h-[96vh] rounded-3xl animate-scale-up'
       } overflow-hidden`}>
         
-        {/* Modal Top Header */}
-        <div className="bg-slate-50 border-b border-slate-200 p-3.5 sm:p-5 flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3.5 min-w-0">
+        {/* Sleek Compact Top Bar (Takes only ~44px, never blocks screen content) */}
+        <div className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 flex items-center justify-between gap-3 shrink-0 z-30 shadow-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div 
-              className="relative cursor-pointer group shrink-0"
+              className="relative cursor-pointer shrink-0"
               onClick={() => staff.ProfileImage && handleOpenLightbox(staff.ProfileImage)}
               title={staff.ProfileImage ? "คลิกเพื่อดูรูปโปรไฟล์ขนาดใหญ่" : undefined}
             >
               <img 
                 src={staff.ProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.Nickname || 'พนักงาน')}&background=0D9488&color=fff&size=150`} 
                 alt={staff.Nickname}
-                className="w-12 h-12 sm:w-16 sm:h-16 rounded-full object-cover border-2 border-white shadow-md group-hover:ring-2 group-hover:ring-sky-400 transition-all"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover border border-white/40"
               />
-              {staff.ProfileImage && (
-                <div className="absolute inset-0 rounded-full bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
-                  <ZoomIn className="w-5 h-5" />
-                </div>
-              )}
-              <span className={`absolute bottom-0 right-0 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border-2 border-white ${
-                staff.Available === 'ON' ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-400'
+              <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-900 ${
+                staff.Available === 'ON' ? 'bg-emerald-400' : 'bg-slate-500'
               }`} />
             </div>
 
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base sm:text-lg font-black text-slate-900 truncate">
-                  พี่{staff.Nickname} <span className="text-xs sm:text-sm font-semibold text-slate-600">({staff.Name})</span>
-                </h3>
-                
-                <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full ${
-                  staff.VerifyStatus === 'Approved' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
-                  staff.VerifyStatus === 'Pending' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-rose-100 text-rose-800 border border-rose-200'
-                }`}>
-                  {staff.VerifyStatus === 'Approved' ? 'อนุมัติแล้ว' : staff.VerifyStatus === 'Pending' ? 'รออนุมัติ' : 'ไม่อนุมัติ'}
-                </span>
-
-                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
-                  staff.Available === 'ON' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200'
-                }`}>
-                  {staff.Available === 'ON' ? '🟢 เปิดรับงาน (Online)' : '⚪ ปิดรับงาน (Offline)'}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-slate-500 mt-1 font-semibold">
-                <span>รหัสหมอ: <strong className="text-slate-800 font-mono">{staff.StaffID}</strong></span>
-                <span>•</span>
-                <span>รหัสผู้ใช้: <strong className="text-slate-800 font-mono">{staff.UserID}</strong></span>
-                <span>•</span>
-                <span className="flex items-center gap-1 text-amber-500 font-black">
-                  <Star className="w-3.5 h-3.5 fill-current" /> {staff.Rating?.toFixed(1) || '5.0'} ({staff.ReviewCount || 0} รีวิว)
-                </span>
-                <span>•</span>
-                <span className={`inline-flex items-center gap-1 font-bold ${isDocumentsComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
-                  <FileText className="w-3.5 h-3.5" /> เอกสารหลักฐาน: {uploadedRequiredDocsCount}/{requiredDocsCount}
-                </span>
-              </div>
+            <div className="min-w-0 flex items-center gap-2">
+              <span className="font-black text-sm text-white truncate">
+                พี่{staff.Nickname} <span className="text-xs font-normal text-slate-300 hidden sm:inline">({staff.Name})</span>
+              </span>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${
+                staff.VerifyStatus === 'Approved' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                staff.VerifyStatus === 'Pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+              }`}>
+                {staff.VerifyStatus === 'Approved' ? 'อนุมัติแล้ว' : staff.VerifyStatus === 'Pending' ? 'รออนุมัติ' : 'ไม่อนุมัติ'}
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono hidden md:inline">
+                รหัส: {staff.StaffID}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Toggle Fullscreen button */}
-            <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                isFullscreen 
-                  ? 'bg-sky-600 text-white shadow-xs ring-2 ring-sky-300' 
-                  : 'bg-white border border-slate-200 hover:bg-sky-50 text-slate-700 hover:text-sky-600 hover:border-sky-300'
-              }`}
-              title={isFullscreen ? "ย่อหน้าต่าง (Windowed Mode)" : "ขยายเต็มหน้าจอ (Fullscreen Mode)"}
-            >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              <span className="hidden sm:inline">{isFullscreen ? 'ย่อหน้าต่าง' : 'เต็มจอ'}</span>
-            </button>
-
-            {/* Toggle Top Strip Collapse button */}
-            <button
-              onClick={() => setIsKpiCollapsed(!isKpiCollapsed)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                isKpiCollapsed 
-                  ? 'bg-amber-500 text-white shadow-xs' 
-                  : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-700'
-              }`}
-              title={isKpiCollapsed ? "แสดงแถบสรุปด้านบน" : "ย่อแถบสรุปด้านบน เพื่อเพิ่มพื้นที่ดูข้อมูลด้านล่าง"}
-            >
-              {isKpiCollapsed ? <PanelTopOpen className="w-4 h-4" /> : <PanelTopClose className="w-4 h-4" />}
-              <span className="hidden md:inline">{isKpiCollapsed ? 'แสดงส่วนบน' : 'ย่อส่วนบน'}</span>
-            </button>
-
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={() => setIsEditing(!isEditing)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                isEditing ? 'bg-sky-600 text-white shadow-sm' : 'bg-white border border-slate-200 hover:bg-slate-100 text-slate-700'
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                isEditing ? 'bg-sky-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
               }`}
               title="แก้ไขข้อมูลพนักงาน"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{isEditing ? 'ปิดโหมดแก้ไข' : 'แก้ไขข้อมูล'}</span>
             </button>
 
             <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+              title={isFullscreen ? "ย่อขนาดหน้าต่าง" : "ขยายเต็มหน้าจอ"}
+            >
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{isFullscreen ? 'ย่อหน้าต่าง' : 'เต็มจอ'}</span>
+            </button>
+
+            <button
               onClick={onClose}
-              className="p-2 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white transition-colors cursor-pointer ml-1"
               title="ปิดหน้าต่าง (Esc)"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Quick KPI Strip / Slim Summary */}
-        {isKpiCollapsed ? (
-          <div className="flex items-center justify-between px-4 sm:px-6 py-2 bg-slate-50 border-b border-slate-200 text-xs">
-            <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto text-[11px] font-semibold text-slate-600 scrollbar-none">
-              <span className="flex items-center gap-1 whitespace-nowrap">
-                <span className="text-slate-400 font-normal">เครดิต:</span> 
-                <strong className="text-sky-600 font-mono font-bold">฿{staff.Credit?.toFixed(0)} CR</strong>
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="flex items-center gap-1 whitespace-nowrap">
-                <span className="text-slate-400 font-normal">รายได้สะสม:</span> 
-                <strong className="text-emerald-600 font-bold">฿{staff.TotalIncome?.toLocaleString() || '0'}</strong>
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="flex items-center gap-1 whitespace-nowrap">
-                <span className="text-slate-400 font-normal">งานสำเร็จ:</span> 
-                <strong className="text-slate-800 font-bold">{staff.TotalJobs || 0} ครั้ง</strong>
-              </span>
-              <span className="text-slate-300">•</span>
-              <span className="flex items-center gap-1 whitespace-nowrap">
-                <span className="text-slate-400 font-normal">ระยะทางรับงาน:</span> 
-                <strong className="text-slate-800 font-bold">{staff.MaxJobDistance || 15} กม.</strong>
-              </span>
+        {/* ONE UNIFIED CONTINUOUS SCROLL CONTAINER - แผงเดียวต่อเนื่อง เลื่อนได้สบาย ไม่ล็อกค้าง */}
+        <div className="flex-1 overflow-y-auto bg-slate-50 text-left min-h-0">
+          
+          {/* Detailed Staff Profile Hero Card (Inside scroll flow - scrolls away freely!) */}
+          <div className="p-4 sm:p-6 bg-gradient-to-b from-white to-slate-50 border-b border-slate-200 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start sm:items-center gap-3.5 min-w-0">
+                <div 
+                  className="relative cursor-pointer group shrink-0"
+                  onClick={() => staff.ProfileImage && handleOpenLightbox(staff.ProfileImage)}
+                  title={staff.ProfileImage ? "คลิกเพื่อดูรูปโปรไฟล์ขนาดใหญ่" : undefined}
+                >
+                  <img 
+                    src={staff.ProfileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(staff.Nickname || 'พนักงาน')}&background=0D9488&color=fff&size=150`} 
+                    alt={staff.Nickname}
+                    className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-white shadow-md group-hover:ring-2 group-hover:ring-sky-400 transition-all"
+                  />
+                  {staff.ProfileImage && (
+                    <div className="absolute inset-0 rounded-2xl bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
+                      <ZoomIn className="w-5 h-5" />
+                    </div>
+                  )}
+                  <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                    staff.Available === 'ON' ? 'bg-emerald-500 ring-2 ring-emerald-200' : 'bg-slate-400'
+                  }`} />
+                </div>
+
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg sm:text-xl font-black text-slate-900">
+                      พี่{staff.Nickname} <span className="text-sm font-semibold text-slate-500">({staff.Name})</span>
+                    </h3>
+                    
+                    <span className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
+                      staff.VerifyStatus === 'Approved' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                      staff.VerifyStatus === 'Pending' ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-rose-100 text-rose-800 border border-rose-200'
+                    }`}>
+                      {staff.VerifyStatus === 'Approved' ? '✓ อนุมัติแล้ว' : staff.VerifyStatus === 'Pending' ? '⏳ รออนุมัติ' : '✕ ไม่อนุมัติ'}
+                    </span>
+
+                    <button
+                      onClick={handleToggleOnline}
+                      className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-colors cursor-pointer ${
+                        staff.Available === 'ON' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100' : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                      }`}
+                      title="คลิกเพื่อสลับสถานะเปิด/ปิดรับงาน"
+                    >
+                      {staff.Available === 'ON' ? '🟢 เปิดรับงาน (Online)' : '⚪ ปิดรับงาน (Offline)'}
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-slate-600 font-semibold">
+                    <span>รหัสหมอ: <strong className="text-slate-800 font-mono">{staff.StaffID}</strong></span>
+                    <span>•</span>
+                    <span>ผู้ใช้: <strong className="text-slate-800 font-mono">{staff.UserID}</strong></span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1 text-amber-500 font-black">
+                      <Star className="w-3.5 h-3.5 fill-current" /> {staff.Rating?.toFixed(1) || '5.0'} ({staff.ReviewCount || 0} รีวิว)
+                    </span>
+                    <span>•</span>
+                    <span className={`inline-flex items-center gap-1 font-bold ${isDocumentsComplete ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      <FileText className="w-3.5 h-3.5" /> เอกสาร: {uploadedRequiredDocsCount}/{requiredDocsCount}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-1">
+                    {staff.Phone && (
+                      <span className="flex items-center gap-1 font-medium">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" /> {staff.Phone}
+                      </span>
+                    )}
+                    {staff.Email && (
+                      <span className="flex items-center gap-1 font-medium">
+                        <Mail className="w-3.5 h-3.5 text-slate-400" /> {staff.Email}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Status Control Buttons */}
+              <div className="flex flex-wrap sm:flex-col items-start sm:items-end gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+                  <span className="text-[10px] font-bold text-slate-500 px-1.5">สถานะ:</span>
+                  <button
+                    onClick={() => handleVerifyStatusChange('Approved')}
+                    className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
+                      staff.VerifyStatus === 'Approved' ? 'bg-emerald-600 text-white shadow-2xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    อนุมัติ
+                  </button>
+                  <button
+                    onClick={() => handleVerifyStatusChange('Pending')}
+                    className={`px-2 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
+                      staff.VerifyStatus === 'Pending' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    รอตรวจ
+                  </button>
+                  <button
+                    onClick={() => handleVerifyStatusChange('Reject')}
+                    className={`px-2 py-1 rounded-lg font-bold text-xs transition-colors cursor-pointer ${
+                      staff.VerifyStatus === 'Reject' ? 'bg-rose-500 text-white shadow-2xs' : 'text-slate-600 hover:bg-white'
+                    }`}
+                  >
+                    ปฏิเสธ
+                  </button>
+                </div>
+              </div>
             </div>
-            <button
-              onClick={() => setIsKpiCollapsed(false)}
-              className="text-[11px] font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline cursor-pointer shrink-0 ml-2"
-              title="ขยายแถบสรุป"
-            >
-              <span>ขยายส่วนบน</span>
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          <div className="relative bg-slate-50/50 border-b border-slate-200/80 text-xs">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 sm:px-6">
-              <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+
+            {/* KPI Cards (Now in scroll flow! Never locks screen!) */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">ยอดเครดิตคงเหลือ</span>
                 <span className="text-base font-black text-sky-600">฿{staff.Credit?.toFixed(0)} <span className="text-xs font-bold text-slate-400">CR</span></span>
               </div>
 
-              <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">รายได้สะสมทั้งหมด</span>
                 <span className="text-base font-black text-emerald-600">฿{staff.TotalIncome?.toLocaleString() || '0'}</span>
               </div>
 
-              <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">จำนวนงานนวดสำเร็จ</span>
                 <span className="text-base font-black text-slate-800">{staff.TotalJobs || 0} <span className="text-xs font-bold text-slate-400">ครั้ง</span></span>
               </div>
 
-              <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs">
                 <span className="text-[10px] text-slate-400 font-bold block uppercase tracking-wider">ระยะทางรับงานสูงสุด</span>
                 <span className="text-base font-black text-slate-800">{staff.MaxJobDistance || 15} <span className="text-xs font-bold text-slate-400">กม.</span></span>
               </div>
             </div>
-            <button
-              onClick={() => setIsKpiCollapsed(true)}
-              className="absolute top-1.5 right-3 text-[10px] font-bold text-slate-400 hover:text-slate-700 flex items-center gap-1 bg-white/90 hover:bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs cursor-pointer transition-colors"
-              title="ย่อแถบสรุปเพื่อเพิ่มพื้นที่ดูข้อมูลด้านล่าง"
-            >
-              <span>ย่อส่วนบน</span>
-              <ChevronUp className="w-3 h-3" />
-            </button>
           </div>
-        )}
 
         {/* Tab Navigation Menu */}
         <div className="bg-slate-100/95 backdrop-blur-md border-y border-slate-200 py-2.5 px-3 sm:px-6 sticky top-0 z-20 shadow-xs">
@@ -706,7 +731,7 @@ export default function StaffDetailModal({
               </span>
             </button>
 
-            {/* Quick Fullscreen & Collapse Controls */}
+            {/* Quick Fullscreen Toggle */}
             <div className="flex items-center gap-1.5 ml-auto pl-2 border-l border-slate-300 shrink-0">
               <button
                 onClick={() => setIsFullscreen(!isFullscreen)}
@@ -720,25 +745,12 @@ export default function StaffDetailModal({
                 {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{isFullscreen ? 'ย่อขนาด' : 'เต็มจอ'}</span>
               </button>
-
-              <button
-                onClick={() => setIsKpiCollapsed(!isKpiCollapsed)}
-                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                  isKpiCollapsed 
-                    ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                    : 'bg-white text-slate-700 hover:text-slate-900 border border-slate-200 hover:border-slate-300'
-                }`}
-                title={isKpiCollapsed ? "แสดงแถบสรุปด้านบน" : "ย่อแถบสรุปเพื่อเพิ่มพื้นที่ดูข้อมูล"}
-              >
-                {isKpiCollapsed ? <PanelTopOpen className="w-3.5 h-3.5 text-amber-600" /> : <PanelTopClose className="w-3.5 h-3.5 text-slate-500" />}
-                <span className="hidden md:inline">{isKpiCollapsed ? 'แสดงส่วนบน' : 'ย่อส่วนบน'}</span>
-              </button>
             </div>
           </div>
         </div>
 
-        {/* Modal Scrollable Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1 text-left space-y-6">
+        {/* Tab Content Section (Part of the single unified scrollable flow) */}
+        <div className="p-4 sm:p-6 space-y-6">
 
           {/* 1. PROFILE & BIO TAB */}
           {activeTab === 'profile' && !isEditing && (
@@ -1992,6 +2004,8 @@ export default function StaffDetailModal({
           >
             ปิดหน้าต่าง
           </button>
+        </div>
+
         </div>
 
       </div>
