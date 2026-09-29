@@ -267,6 +267,8 @@ async function startServer() {
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
+    let createdStaff: Staff | null = null;
+
     // If registering as Staff, create Staff record
     if (role === 'Staff') {
       const newStaffID = generateId('SFT');
@@ -301,6 +303,7 @@ async function startServer() {
         IdCardFile: info.idCardFile || '',
         HouseRegFile: info.houseRegFile || ''
       };
+      createdStaff = newStaff;
       db.staff.push(newStaff);
       syncToGoogleSheet('INSERT', 'Staff', newStaff);
       const staffDocData = {
@@ -371,7 +374,7 @@ async function startServer() {
     }
 
     saveDatabase(db);
-    res.json({ success: true, user: newUser });
+    res.json({ success: true, user: newUser, staff: createdStaff });
   });
 
   app.post('/api/auth/login', (req, res) => {
@@ -558,6 +561,73 @@ async function startServer() {
   app.get('/api/users', (req, res) => {
     const db = getDatabase();
     res.json(db.users);
+  });
+
+  app.get('/api/users/:id', (req, res) => {
+    const db = getDatabase();
+    const user = db.users.find(u => u.UserID === req.params.id);
+    if (!user) {
+      return res.status(404).json({ error: 'ไม่พบผู้ใช้ในระบบ' });
+    }
+    const staff = user.Role === 'Staff' ? (db.staff.find(s => s.UserID === user.UserID) || null) : null;
+    res.json({ success: true, user, staff });
+  });
+
+  // Client Data Rehydration & Sync endpoint to guarantee zero data loss
+  app.post('/api/sync/rehydrate-users', (req, res) => {
+    const db = getDatabase();
+    const { users, staff } = req.body;
+    let addedUsers = 0;
+    let addedStaff = 0;
+
+    if (Array.isArray(users)) {
+      for (const u of users) {
+        if (!u || !u.Phone) continue;
+        const existing = db.users.find(x => x.Phone === u.Phone || x.UserID === u.UserID);
+        if (!existing) {
+          db.users.push(u);
+          addedUsers++;
+        } else {
+          // Merge non-destructive updates
+          if (u.Name && (!existing.Name || existing.Name === '')) existing.Name = u.Name;
+          if (u.Role && existing.Role !== u.Role) existing.Role = u.Role;
+          if (u.ProfileImage && !existing.ProfileImage) existing.ProfileImage = u.ProfileImage;
+          if (u.Address && !existing.Address) existing.Address = u.Address;
+        }
+      }
+    }
+
+    if (Array.isArray(staff)) {
+      for (const s of staff) {
+        if (!s || !s.StaffID) continue;
+        const existing = db.staff.find(x => x.StaffID === s.StaffID || x.UserID === s.UserID);
+        if (!existing) {
+          db.staff.push(s);
+          addedStaff++;
+        } else {
+          if (s.VerifyStatus && existing.VerifyStatus !== s.VerifyStatus) {
+            // Keep the more permissive status if approved
+            if (s.VerifyStatus === 'Approved') existing.VerifyStatus = 'Approved';
+          }
+          if (s.Nickname && !existing.Nickname) existing.Nickname = s.Nickname;
+        }
+      }
+    }
+
+    if (addedUsers > 0 || addedStaff > 0) {
+      saveDatabase(db);
+      console.log(`[Sync] Rehydrated +${addedUsers} users and +${addedStaff} staff from client persistent vault`);
+    }
+
+    res.json({
+      success: true,
+      totalUsers: db.users.length,
+      totalStaff: db.staff.length,
+      addedUsers,
+      addedStaff,
+      users: db.users,
+      staff: db.staff
+    });
   });
 
   app.post('/api/users', (req, res) => {
@@ -809,6 +879,35 @@ async function startServer() {
     syncToGoogleSheet('DELETE', 'Users', { UserID: id, Name: userToDelete.Name });
 
     res.json({ success: true, message: `ลบผู้ใช้งาน "${userToDelete.Name}" เรียบร้อยแล้ว` });
+  });
+
+  // Admin action: Clean all test accounts, bookings, and histories, keeping only Admin accounts
+  app.post('/api/admin/clean-to-admin-only', (req, res) => {
+    const db = getDatabase();
+    
+    // Retain only Admin users
+    const adminUsers = db.users.filter(u => u.Role === 'Admin');
+    if (adminUsers.length === 0) {
+      return res.status(400).json({ error: 'ไม่พบบัญชีแอดมินในระบบ ไม่สามารถดำเนินการได้' });
+    }
+
+    db.users = adminUsers;
+    db.staff = [];
+    db.bookings = [];
+    db.transactions = [];
+    db.reviews = [];
+    db.notifications = db.notifications.filter(n => adminUsers.some(a => a.UserID === n.UserID));
+
+    saveDatabase(db);
+    console.log(`[Admin] Cleaned database to ${adminUsers.length} admin(s) only`);
+
+    res.json({
+      success: true,
+      message: 'ล้างข้อมูลทดสอบทั้งหมดเรียบร้อย เหลือเฉพาะบัญชีแอดมิน พร้อมสำหรับเริ่มสมัครและทดสอบระบบใหม่',
+      remainingUsers: db.users,
+      totalStaff: db.staff.length,
+      totalBookings: db.bookings.length
+    });
   });
 
   // Delete Staff Profile API

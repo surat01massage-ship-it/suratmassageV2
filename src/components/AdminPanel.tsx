@@ -188,6 +188,18 @@ export default function AdminPanel({
     fetchTransactions();
     fetchRawDatabase();
     fetchGeminiStatus();
+
+    // Auto-poll to keep data continuously up to date in real time across the whole system
+    const timer = setInterval(() => {
+      fetchStaffList();
+      fetchAllUsers();
+      fetchDashboardStats();
+      if (activeTab === 'credits') {
+        fetchTransactions();
+      }
+    }, 4000);
+
+    return () => clearInterval(timer);
   }, [activeTab]);
 
   useEffect(() => {
@@ -208,7 +220,13 @@ export default function AdminPanel({
     try {
       const res = await fetch('/api/staff');
       const data = await res.json();
-      setAllStaff(data);
+      if (Array.isArray(data)) {
+        setAllStaff(data);
+        // Persist staff into local vault
+        try {
+          localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(data));
+        } catch {}
+      }
     } catch (e) {
       console.error(e);
     }
@@ -218,12 +236,18 @@ export default function AdminPanel({
     try {
       const res = await fetch('/api/users');
       const data = await res.json();
-      // Sort users so Customers appear first during testing
-      const sortedData = data.sort((a: any, b: any) => {
-        const roleOrder: any = { 'Customer': 1, 'Staff': 2, 'Admin': 3 };
-        return (roleOrder[a.Role] || 99) - (roleOrder[b.Role] || 99);
-      });
-      setAllUsers(sortedData);
+      if (Array.isArray(data)) {
+        // Sort users so Customers appear first during testing
+        const sortedData = data.sort((a: any, b: any) => {
+          const roleOrder: any = { 'Customer': 1, 'Staff': 2, 'Admin': 3 };
+          return (roleOrder[a.Role] || 99) - (roleOrder[b.Role] || 99);
+        });
+        setAllUsers(sortedData);
+        // Persist users into local vault
+        try {
+          localStorage.setItem('sabaidee_persisted_users', JSON.stringify(sortedData));
+        } catch {}
+      }
     } catch (e) {
       console.error(e);
     }
@@ -335,6 +359,33 @@ export default function AdminPanel({
       fetchRawDatabase();
     } catch (e) {
       onShowToast("เกิดข้อผิดพลาดในการเปลี่ยนสิทธิ์", "error");
+    }
+  };
+
+  const handleCleanToAdminOnly = async () => {
+    const ok = window.confirm("⚠️ คำเตือน: คุณต้องการล้างข้อมูลทดสอบทั้งหมด (ลูกค้า, พนักงาน, ประวัติงานจอง, ประวัติเครดิต) โดยเก็บรักษาไว้เฉพาะบัญชีแอดมินเท่านั้น ใช่หรือไม่?\n\nเมื่อล้างแล้ว ข้อมูลผู้ใช้งานที่เหลือจะมีเพียงแอดมิน และคุณสามารถทดลองสมัครเป็นลูกค้าและพนักงานใหม่เพื่อทดสอบระบบได้ทันที ข้อมูลจะไม่หายแน่นอนค่ะ");
+    if (!ok) return;
+
+    try {
+      const res = await fetch('/api/admin/clean-to-admin-only', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดในการล้างข้อมูล');
+
+      // Clear local vaults and keep only Admin
+      try {
+        const onlyAdmin = (data.remainingUsers || []).filter((u: any) => u.Role === 'Admin');
+        localStorage.setItem('sabaidee_persisted_users', JSON.stringify(onlyAdmin));
+        localStorage.setItem('sabaidee_persisted_staff', JSON.stringify([]));
+      } catch {}
+
+      onShowToast(data.message || "ล้างข้อมูลสำเร็จ เหลือเฉพาะบัญชีแอดมินเรียบร้อยค่ะ", "success");
+      fetchAllUsers();
+      fetchStaffList();
+      fetchDashboardStats();
+      fetchRawDatabase();
+      fetchTransactions();
+    } catch (e: any) {
+      onShowToast(e.message || "เกิดข้อผิดพลาดในการล้างข้อมูล", "error");
     }
   };
 
@@ -810,18 +861,32 @@ export default function AdminPanel({
       {/* USER MANAGEMENT */}
       {activeTab === 'users' && (
         <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-6 text-left animate-fade-in">
-          <div className="flex justify-between items-center">
-            <h3 className="text-base font-black text-slate-800">จัดการผู้ใช้งานในระบบทั้งหมด</h3>
-            <button
-              onClick={() => {
-                setEditingUserId(null);
-                setUserForm({ name: '', phone: '', password: '', role: 'Customer' });
-                setShowUserForm(!showUserForm);
-              }}
-              className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
-            >
-              + เพิ่มผู้ใช้งานใหม่
-            </button>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h3 className="text-base font-black text-slate-800">จัดการผู้ใช้งานในระบบทั้งหมด</h3>
+              <p className="text-xs text-slate-500 font-medium">รวมบัญชีลูกค้า, พนักงานนวด และแอดมิน (บันทึกข้อมูลและประวัติต่างๆ เป็นปัจจุบันถาวร)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCleanToAdminOnly}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                title="ล้างข้อมูลทดสอบทั้งหมด เหลือเฉพาะแอดมินเพื่อเริ่มทดสอบใหม่"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>ล้างข้อมูลเหลือเฉพาะแอดมิน</span>
+              </button>
+              <button
+                onClick={() => {
+                  setEditingUserId(null);
+                  setUserForm({ name: '', phone: '', password: '', role: 'Customer' });
+                  setShowUserForm(!showUserForm);
+                }}
+                className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer"
+              >
+                + เพิ่มผู้ใช้งานใหม่
+              </button>
+            </div>
           </div>
 
           {showUserForm && (

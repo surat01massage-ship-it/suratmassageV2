@@ -4,6 +4,7 @@ import { User, Staff, Service, Booking, CreditTransaction, Review, Notification,
 
 const DB_PATH = path.join(process.cwd(), 'server', 'db.json');
 const DB_BAK_PATH = path.join(process.cwd(), 'server', 'db.json.bak');
+const DB_PERSISTENT_PATH = path.join(process.cwd(), 'server', 'db_persistent_backup.json');
 const DB_TMP_PATH = path.join(process.cwd(), 'server', 'db.json.tmp');
 
 // In-memory cache to prevent race conditions and frequent disk read locks
@@ -189,13 +190,140 @@ const defaultReviews: Review[] = [];
 
 const defaultNotifications: Notification[] = [];
 
+export function mergeDatabases(base: DatabaseSchema, additions: Partial<DatabaseSchema>): DatabaseSchema {
+  const merged: DatabaseSchema = {
+    users: [...base.users],
+    staff: [...base.staff],
+    services: [...base.services],
+    bookings: [...base.bookings],
+    transactions: [...base.transactions],
+    reviews: [...base.reviews],
+    notifications: [...base.notifications],
+    settings: { ...base.settings }
+  };
+
+  if (Array.isArray(additions.users)) {
+    for (const u of additions.users) {
+      if (!u || !u.Phone) continue;
+      const idx = merged.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
+      if (idx === -1) {
+        merged.users.push(u);
+      } else {
+        merged.users[idx] = { ...merged.users[idx], ...u };
+      }
+    }
+  }
+
+  if (Array.isArray(additions.staff)) {
+    for (const s of additions.staff) {
+      if (!s || !s.StaffID) continue;
+      const idx = merged.staff.findIndex(x => x.StaffID === s.StaffID || x.UserID === s.UserID);
+      if (idx === -1) {
+        merged.staff.push(s);
+      } else {
+        merged.staff[idx] = { ...merged.staff[idx], ...s };
+      }
+    }
+  }
+
+  if (Array.isArray(additions.bookings)) {
+    for (const b of additions.bookings) {
+      if (!b || !b.BookingID) continue;
+      const idx = merged.bookings.findIndex(x => x.BookingID === b.BookingID);
+      if (idx === -1) {
+        merged.bookings.push(b);
+      } else {
+        merged.bookings[idx] = { ...merged.bookings[idx], ...b };
+      }
+    }
+  }
+
+  if (Array.isArray(additions.transactions)) {
+    for (const t of additions.transactions) {
+      if (!t || !t.TransactionID) continue;
+      if (!merged.transactions.some(x => x.TransactionID === t.TransactionID)) {
+        merged.transactions.push(t);
+      }
+    }
+  }
+
+  if (Array.isArray(additions.reviews)) {
+    for (const r of additions.reviews) {
+      if (!r || !r.ReviewID) continue;
+      if (!merged.reviews.some(x => x.ReviewID === r.ReviewID)) {
+        merged.reviews.push(r);
+      }
+    }
+  }
+
+  if (Array.isArray(additions.notifications)) {
+    for (const n of additions.notifications) {
+      if (!n || !n.NotificationID) continue;
+      if (!merged.notifications.some(x => x.NotificationID === n.NotificationID)) {
+        merged.notifications.push(n);
+      }
+    }
+  }
+
+  if (additions.settings) {
+    merged.settings = { ...merged.settings, ...additions.settings };
+  }
+
+  return merged;
+}
+
+const tryReadFile = (filePath: string): DatabaseSchema | null => {
+  if (fs.existsSync(filePath)) {
+    try {
+      const data = fs.readFileSync(filePath, 'utf8');
+      if (data && data.trim().length > 0) {
+        const parsed = JSON.parse(data);
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.users)) {
+          return parsed;
+        }
+      }
+    } catch (err) {
+      console.warn(`[DB] Error parsing ${filePath}:`, err);
+    }
+  }
+  return null;
+};
+
 export function getDatabase(): DatabaseSchema {
-  // 1. If we have in-memory database cached, return it immediately (fastest & safe from disk race conditions)
   if (inMemoryDB) {
     return inMemoryDB;
   }
 
-  const createInitialDB = (): DatabaseSchema => ({
+  // 1. Try reading the saved database from primary or persistent backup
+  const primaryDb = tryReadFile(DB_PATH);
+  const persistentDb = tryReadFile(DB_PERSISTENT_PATH);
+  const backupDb = tryReadFile(DB_BAK_PATH);
+
+  // If a valid saved database exists on disk, use it and preserve the admin's exact state
+  const existingDb = primaryDb || persistentDb || backupDb;
+  if (existingDb && Array.isArray(existingDb.users) && existingDb.users.length > 0) {
+    let merged = existingDb;
+    if (primaryDb && primaryDb !== merged) merged = mergeDatabases(merged, primaryDb);
+    if (persistentDb && persistentDb !== merged) merged = mergeDatabases(merged, persistentDb);
+    if (backupDb && backupDb !== merged) merged = mergeDatabases(merged, backupDb);
+
+    // Ensure essential arrays exist
+    if (!Array.isArray(merged.users)) merged.users = [];
+    if (!Array.isArray(merged.staff)) merged.staff = [];
+    if (!Array.isArray(merged.services)) merged.services = defaultServices;
+    if (!Array.isArray(merged.bookings)) merged.bookings = [];
+    if (!Array.isArray(merged.transactions)) merged.transactions = [];
+    if (!Array.isArray(merged.reviews)) merged.reviews = [];
+    if (!Array.isArray(merged.notifications)) merged.notifications = [];
+    if (!merged.settings) merged.settings = defaultSettings;
+
+    inMemoryDB = merged;
+    saveDatabase(merged);
+    return merged;
+  }
+
+  // 2. Only if no database exists anywhere (first-time launch), initialize with defaults
+  const initialDB: DatabaseSchema = {
     users: defaultUsers,
     staff: defaultStaff,
     services: defaultServices,
@@ -204,71 +332,36 @@ export function getDatabase(): DatabaseSchema {
     reviews: defaultReviews,
     notifications: defaultNotifications,
     settings: defaultSettings
-  });
+  };
 
-  // 2. Try loading from main DB_PATH
-  if (fs.existsSync(DB_PATH)) {
-    try {
-      const data = fs.readFileSync(DB_PATH, 'utf8');
-      if (data && data.trim().length > 0) {
-        const parsed = JSON.parse(data);
-        if (parsed && typeof parsed === 'object' && parsed.settings) {
-          inMemoryDB = parsed;
-          return parsed;
-        }
-      }
-    } catch (error) {
-      console.warn("⚠️ Warning: Primary db.json reading failed, checking backup file...", error);
-    }
-  }
-
-  // 3. Try fallback to backup DB_BAK_PATH
-  if (fs.existsSync(DB_BAK_PATH)) {
-    try {
-      const bakData = fs.readFileSync(DB_BAK_PATH, 'utf8');
-      if (bakData && bakData.trim().length > 0) {
-        const parsedBak = JSON.parse(bakData);
-        if (parsedBak && typeof parsedBak === 'object' && parsedBak.settings) {
-          console.log("✅ Successfully recovered database from backup db.json.bak!");
-          inMemoryDB = parsedBak;
-          // Restore primary file from backup
-          saveDatabase(parsedBak);
-          return parsedBak;
-        }
-      }
-    } catch (bakError) {
-      console.error("Failed to read backup database:", bakError);
-    }
-  }
-
-  // 4. If neither exists or both failed, initialize default DB
-  console.log("ℹ️ Initializing fresh database with defaults...");
-  const initialDB = createInitialDB();
   inMemoryDB = initialDB;
   saveDatabase(initialDB);
   return initialDB;
 }
 
 export function saveDatabase(db: DatabaseSchema): void {
-  // Always update in-memory cache first so all simultaneous requests see latest data immediately
   inMemoryDB = db;
 
   try {
     const jsonString = JSON.stringify(db, null, 2);
     
-    // Atomic write pattern:
-    // Write to a temporary file first, then atomically rename it to DB_PATH.
-    // This guarantees other read processes never catch the file in a truncated 0-byte or half-written state.
+    // 1. Atomic write to primary DB_PATH
     fs.writeFileSync(DB_TMP_PATH, jsonString, 'utf8');
     fs.renameSync(DB_TMP_PATH, DB_PATH);
 
-    // Also update backup file asynchronously/safely for recovery
+    // 2. Safe writes to backup and persistent files
     try {
       fs.writeFileSync(DB_BAK_PATH, jsonString, 'utf8');
-    } catch {
-      // ignore backup write error
+    } catch (e) {
+      console.warn('[DB] Backup write failed:', e);
+    }
+
+    try {
+      fs.writeFileSync(DB_PERSISTENT_PATH, jsonString, 'utf8');
+    } catch (e) {
+      console.warn('[DB] Persistent backup write failed:', e);
     }
   } catch (error) {
-    console.error("Failed to save database to disk:", error);
+    console.error("[DB] Failed to save database to disk:", error);
   }
 }

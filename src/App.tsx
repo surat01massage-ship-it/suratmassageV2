@@ -116,19 +116,110 @@ const getPersistedSettings = (): AppSettings => {
   return defaultAppSettings;
 };
 
+// Safe local persistence helpers to ensure users, staff, and session NEVER disappear
+const getPersistedSession = (): { user: User | null; staff: Staff | null; role: 'Customer' | 'Staff' | 'Admin' } => {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('sabaidee_active_session');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.user && parsed.user.UserID) {
+          return {
+            user: parsed.user,
+            staff: parsed.staff || null,
+            role: (parsed.role as any) || parsed.user.Role || 'Customer'
+          };
+        }
+      }
+    } catch (e) {
+      console.warn("Failed reading persisted session:", e);
+    }
+  }
+  return { user: null, staff: null, role: 'Customer' };
+};
+
+const saveActiveSession = (user: User | null, staff: Staff | null, role: 'Customer' | 'Staff' | 'Admin') => {
+  if (typeof window !== 'undefined') {
+    try {
+      if (user) {
+        localStorage.setItem('sabaidee_active_session', JSON.stringify({ user, staff, role, timestamp: Date.now() }));
+      } else {
+        localStorage.removeItem('sabaidee_active_session');
+      }
+    } catch (e) {
+      console.warn("Failed saving active session:", e);
+    }
+  }
+};
+
+const persistUserLocally = (user: User) => {
+  if (typeof window === 'undefined' || !user || !user.Phone) return;
+  try {
+    const raw = localStorage.getItem('sabaidee_persisted_users') || '[]';
+    const list: User[] = JSON.parse(raw);
+    const idx = list.findIndex(u => u.UserID === user.UserID || u.Phone === user.Phone);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...user };
+    } else {
+      list.push(user);
+    }
+    localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
+  } catch (e) {
+    console.warn("Failed persisting user locally:", e);
+  }
+};
+
+const persistStaffLocally = (staff: Staff) => {
+  if (typeof window === 'undefined' || !staff || !staff.StaffID) return;
+  try {
+    const raw = localStorage.getItem('sabaidee_persisted_staff') || '[]';
+    const list: Staff[] = JSON.parse(raw);
+    const idx = list.findIndex(s => s.StaffID === staff.StaffID || s.UserID === staff.UserID);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...staff };
+    } else {
+      list.push(staff);
+    }
+    localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
+  } catch (e) {
+    console.warn("Failed persisting staff locally:", e);
+  }
+};
+
+const syncVaultWithServer = async () => {
+  if (typeof window === 'undefined') return;
+  try {
+    const rawUsers = localStorage.getItem('sabaidee_persisted_users');
+    const rawStaff = localStorage.getItem('sabaidee_persisted_staff');
+    const users = rawUsers ? JSON.parse(rawUsers) : [];
+    const staff = rawStaff ? JSON.parse(rawStaff) : [];
+    if ((Array.isArray(users) && users.length > 0) || (Array.isArray(staff) && staff.length > 0)) {
+      await fetch('/api/sync/rehydrate-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users, staff })
+      });
+    }
+  } catch (e) {
+    console.warn("Vault sync warning:", e);
+  }
+};
+
 export default function App() {
+  const initialSession = getPersistedSession();
+
   // Theme state
   const [darkMode, setDarkMode] = useState<boolean>(false);
   
   // Sound enabled state
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
 
-  // Authentication states
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentStaff, setCurrentStaff] = useState<Staff | null>(null);
+  // Authentication states with instant persistent restoration
+  const [currentUser, setCurrentUser] = useState<User | null>(initialSession.user);
+  const [currentStaff, setCurrentStaff] = useState<Staff | null>(initialSession.staff);
   
   // Tab/Panel selector
-  const [userRoleMode, setUserRoleMode] = useState<'Customer' | 'Staff' | 'Admin'>('Customer');
+  const [userRoleMode, setUserRoleMode] = useState<'Customer' | 'Staff' | 'Admin'>(initialSession.role);
 
   // Login Form input states
   const [phoneInput, setPhoneInput] = useState("");
@@ -164,9 +255,10 @@ export default function App() {
   // Floating Toasts alerts state list
   const [toasts, setToasts] = useState<Array<{ id: number; msg: string; type: 'success' | 'error' | 'info' }>>([]);
 
-  // Load settings and auto-request device GPS on initial render
+  // Load settings, sync persistent vault, and auto-request device GPS on initial render
   useEffect(() => {
     fetchSettings();
+    syncVaultWithServer();
 
     // Try auto-login if saved credentials exist
     const savedAuth = localStorage.getItem('sabaidee_auth');
@@ -179,13 +271,28 @@ export default function App() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone, password })
           })
-          .then(res => res.json())
+          .then(async res => {
+            if (!res.ok) {
+              // Server may have rebooted/restarted: rehydrate from local vault and retry once
+              await syncVaultWithServer();
+              const retryRes = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, password })
+              });
+              return retryRes.json();
+            }
+            return res.json();
+          })
           .then(data => {
-            if (data.user) {
+            if (data?.user) {
               setCurrentUser(data.user);
               setCurrentStaff(data.staff);
               setUserRoleMode(data.user.Role);
-              showToast(`ยินดีต้อนรับกลับมาค่ะ คุณ${data.user.Name} (เข้าสู่ระบบอัตโนมัติ)`, "success");
+              saveActiveSession(data.user, data.staff, data.user.Role);
+              persistUserLocally(data.user);
+              if (data.staff) persistStaffLocally(data.staff);
+              showToast(`ยินดีต้อนรับกลับมาค่ะ คุณ${data.user.Name} (ข้อมูลเป็นปัจจุบัน)`, "success");
               
               // Immediately fetch and sync real phone GPS on login
               getRealCurrentLocation(8000).then(geo => {
@@ -216,7 +323,7 @@ export default function App() {
         console.error("Error parsing saved auth:", err);
       }
     } else {
-      // Auto-detect real phone GPS coordinates on app load if not logging in automatically (handled inside auto-login as well)
+      // Auto-detect real phone GPS coordinates on app load if not logging in automatically
       getRealCurrentLocation(8000)
         .then((geo) => {
           console.log("📍 Initial device GPS acquired:", geo.latitude, geo.longitude);
@@ -226,6 +333,47 @@ export default function App() {
         });
     }
   }, []);
+
+  // Keep current user and staff continuously up to date in real time ("จำเป็นปัจจุบันทั้งระบบ")
+  useEffect(() => {
+    if (!currentUser?.UserID) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/users/${currentUser.UserID}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setCurrentUser(prev => {
+              if (!prev || JSON.stringify(prev) !== JSON.stringify(data.user)) {
+                persistUserLocally(data.user);
+                saveActiveSession(data.user, currentStaff, userRoleMode);
+                return data.user;
+              }
+              return prev;
+            });
+          }
+          if (data.staff) {
+            setCurrentStaff(prev => {
+              if (prev && prev.VerifyStatus === 'Pending' && data.staff.VerifyStatus === 'Approved') {
+                showToast("🎉 ยินดีด้วยค่ะ! แอดมินอนุมัติบัญชีพนักงานของคุณแล้ว พร้อมเปิดรับงาน (Online) ได้ทันที", "success");
+              }
+              if (!prev || JSON.stringify(prev) !== JSON.stringify(data.staff)) {
+                persistStaffLocally(data.staff);
+                saveActiveSession(currentUser, data.staff, userRoleMode);
+                return data.staff;
+              }
+              return prev;
+            });
+          }
+        }
+      } catch (err) {
+        // silent
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [currentUser?.UserID, currentStaff?.StaffID, userRoleMode]);
 
   // One-time silent audio unlock on first interaction for mobile browsers
   useEffect(() => {
@@ -358,6 +506,9 @@ export default function App() {
       setCurrentUser(data.user);
       setCurrentStaff(data.staff);
       setUserRoleMode(data.user.Role);
+      saveActiveSession(data.user, data.staff, data.user.Role);
+      persistUserLocally(data.user);
+      if (data.staff) persistStaffLocally(data.staff);
       showToast(`ยินดีต้อนรับกลับมาค่ะ คุณ${data.user.Name}`, "success");
 
       // Immediately fetch and sync real phone GPS on login
@@ -435,7 +586,7 @@ export default function App() {
     }
   };
 
-  // Standard Registration submit handler
+  // Standard Registration submit handler with auto-login and persistent vault storage
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regName || !regPhone || !regPassword) {
@@ -508,12 +659,42 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'สมัครสมาชิกไม่สำเร็จ');
 
+      const user = data.user;
+      const staff = data.staff || null;
+
+      // Automatically log the user in immediately so their account and session are active
+      setCurrentUser(user);
+      setCurrentStaff(staff);
+      setUserRoleMode(currentRole);
+
+      // Persist active session and remember credentials
+      localStorage.setItem('sabaidee_auth', JSON.stringify({ phone: regPhone, password: regPassword }));
+      saveActiveSession(user, staff, currentRole);
+      persistUserLocally(user);
+      if (staff) persistStaffLocally(staff);
+
       showToast(currentRole === 'Staff' 
-        ? "🎉 สมัครพนักงานนวดสำเร็จ! ข้อมูลของคุณอยู่ระหว่างรอแอดมินตรวจสอบและอนุมัติก่อนเริ่มงานค่ะ (ได้รับ 398 เครดิตต้อนรับเรียบร้อย)" 
-        : "สมัครสมาชิกลูกค้าสำเร็จเรียบร้อย! กรุณาเข้าสู่ระบบเพื่อเริ่มใช้งาน", "success");
-      setAuthMode('login');
-      setPhoneInput(regPhone);
-      setPasswordInput(regPassword);
+        ? `🎉 สมัครพนักงานนวดสำเร็จและเข้าสู่ระบบเรียบร้อยค่ะ! ยินดีต้อนรับคุณ ${user.Name} (ได้รับ 398 เครดิตต้อนรับ รอแอดมินอนุมัติเพื่อเริ่มรับงาน)` 
+        : `🎉 สมัครสมาชิกและเข้าสู่ระบบสำเร็จแล้วค่ะ ยินดีต้อนรับคุณ ${user.Name}!`, "success");
+
+      setAuthMode('welcome');
+
+      // Sync GPS immediately
+      if (user?.UserID) {
+        fetch(`/api/users/${user.UserID}/location`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude: userLat, longitude: userLng })
+        }).catch(console.error);
+      }
+      if (staff?.StaffID) {
+        fetch('/api/staff/location', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ staffId: staff.StaffID, latitude: userLat, longitude: userLng })
+        }).catch(console.error);
+      }
+
       // Reset form
       setRegName("");
       setRegNickname("");
@@ -534,6 +715,8 @@ export default function App() {
     setCurrentStaff(null);
     setUserRoleMode('Customer');
     localStorage.removeItem('sabaidee_auth');
+    localStorage.removeItem('sabaidee_active_session');
+    setAuthMode('welcome');
     showToast("ออกจากระบบในเบราว์เซอร์สำเร็จ", "info");
   };
 
