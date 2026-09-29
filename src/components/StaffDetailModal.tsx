@@ -14,6 +14,7 @@ interface StaffDetailModalProps {
   onClose: () => void;
   onShowToast: (msg: string, type: 'success' | 'error' | 'info') => void;
   onRefreshStaffList: () => void;
+  onDeleteStaff?: (staffId: string) => void;
 }
 
 export interface EvidenceDocument {
@@ -73,7 +74,8 @@ export default function StaffDetailModal({
   staffId,
   onClose,
   onShowToast,
-  onRefreshStaffList
+  onRefreshStaffList,
+  onDeleteStaff
 }: StaffDetailModalProps) {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<{
@@ -1993,17 +1995,32 @@ export default function StaffDetailModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="bg-slate-50 border-t border-slate-200 p-4 px-6 flex justify-between items-center text-xs">
+        <div className="bg-slate-50 border-t border-slate-200 p-4 px-6 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs">
           <span className="text-slate-500 font-semibold">
-            พนักงาน: <strong className="text-slate-800">{staff.Name}</strong> (พี่{staff.Nickname})
+            พนักงาน: <strong className="text-slate-800">{staff.Name}</strong> (พี่{staff.Nickname}) • รหัส: <strong className="font-mono text-slate-700">{staff.StaffID}</strong>
           </span>
 
-          <button
-            onClick={onClose}
-            className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl font-bold transition-colors cursor-pointer"
-          >
-            ปิดหน้าต่าง
-          </button>
+          <div className="flex items-center gap-2">
+            {onDeleteStaff && (
+              <button
+                type="button"
+                onClick={() => onDeleteStaff(staff.StaffID)}
+                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-xl font-bold transition-colors cursor-pointer flex items-center gap-1.5 text-xs shadow-2xs"
+                title="ลบพนักงานคนนี้ออกจากระบบถาวร"
+              >
+                <Trash2 className="w-4 h-4 text-rose-600" />
+                <span>ลบพนักงานคนนี้ถาวร</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl font-bold transition-colors cursor-pointer"
+            >
+              ปิดหน้าต่าง
+            </button>
+          </div>
         </div>
 
         </div>

@@ -580,9 +580,15 @@ async function startServer() {
     let addedUsers = 0;
     let addedStaff = 0;
 
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    const deletedStaffSet = new Set(db.deletedStaffIds || []);
+
     if (Array.isArray(users)) {
       for (const u of users) {
-        if (!u || !u.Phone) continue;
+        if (!u || !u.Phone || !u.UserID) continue;
+        // Never restore permanently deleted users
+        if (deletedUserSet.has(u.UserID)) continue;
+
         const existing = db.users.find(x => x.Phone === u.Phone || x.UserID === u.UserID);
         if (!existing) {
           db.users.push(u);
@@ -600,6 +606,9 @@ async function startServer() {
     if (Array.isArray(staff)) {
       for (const s of staff) {
         if (!s || !s.StaffID) continue;
+        // Never restore permanently deleted staff
+        if (deletedStaffSet.has(s.StaffID) || (s.UserID && deletedUserSet.has(s.UserID))) continue;
+
         const existing = db.staff.find(x => x.StaffID === s.StaffID || x.UserID === s.UserID);
         if (!existing) {
           db.staff.push(s);
@@ -626,7 +635,9 @@ async function startServer() {
       addedUsers,
       addedStaff,
       users: db.users,
-      staff: db.staff
+      staff: db.staff,
+      deletedUserIds: Array.from(deletedUserSet),
+      deletedStaffIds: Array.from(deletedStaffSet)
     });
   });
 
@@ -841,7 +852,7 @@ async function startServer() {
     }
   });
 
-  // Delete User API
+  // Delete User API (Permanent Deletion)
   app.delete('/api/users/:id', (req, res) => {
     const db = getDatabase();
     const { id } = req.params;
@@ -860,14 +871,25 @@ async function startServer() {
       }
     }
 
-    // Delete user from db.users
-    db.users.splice(uIndex, 1);
+    if (!db.deletedUserIds) db.deletedUserIds = [];
+    if (!db.deletedStaffIds) db.deletedStaffIds = [];
 
-    // If staff, remove staff profile as well
+    // Delete user from db.users and add tombstone
+    db.users.splice(uIndex, 1);
+    if (!db.deletedUserIds.includes(id)) {
+      db.deletedUserIds.push(id);
+    }
+
+    // If staff, permanently remove staff profile as well
+    let deletedStaffId: string | undefined;
     const sIndex = db.staff.findIndex(s => s.UserID === id);
     if (sIndex !== -1) {
       const deletedStaff = db.staff[sIndex];
+      deletedStaffId = deletedStaff.StaffID;
       db.staff.splice(sIndex, 1);
+      if (!db.deletedStaffIds.includes(deletedStaff.StaffID)) {
+        db.deletedStaffIds.push(deletedStaff.StaffID);
+      }
       syncToGoogleSheet('DELETE', 'Staff', { StaffID: deletedStaff.StaffID, UserID: id });
       syncToGoogleSheet('DELETE', 'StaffDocuments', { StaffID: deletedStaff.StaffID, UserID: id });
     }
@@ -878,7 +900,14 @@ async function startServer() {
     saveDatabase(db);
     syncToGoogleSheet('DELETE', 'Users', { UserID: id, Name: userToDelete.Name });
 
-    res.json({ success: true, message: `ลบผู้ใช้งาน "${userToDelete.Name}" เรียบร้อยแล้ว` });
+    res.json({
+      success: true,
+      message: `ลบผู้ใช้งาน "${userToDelete.Name}" ออกจากระบบถาวรเรียบร้อยแล้ว`,
+      deletedUserId: id,
+      deletedStaffId,
+      remainingUsers: db.users,
+      remainingStaff: db.staff
+    });
   });
 
   // Admin action: Clean all test accounts, bookings, and histories, keeping only Admin accounts
@@ -889,6 +918,23 @@ async function startServer() {
     const adminUsers = db.users.filter(u => u.Role === 'Admin');
     if (adminUsers.length === 0) {
       return res.status(400).json({ error: 'ไม่พบบัญชีแอดมินในระบบ ไม่สามารถดำเนินการได้' });
+    }
+
+    if (!db.deletedUserIds) db.deletedUserIds = [];
+    if (!db.deletedStaffIds) db.deletedStaffIds = [];
+
+    // Tombstone all non-admin users being removed
+    for (const u of db.users) {
+      if (u.Role !== 'Admin' && !db.deletedUserIds.includes(u.UserID)) {
+        db.deletedUserIds.push(u.UserID);
+      }
+    }
+
+    // Tombstone all staff being removed
+    for (const s of db.staff) {
+      if (!db.deletedStaffIds.includes(s.StaffID)) {
+        db.deletedStaffIds.push(s.StaffID);
+      }
     }
 
     db.users = adminUsers;
@@ -906,34 +952,68 @@ async function startServer() {
       message: 'ล้างข้อมูลทดสอบทั้งหมดเรียบร้อย เหลือเฉพาะบัญชีแอดมิน พร้อมสำหรับเริ่มสมัครและทดสอบระบบใหม่',
       remainingUsers: db.users,
       totalStaff: db.staff.length,
-      totalBookings: db.bookings.length
+      totalBookings: db.bookings.length,
+      deletedUserIds: db.deletedUserIds,
+      deletedStaffIds: db.deletedStaffIds
     });
   });
 
-  // Delete Staff Profile API
+  // Delete Staff Profile API (Permanent Deletion)
   app.delete('/api/staff/:id', (req, res) => {
     const db = getDatabase();
     const { id } = req.params;
+    const deleteUser = req.query.deleteUser !== 'false' && req.body?.deleteUser !== false;
+
+    if (!db.deletedStaffIds) db.deletedStaffIds = [];
+    if (!db.deletedUserIds) db.deletedUserIds = [];
+
     const sIndex = db.staff.findIndex(s => s.StaffID === id);
     if (sIndex === -1) {
       return res.status(404).json({ error: 'ไม่พบข้อมูลพนักงานที่ต้องการลบ' });
     }
 
     const staff = db.staff[sIndex];
+    // Permanently remove from staff
     db.staff.splice(sIndex, 1);
+    if (!db.deletedStaffIds.includes(id)) {
+      db.deletedStaffIds.push(id);
+    }
 
-    // If corresponding user exists, revert role to Customer
-    const user = db.users.find(u => u.UserID === staff.UserID);
-    if (user) {
-      user.Role = 'Customer';
-      syncToGoogleSheet('UPDATE', 'Users', user);
+    let deletedUserId: string | undefined;
+    if (staff.UserID) {
+      const uIndex = db.users.findIndex(u => u.UserID === staff.UserID);
+      if (uIndex !== -1) {
+        const user = db.users[uIndex];
+        if (user.Role !== 'Admin') {
+          if (deleteUser) {
+            // Permanently remove user account too
+            db.users.splice(uIndex, 1);
+            if (!db.deletedUserIds.includes(staff.UserID)) {
+              db.deletedUserIds.push(staff.UserID);
+            }
+            deletedUserId = staff.UserID;
+            syncToGoogleSheet('DELETE', 'Users', { UserID: user.UserID, Name: user.Name });
+          } else {
+            // Just demote to customer
+            user.Role = 'Customer';
+            syncToGoogleSheet('UPDATE', 'Users', user);
+          }
+        }
+      }
     }
 
     saveDatabase(db);
     syncToGoogleSheet('DELETE', 'Staff', { StaffID: id, UserID: staff.UserID });
     syncToGoogleSheet('DELETE', 'StaffDocuments', { StaffID: id, UserID: staff.UserID });
 
-    res.json({ success: true, message: `ลบข้อมูลพนักงาน "${staff.Nickname}" เรียบร้อยแล้ว` });
+    res.json({
+      success: true,
+      message: `ลบข้อมูลพนักงาน "${staff.Nickname || id}" ออกจากระบบถาวรเรียบร้อยแล้ว`,
+      deletedStaffId: id,
+      deletedUserId,
+      remainingStaff: db.staff,
+      remainingUsers: db.users
+    });
   });
 
   // 2. Services APIs

@@ -25,6 +25,8 @@ export interface DatabaseSchema {
   reviews: Review[];
   notifications: Notification[];
   settings: AppSettings;
+  deletedUserIds?: string[];
+  deletedStaffIds?: string[];
 }
 
 export const defaultSettings: AppSettings = {
@@ -191,20 +193,30 @@ const defaultReviews: Review[] = [];
 const defaultNotifications: Notification[] = [];
 
 export function mergeDatabases(base: DatabaseSchema, additions: Partial<DatabaseSchema>): DatabaseSchema {
+  const deletedUserIds = new Set([...(base.deletedUserIds || []), ...(additions.deletedUserIds || [])]);
+  const deletedStaffIds = new Set([...(base.deletedStaffIds || []), ...(additions.deletedStaffIds || [])]);
+
   const merged: DatabaseSchema = {
-    users: [...base.users],
-    staff: [...base.staff],
-    services: [...base.services],
-    bookings: [...base.bookings],
-    transactions: [...base.transactions],
-    reviews: [...base.reviews],
-    notifications: [...base.notifications],
-    settings: { ...base.settings }
+    users: [...(base.users || [])],
+    staff: [...(base.staff || [])],
+    services: [...(base.services || [])],
+    bookings: [...(base.bookings || [])],
+    transactions: [...(base.transactions || [])],
+    reviews: [...(base.reviews || [])],
+    notifications: [...(base.notifications || [])],
+    settings: { ...base.settings },
+    deletedUserIds: Array.from(deletedUserIds),
+    deletedStaffIds: Array.from(deletedStaffIds)
   };
+
+  // Filter out any already deleted records from base
+  merged.users = merged.users.filter(u => !deletedUserIds.has(u.UserID));
+  merged.staff = merged.staff.filter(s => !deletedStaffIds.has(s.StaffID) && !deletedUserIds.has(s.UserID));
 
   if (Array.isArray(additions.users)) {
     for (const u of additions.users) {
-      if (!u || !u.Phone) continue;
+      if (!u || !u.Phone || !u.UserID) continue;
+      if (deletedUserIds.has(u.UserID)) continue; // Never re-add permanently deleted user
       const idx = merged.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
       if (idx === -1) {
         merged.users.push(u);
@@ -217,6 +229,7 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
   if (Array.isArray(additions.staff)) {
     for (const s of additions.staff) {
       if (!s || !s.StaffID) continue;
+      if (deletedStaffIds.has(s.StaffID) || (s.UserID && deletedUserIds.has(s.UserID))) continue; // Never re-add permanently deleted staff
       const idx = merged.staff.findIndex(x => x.StaffID === s.StaffID || x.UserID === s.UserID);
       if (idx === -1) {
         merged.staff.push(s);
@@ -299,27 +312,43 @@ export function getDatabase(): DatabaseSchema {
   const persistentDb = tryReadFile(DB_PERSISTENT_PATH);
   const backupDb = tryReadFile(DB_BAK_PATH);
 
-  // If a valid saved database exists on disk, use it and preserve the admin's exact state
-  const existingDb = primaryDb || persistentDb || backupDb;
-  if (existingDb && Array.isArray(existingDb.users) && existingDb.users.length > 0) {
-    let merged = existingDb;
-    if (primaryDb && primaryDb !== merged) merged = mergeDatabases(merged, primaryDb);
-    if (persistentDb && persistentDb !== merged) merged = mergeDatabases(merged, persistentDb);
-    if (backupDb && backupDb !== merged) merged = mergeDatabases(merged, backupDb);
+  // If primaryDb is present and valid, it is the canonical database (authoritative source of truth)
+  // We only use backups if primaryDb is missing or corrupt
+  const sourceDb = primaryDb || persistentDb || backupDb;
+  if (sourceDb && Array.isArray(sourceDb.users) && sourceDb.users.length > 0) {
+    let liveDb: DatabaseSchema = { ...sourceDb };
 
-    // Ensure essential arrays exist
-    if (!Array.isArray(merged.users)) merged.users = [];
-    if (!Array.isArray(merged.staff)) merged.staff = [];
-    if (!Array.isArray(merged.services)) merged.services = defaultServices;
-    if (!Array.isArray(merged.bookings)) merged.bookings = [];
-    if (!Array.isArray(merged.transactions)) merged.transactions = [];
-    if (!Array.isArray(merged.reviews)) merged.reviews = [];
-    if (!Array.isArray(merged.notifications)) merged.notifications = [];
-    if (!merged.settings) merged.settings = defaultSettings;
+    // Collect all deleted tombstones across files so deleted records are never resurrected
+    const allDeletedUsers = new Set<string>([
+      ...(primaryDb?.deletedUserIds || []),
+      ...(persistentDb?.deletedUserIds || []),
+      ...(backupDb?.deletedUserIds || [])
+    ]);
+    const allDeletedStaff = new Set<string>([
+      ...(primaryDb?.deletedStaffIds || []),
+      ...(persistentDb?.deletedStaffIds || []),
+      ...(backupDb?.deletedStaffIds || [])
+    ]);
 
-    inMemoryDB = merged;
-    saveDatabase(merged);
-    return merged;
+    liveDb.deletedUserIds = Array.from(allDeletedUsers);
+    liveDb.deletedStaffIds = Array.from(allDeletedStaff);
+
+    // Filter out any deleted records
+    if (!Array.isArray(liveDb.users)) liveDb.users = [];
+    if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
+    liveDb.users = liveDb.users.filter(u => !allDeletedUsers.has(u.UserID));
+    liveDb.staff = liveDb.staff.filter(s => !allDeletedStaff.has(s.StaffID) && !allDeletedUsers.has(s.UserID));
+
+    if (!Array.isArray(liveDb.services)) liveDb.services = defaultServices;
+    if (!Array.isArray(liveDb.bookings)) liveDb.bookings = [];
+    if (!Array.isArray(liveDb.transactions)) liveDb.transactions = [];
+    if (!Array.isArray(liveDb.reviews)) liveDb.reviews = [];
+    if (!Array.isArray(liveDb.notifications)) liveDb.notifications = [];
+    if (!liveDb.settings) liveDb.settings = defaultSettings;
+
+    inMemoryDB = liveDb;
+    saveDatabase(liveDb);
+    return liveDb;
   }
 
   // 2. Only if no database exists anywhere (first-time launch), initialize with defaults
@@ -331,7 +360,9 @@ export function getDatabase(): DatabaseSchema {
     transactions: defaultTransactions,
     reviews: defaultReviews,
     notifications: defaultNotifications,
-    settings: defaultSettings
+    settings: defaultSettings,
+    deletedUserIds: [],
+    deletedStaffIds: []
   };
 
   inMemoryDB = initialDB;

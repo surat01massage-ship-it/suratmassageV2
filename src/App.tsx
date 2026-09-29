@@ -152,6 +152,56 @@ const saveActiveSession = (user: User | null, staff: Staff | null, role: 'Custom
   }
 };
 
+export const removeLocallyPersistedUser = (userId: string) => {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    const raw = localStorage.getItem('sabaidee_persisted_users') || '[]';
+    const list: User[] = JSON.parse(raw);
+    const filtered = list.filter(u => u.UserID !== userId);
+    localStorage.setItem('sabaidee_persisted_users', JSON.stringify(filtered));
+
+    // Also check active session
+    const sessionRaw = localStorage.getItem('sabaidee_active_session');
+    if (sessionRaw) {
+      const session = JSON.parse(sessionRaw);
+      if (session?.user?.UserID === userId) {
+        localStorage.removeItem('sabaidee_active_session');
+        localStorage.removeItem('sabaidee_auth');
+      }
+    }
+  } catch (e) {
+    console.warn("Failed removing user locally:", e);
+  }
+};
+
+export const removeLocallyPersistedStaff = (staffId: string, userId?: string) => {
+  if (typeof window === 'undefined' || !staffId) return;
+  try {
+    const raw = localStorage.getItem('sabaidee_persisted_staff') || '[]';
+    const list: Staff[] = JSON.parse(raw);
+    const filtered = list.filter(s => s.StaffID !== staffId && (!userId || s.UserID !== userId));
+    localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(filtered));
+
+    // Also check active session staff
+    const sessionRaw = localStorage.getItem('sabaidee_active_session');
+    if (sessionRaw) {
+      const session = JSON.parse(sessionRaw);
+      if (session?.staff?.StaffID === staffId || (userId && session?.user?.UserID === userId)) {
+        if (userId && session?.user?.UserID === userId) {
+          localStorage.removeItem('sabaidee_active_session');
+          localStorage.removeItem('sabaidee_auth');
+        } else {
+          session.staff = null;
+          session.role = 'Customer';
+          localStorage.setItem('sabaidee_active_session', JSON.stringify(session));
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed removing staff locally:", e);
+  }
+};
+
 const persistUserLocally = (user: User) => {
   if (typeof window === 'undefined' || !user || !user.Phone) return;
   try {
@@ -193,12 +243,25 @@ const syncVaultWithServer = async () => {
     const rawStaff = localStorage.getItem('sabaidee_persisted_staff');
     const users = rawUsers ? JSON.parse(rawUsers) : [];
     const staff = rawStaff ? JSON.parse(rawStaff) : [];
-    if ((Array.isArray(users) && users.length > 0) || (Array.isArray(staff) && staff.length > 0)) {
-      await fetch('/api/sync/rehydrate-users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ users, staff })
-      });
+    
+    const res = await fetch('/api/sync/rehydrate-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ users, staff })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const serverDeletedUsers = new Set<string>(data.deletedUserIds || []);
+      const serverDeletedStaff = new Set<string>(data.deletedStaffIds || []);
+
+      if (serverDeletedUsers.size > 0 || serverDeletedStaff.size > 0) {
+        // Prune client local storage caches immediately
+        const cleanUsers = users.filter((u: User) => !serverDeletedUsers.has(u.UserID));
+        const cleanStaff = staff.filter((s: Staff) => !serverDeletedStaff.has(s.StaffID) && !serverDeletedUsers.has(s.UserID));
+        localStorage.setItem('sabaidee_persisted_users', JSON.stringify(cleanUsers));
+        localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(cleanStaff));
+      }
     }
   } catch (e) {
     console.warn("Vault sync warning:", e);

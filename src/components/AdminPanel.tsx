@@ -45,6 +45,11 @@ export default function AdminPanel({
   const [userForm, setUserForm] = useState({ name: '', phone: '', password: '', role: 'Customer' });
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Staff Delete states
+  const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null);
+  const [isDeletingStaff, setIsDeletingStaff] = useState(false);
+  const [deleteStaffUserAccount, setDeleteStaffUserAccount] = useState(true);
   
   // Staff Details & Filters
   const [selectedStaffIdForDetail, setSelectedStaffIdForDetail] = useState<string | null>(null);
@@ -333,6 +338,20 @@ export default function AdminPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดในการลบผู้ใช้งาน');
 
+      // Purge local storage caches immediately
+      try {
+        const rawUsers = localStorage.getItem('sabaidee_persisted_users');
+        if (rawUsers) {
+          const list = JSON.parse(rawUsers).filter((u: any) => u.UserID !== userToDelete.UserID);
+          localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
+        }
+        const rawStaff = localStorage.getItem('sabaidee_persisted_staff');
+        if (rawStaff) {
+          const list = JSON.parse(rawStaff).filter((s: any) => s.UserID !== userToDelete.UserID);
+          localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
+        }
+      } catch {}
+
       onShowToast(data.message ? `${data.message} (ลบออกจากชีตเรียบร้อย)` : `ลบผู้ใช้งาน "${userToDelete.Name}" และแถวใน Google Sheets สำเร็จ`, "success");
       setUserToDelete(null);
       fetchAllUsers();
@@ -342,6 +361,44 @@ export default function AdminPanel({
       onShowToast(e.message || "เกิดข้อผิดพลาดในการลบผู้ใช้งาน", "error");
     } finally {
       setIsDeletingUser(false);
+    }
+  };
+
+  const handleDeleteStaff = async () => {
+    if (!staffToDelete) return;
+    setIsDeletingStaff(true);
+    try {
+      const res = await fetch(`/api/staff/${staffToDelete.StaffID}?deleteUser=${deleteStaffUserAccount}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดในการลบพนักงาน');
+
+      // Purge local storage caches immediately so deleted staff is NEVER resurrected
+      try {
+        const rawStaff = localStorage.getItem('sabaidee_persisted_staff');
+        if (rawStaff) {
+          const list = JSON.parse(rawStaff).filter((s: any) => s.StaffID !== staffToDelete.StaffID && s.UserID !== staffToDelete.UserID);
+          localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
+        }
+        if (deleteStaffUserAccount && staffToDelete.UserID) {
+          const rawUsers = localStorage.getItem('sabaidee_persisted_users');
+          if (rawUsers) {
+            const list = JSON.parse(rawUsers).filter((u: any) => u.UserID !== staffToDelete.UserID);
+            localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
+          }
+        }
+      } catch {}
+
+      onShowToast(data.message || `ลบข้อมูลพนักงาน "${staffToDelete.Nickname}" ออกจากระบบถาวรเรียบร้อยแล้ว`, "success");
+      setStaffToDelete(null);
+      fetchStaffList();
+      fetchAllUsers();
+      fetchRawDatabase();
+    } catch (e: any) {
+      onShowToast(e.message || "เกิดข้อผิดพลาดในการลบข้อมูลพนักงาน", "error");
+    } finally {
+      setIsDeletingStaff(false);
     }
   };
 
@@ -1363,12 +1420,22 @@ export default function AdminPanel({
                         )}
                       </td>
                       <td className="py-4 px-2 text-right">
-                        <button
-                          onClick={() => setSelectedStaffIdForDetail(staff.StaffID)}
-                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs border border-sky-200/60"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-sky-600" /> ดูโปรไฟล์หมอ & ตรวจเอกสาร
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => setSelectedStaffIdForDetail(staff.StaffID)}
+                            className="bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold px-3 py-1.5 rounded-xl text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs border border-sky-200/60"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-sky-600" /> ดูโปรไฟล์ & ตรวจเอกสาร
+                          </button>
+                          <button
+                            onClick={() => setStaffToDelete(staff)}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold px-2.5 py-1.5 rounded-xl text-xs inline-flex items-center gap-1 cursor-pointer transition-colors border border-rose-200 shadow-2xs"
+                            title="ลบพนักงานคนนี้ออกจากระบบถาวร"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                            <span>ลบถาวร</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2610,6 +2677,13 @@ export default function AdminPanel({
           onClose={() => setSelectedStaffIdForDetail(null)}
           onShowToast={onShowToast}
           onRefreshStaffList={fetchStaffList}
+          onDeleteStaff={(staffId) => {
+            const st = allStaff.find(s => s.StaffID === staffId);
+            if (st) {
+              setSelectedStaffIdForDetail(null);
+              setStaffToDelete(st);
+            }
+          }}
         />
       )}
 
@@ -2701,6 +2775,99 @@ export default function AdminPanel({
                   <>
                     <Trash2 className="w-4 h-4" />
                     <span>ยืนยันลบผู้ใช้งาน</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 10.1 CONFIRM PERMANENT DELETE STAFF MODAL */}
+      {staffToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 text-slate-800 space-y-5 shadow-2xl relative text-left">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">ยืนยันการลบพนักงานถาวร</h3>
+                  <p className="text-[11px] text-rose-600 font-semibold">ลบถาวรแบบไม่กู้คืนกลับมาอีก</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStaffToDelete(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target staff summary card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center gap-3.5">
+              <img
+                src={staffToDelete.Photos?.[0] || `https://ui-avatars.com/api/?name=${encodeURIComponent(staffToDelete.Nickname || 'หมอนวด')}&background=0D9488&color=fff&size=80`}
+                className="w-12 h-12 rounded-full object-cover border border-slate-200"
+                alt="Avatar"
+              />
+              <div className="space-y-0.5 flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-sm text-slate-800 truncate">พี่{staffToDelete.Nickname} ({staffToDelete.Name || 'พนักงานนวด'})</span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                    Staff
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">รหัสพนักงาน: <span className="font-mono font-bold text-slate-700">{staffToDelete.StaffID}</span></p>
+                <p className="text-[10px] text-slate-400 font-mono">รหัสผู้ใช้งาน (UserID): {staffToDelete.UserID}</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3.5 text-xs text-rose-900 space-y-2">
+              <p className="font-black flex items-center gap-1.5 text-rose-800">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>การลบถาวร (Permanent Removal)</span>
+              </p>
+              <p className="text-[11px] text-rose-700 leading-relaxed">
+                ระบบจะลบข้อมูลพนักงาน เอกสารแนบ ประวัติ และสิทธิ์การทำงานออกจากฐานข้อมูลหลัก ฐานข้อมูลสำรอง และ Google Sheets ถาวร โดยจะไม่ถูกดึงกลับมาอีกเด็ดขาด
+              </p>
+              
+              <label className="flex items-center gap-2 pt-1 cursor-pointer border-t border-rose-200/60 mt-1">
+                <input
+                  type="checkbox"
+                  checked={deleteStaffUserAccount}
+                  onChange={(e) => setDeleteStaffUserAccount(e.target.checked)}
+                  className="w-4 h-4 text-rose-600 rounded-md focus:ring-rose-500 border-slate-300"
+                />
+                <span className="text-[11px] font-bold text-rose-950">
+                  ลบบัญชีผู้ใช้งาน ({staffToDelete.UserID}) ออกจากระบบด้วย
+                </span>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isDeletingStaff}
+                onClick={() => setStaffToDelete(null)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingStaff}
+                onClick={handleDeleteStaff}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isDeletingStaff ? (
+                  <span>กำลังลบ...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>ยืนยันลบพนักงานถาวร</span>
                   </>
                 )}
               </button>
