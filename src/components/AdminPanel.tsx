@@ -214,8 +214,9 @@ export default function AdminPanel({
   const fetchDashboardStats = async () => {
     try {
       const res = await fetch('/api/admin/dashboard');
-      const data = await res.json();
-      setDashboardStats(data);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (data) setDashboardStats(data);
     } catch (e) {
       console.error(e);
     }
@@ -224,7 +225,8 @@ export default function AdminPanel({
   const fetchStaffList = async () => {
     try {
       const res = await fetch('/api/staff');
-      const data = await res.json();
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
       if (Array.isArray(data)) {
         setAllStaff(data);
         // Persist staff into local vault
@@ -240,7 +242,8 @@ export default function AdminPanel({
   const fetchAllUsers = async () => {
     try {
       const res = await fetch('/api/users');
-      const data = await res.json();
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
       if (Array.isArray(data)) {
         // Sort users so Customers appear first during testing
         const sortedData = data.sort((a: any, b: any) => {
@@ -261,8 +264,11 @@ export default function AdminPanel({
   const fetchServices = async () => {
     try {
       const res = await fetch('/api/services');
-      const data = await res.json();
-      setServices(data);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
+      if (Array.isArray(data)) {
+        setServices(data);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -271,8 +277,11 @@ export default function AdminPanel({
   const fetchTransactions = async () => {
     try {
       const res = await fetch('/api/credits/transactions');
-      const data = await res.json();
-      setTransactions(data);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
+      if (Array.isArray(data)) {
+        setTransactions(data);
+      }
     } catch (e) {
       console.error(e);
     }
@@ -281,8 +290,9 @@ export default function AdminPanel({
   const fetchRawDatabase = async () => {
     try {
       const res = await fetch('/api/database/export');
-      const data = await res.json();
-      setRawDb(data);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      if (data) setRawDb(data);
     } catch (e) {
       console.error(e);
     }

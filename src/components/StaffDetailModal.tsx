@@ -129,11 +129,13 @@ export default function StaffDetailModal({
   }, [lightboxIndex, isFullscreen, onClose]);
 
   const fetchDetails = async () => {
+    if (!staffId) return;
     try {
       setLoading(true);
       const res = await fetch(`/api/staff/${staffId}/details`);
       if (!res.ok) throw new Error('ไม่สามารถดึงข้อมูลพนักงานได้');
-      const json = await res.json();
+      const json = await res.json().catch(() => null);
+      if (!json || !json.staff) throw new Error('ข้อมูลพนักงานไม่ถูกต้อง');
       setData(json);
       setEditForm({
         name: json.staff.Name || '',
@@ -1922,6 +1924,16 @@ export default function StaffDetailModal({
                           <td className="py-2.5 px-3">
                             <span className="font-bold text-slate-800 block">{b.CustomerName}</span>
                             <span className="text-[10px] text-slate-400 block font-mono">{b.CustomerPhone}</span>
+                            {b.CustomerAddress && (
+                              <span className="text-[10px] text-slate-500 block max-w-xs truncate" title={b.CustomerAddress}>
+                                📍 {b.CustomerAddress}
+                              </span>
+                            )}
+                            {b.CustomerAddressDetail && (
+                              <span className="text-[9px] text-amber-700 bg-amber-50 rounded px-1 py-0.5 inline-block mt-0.5 max-w-xs truncate" title={b.CustomerAddressDetail}>
+                                🏢 {b.CustomerAddressDetail}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2.5 px-3 font-bold">
                             ฿{b.TotalPrice || b.ServicePrice}

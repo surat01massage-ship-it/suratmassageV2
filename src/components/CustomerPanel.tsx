@@ -320,8 +320,11 @@ export default function CustomerPanel({
   const fetchServices = async () => {
     try {
       const res = await fetch('/api/services');
-      const data = await res.json();
-      setServices(data.filter((s: Service) => s.Active === 'ON'));
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
+      if (Array.isArray(data)) {
+        setServices(data.filter((s: Service) => s.Active === 'ON'));
+      }
     } catch (e) {
       console.error(e);
     }
@@ -330,29 +333,37 @@ export default function CustomerPanel({
   const fetchStaff = async () => {
     try {
       const res = await fetch('/api/staff');
-      const data = await res.json();
-      setAllStaff(data);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
+      if (Array.isArray(data)) {
+        setAllStaff(data);
+      }
     } catch (e) {
       console.error(e);
     }
   };
 
   const fetchNotifications = async () => {
-    if (!currentUser) return;
+    if (!currentUser?.UserID) return;
     try {
       const res = await fetch(`/api/notifications/${currentUser.UserID}`);
-      const data = await res.json();
-      setNotifications(data);
+      if (!res.ok) return;
+      const data = await res.json().catch(() => []);
+      if (Array.isArray(data)) {
+        setNotifications(data);
+      }
     } catch (e) {
       console.error(e);
     }
   };
 
   const fetchActiveBooking = async () => {
-    if (!currentUser) return;
+    if (!currentUser?.UserID) return;
     try {
       const res = await fetch('/api/bookings');
-      const bookings = await res.json();
+      if (!res.ok) return;
+      const bookings = await res.json().catch(() => []);
+      if (!Array.isArray(bookings)) return;
       // Get the latest pending/active booking for this customer
       const customerBookings = bookings.filter((b: any) => 
         b.CustomerID === currentUser.UserID && 
@@ -449,7 +460,8 @@ export default function CustomerPanel({
         body: JSON.stringify({
           customerId: currentUser.UserID,
           serviceId: selectedService.ServiceID,
-          customerAddress: customerAddressDetail ? `${customerAddress} (รายละเอียดเพิ่มเติม: ${customerAddressDetail})` : customerAddress,
+          customerAddress: customerAddress,
+          customerAddressDetail: customerAddressDetail,
           customerLatitude: customerLat,
           customerLongitude: customerLng,
           preferredStaffId: selectedStaffForBooking?.StaffID || undefined
@@ -697,43 +709,23 @@ export default function CustomerPanel({
                   </p>
                 </div>
               </div>
-            </div>
-          )}
 
-          {/* Cancel button if waiting or accepted */}
-          {(activeBooking.Status === 'Waiting' || activeBooking.Status === 'Accepted') && (
-            <div className="mt-4 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={async () => {
-                  const isAccepted = activeBooking.Status === 'Accepted';
-                  const msg = isAccepted 
-                    ? "พนักงานได้รับงานและกำลังเตรียมตัว หากยกเลิกตอนนี้ คำขอคืนเครดิตของพนักงานจะถูกส่งให้แอดมินยืนยัน คุณแน่ใจหรือไม่ว่าต้องการยกเลิก?"
-                    : "คุณต้องการยกเลิกการจองนวดนี้ใช่หรือไม่?";
-                  if (!window.confirm(msg)) return;
-
-                  try {
-                    await fetch(`/api/bookings/${activeBooking.BookingID}/action`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ 
-                        action: 'cancel',
-                        reason: 'ลูกค้ายกเลิกรายการจอง'
-                      })
-                    });
-                    onShowToast("ยกเลิกรายการเรียกนวดเรียบร้อยแล้ว", "info");
-                    setActiveBooking(null);
-                  } catch (e) {
-                    console.error(e);
-                  }
-                }}
-                className="w-full bg-rose-50 hover:bg-rose-100 text-rose-600 text-xs font-bold py-2.5 rounded-xl border border-rose-200 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <span>❌ ยกเลิกการจองนวดนี้</span>
-                {activeBooking.Status === 'Accepted' && (
-                  <span className="text-[10px] text-rose-500 font-normal">(พนักงานรับงานแล้ว)</span>
+              {/* Destination Address & Detail notes */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 text-xs space-y-1.5 text-left">
+                <div className="flex items-start gap-2">
+                  <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 block uppercase">ที่อยู่จัดส่งบริการ (ที่อยู่หลัก)</span>
+                    <p className="font-semibold text-slate-800 text-xs break-words">{activeBooking.CustomerAddress || '-'}</p>
+                  </div>
+                </div>
+                {activeBooking.CustomerAddressDetail && (
+                  <div className="bg-amber-100/60 border border-amber-200 rounded-xl p-2.5 text-[11px] text-amber-950 font-medium mt-1">
+                    <span className="font-bold text-amber-900 block text-[10px]">🏢 ข้อมูลที่อยู่เพิ่มเติม / จุดสังเกต:</span>
+                    <p className="mt-0.5 text-amber-950 break-words">{activeBooking.CustomerAddressDetail}</p>
+                  </div>
                 )}
-              </button>
+              </div>
             </div>
           )}
         </div>

@@ -79,6 +79,7 @@ export interface Booking {
   CustomerLatitude: number;
   CustomerLongitude: number;
   CustomerAddress: string;
+  CustomerAddressDetail?: string;
   Status: BookingStatus;
   PaymentStatus: 'Unpaid' | 'Paid';
   CreatedDate: string;

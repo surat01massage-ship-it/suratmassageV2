@@ -60,6 +60,24 @@ const compressImageFile = (file: File): Promise<string> => {
   });
 };
 
+// Helper to extract main address and additional text address detail
+function getCustomerAddressBreakdown(booking?: { CustomerAddress?: string; CustomerAddressDetail?: string } | null) {
+  if (!booking) return { mainAddress: '', detailAddress: '' };
+  let main = (booking.CustomerAddress || '').trim();
+  let detail = (booking.CustomerAddressDetail || '').trim();
+
+  // If detail is empty, but main contains "(รายละเอียดเพิ่มเติม: ...)" or "(ข้อมูลเพิ่มเติม: ...)"
+  if (!detail && main) {
+    const match = main.match(/^(.*?)(?:\s*\((?:รายละเอียดเพิ่มเติม|ข้อมูลเพิ่มเติม|ที่อยู่เพิ่มเติม):\s*([^)]+)\))\s*$/);
+    if (match) {
+      main = match[1].trim();
+      detail = match[2].trim();
+    }
+  }
+
+  return { mainAddress: main, detailAddress: detail };
+}
+
 interface StaffPanelProps {
   currentUser: User | null;
   currentStaff: Staff | null;
@@ -273,8 +291,15 @@ export default function StaffPanel({
 
   useEffect(() => {
     fetch('/api/services')
-      .then(res => res.json())
-      .then(data => setServices(data.filter((s: any) => s.Active === 'ON')))
+      .then(res => {
+        if (!res.ok) return [];
+        return res.json().catch(() => []);
+      })
+      .then(data => {
+        if (Array.isArray(data)) {
+          setServices(data.filter((s: any) => s.Active === 'ON'));
+        }
+      })
       .catch(console.error);
   }, []);
 
@@ -1420,8 +1445,8 @@ export default function StaffPanel({
 
       {/* Staff Map Location Pinning Modal */}
       {showStaffMapModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl space-y-4 animate-scale-up text-left">
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto overscroll-contain">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl space-y-4 animate-scale-up text-left my-auto max-h-[92dvh] overflow-y-auto">
             <div className="flex justify-between items-center">
               <div>
                 <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
@@ -1564,6 +1589,64 @@ export default function StaffPanel({
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
           
+          {/* URGENT INCOMING JOB IN-PAGE CARD (สไลด์รับงานตรงบนแผงควบคุมได้ทันที) */}
+          {incomingBooking && (
+            <div className="bg-gradient-to-r from-sky-500 via-sky-600 to-emerald-500 rounded-3xl p-5 text-white shadow-xl space-y-3 animate-pulse border-2 border-white/40">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                    <Bell className="w-4 h-4 text-white animate-bounce" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black block">มีงานนวดใหม่เรียกตัวด่วน! ({countdown} วิ)</span>
+                    <span className="text-[10px] text-sky-100 font-medium">คุณ {incomingBooking.CustomerName} • {incomingBooking.ServiceName}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-sm font-black font-mono block">
+                    ฿{Number(incomingBooking.TotalPrice || ((incomingBooking.ServicePrice || 0) + (incomingBooking.TravelFee || 0))).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] bg-amber-300 text-amber-950 font-bold px-1.5 py-0.5 rounded-full">
+                    เก็บเงินลูกค้าเอง
+                  </span>
+                </div>
+              </div>
+              {(() => {
+                const { mainAddress, detailAddress } = getCustomerAddressBreakdown(incomingBooking);
+                return (
+                  <div className="space-y-1.5 text-left">
+                    <p className="text-[11px] text-white/95 bg-black/20 rounded-xl p-2.5 font-semibold">
+                      📍 ที่อยู่หลัก: {mainAddress || incomingBooking.CustomerAddress}
+                    </p>
+                    {detailAddress && (
+                      <div className="text-[11px] text-amber-100 bg-amber-950/40 border border-amber-300/40 rounded-xl p-2 font-bold flex items-start gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-amber-300 shrink-0 mt-0.5" />
+                        <span>ที่อยู่เพิ่มเติม: {detailAddress}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleAcceptJob('reject')}
+                  className="flex-1 bg-white/20 hover:bg-white/30 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer touch-manipulation select-none"
+                >
+                  ปฏิเสธ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleAcceptJob('accept')}
+                  className="flex-1 bg-white hover:bg-slate-100 active:bg-slate-200 text-emerald-700 font-black py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation select-none active:scale-[0.98]"
+                >
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  <span>กดรับงานทันที (฿)</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Main Wallet Grid cards */}
           <div className="grid grid-cols-2 gap-4">
             
@@ -1752,27 +1835,70 @@ export default function StaffPanel({
                     )}
                   </span>
                 </div>
-                <div className="flex justify-between items-start pt-1 border-t border-amber-200/40">
-                  <span className="font-semibold text-slate-500 shrink-0">พิกัดจัดส่ง</span>
-                  <div className="text-right flex flex-col items-end gap-1 overflow-hidden">
-                    <span className="font-bold text-slate-900 max-w-[200px] truncate" title={ongoingBooking.CustomerAddress}>{ongoingBooking.CustomerAddress}</span>
-                    <a 
-                      href={getGoogleMapsDirectionsUrl(
-                        staff?.CurrentLatitude || 9.1382,
-                        staff?.CurrentLongitude || 99.3217,
-                        ongoingBooking.CustomerLatitude || 9.1372,
-                        ongoingBooking.CustomerLongitude || 99.3245
-                      )}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] font-bold text-sky-600 hover:text-sky-700 bg-white border border-sky-100 rounded-md px-2 py-0.5 shadow-xs flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <Compass className="w-3 h-3 text-sky-500 animate-pulse" />
-                      เปิดพิกัด Google Maps ↗
-                    </a>
-                  </div>
-                </div>
               </div>
+
+              {/* 📍 ข้อมูลที่อยู่จัดส่ง & รายละเอียดจุดสังเกตเพิ่มเติม (แสดงชัดเจนให้พนักงานนวดเดินทางได้ถูกต้อง) */}
+              {(() => {
+                const { mainAddress, detailAddress } = getCustomerAddressBreakdown(ongoingBooking);
+                return (
+                  <div className="bg-white border-2 border-sky-200/90 rounded-2xl p-4 shadow-sm space-y-3 text-left">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center shrink-0">
+                          <MapPin className="w-4 h-4 fill-sky-600 text-sky-600" />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black text-slate-800 block">สถานที่ให้บริการนวด</span>
+                          <span className="text-[10px] text-slate-400 font-semibold">ปลายทางที่ลูกค้าเรียกรับบริการ</span>
+                        </div>
+                      </div>
+                      <a 
+                        href={getGoogleMapsDirectionsUrl(
+                          staff?.CurrentLatitude || 9.1382,
+                          staff?.CurrentLongitude || 99.3217,
+                          ongoingBooking.CustomerLatitude || 9.1372,
+                          ongoingBooking.CustomerLongitude || 99.3245
+                        )}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-black text-white bg-sky-600 hover:bg-sky-700 px-3 py-1.5 rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer transition-transform active:scale-95 shrink-0"
+                      >
+                        <Compass className="w-3.5 h-3.5 text-white animate-pulse" />
+                        <span>เปิดแผนที่นำทาง ↗</span>
+                      </a>
+                    </div>
+
+                    {/* ที่อยู่หลัก */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                        🏠 ที่อยู่หลัก (พิกัดจัดส่ง):
+                      </span>
+                      <p className="text-xs sm:text-sm font-bold text-slate-900 leading-relaxed bg-slate-50 border border-slate-200/80 rounded-xl p-3 break-words select-text">
+                        {mainAddress || ongoingBooking.CustomerAddress || '-'}
+                      </p>
+                    </div>
+
+                    {/* ที่อยู่เพิ่มเติม / ช่องข้อความเพิ่มเติม */}
+                    {detailAddress ? (
+                      <div className="space-y-1 bg-amber-50/90 border-2 border-amber-300 rounded-xl p-3">
+                        <div className="flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                          <span className="text-[11px] font-black text-amber-900 uppercase">
+                            🏢 ข้อมูลที่อยู่เพิ่มเติม / จุดสังเกต (ข้อความจากลูกค้า):
+                          </span>
+                        </div>
+                        <p className="text-xs sm:text-sm font-extrabold text-amber-950 leading-relaxed bg-white/90 border border-amber-200 rounded-lg p-2.5 break-words select-text shadow-2xs">
+                          {detailAddress}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 italic bg-slate-50 rounded-lg px-2.5 py-1.5 border border-dashed border-slate-200">
+                        (ลูกค้าไม่ได้ระบุข้อความที่อยู่เพิ่มเติม)
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Status workflow steppers */}
               <div className="flex gap-3 pt-2">
@@ -2174,6 +2300,26 @@ export default function StaffPanel({
                       )}
                       <span className="text-slate-400">({b.Distance.toFixed(2)} กม.)</span>
                     </span>
+
+                    {/* ที่อยู่หลัก และ ที่อยู่เพิ่มเติมในประวัติงาน */}
+                    {(() => {
+                      const { mainAddress, detailAddress } = getCustomerAddressBreakdown(b);
+                      if (!mainAddress && !b.CustomerAddress) return null;
+                      return (
+                        <div className="text-[11px] text-slate-600 bg-slate-50 rounded-xl p-2.5 border border-slate-100 space-y-1 mt-1.5 text-left">
+                          <p className="flex items-start gap-1 font-semibold text-slate-800">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                            <span className="break-words">ที่อยู่หลัก: {mainAddress || b.CustomerAddress}</span>
+                          </p>
+                          {detailAddress && (
+                            <div className="text-amber-950 bg-amber-50 rounded-lg px-2 py-1 text-[10px] font-bold border border-amber-200/80 flex items-start gap-1">
+                              <FileText className="w-3 h-3 text-amber-600 shrink-0 mt-0.5" />
+                              <span className="break-words">ที่อยู่เพิ่มเติม: {detailAddress}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     
                     {b.ReviewScore && (
                       <div className="mt-2 pt-2 border-t border-slate-50 inline-block">
@@ -2929,217 +3075,324 @@ export default function StaffPanel({
 
       {/* 🚨 OVERLAY 1: GRAB STYLE INCOMING BOOKING ALERT (Pop-up with buzzer) */}
       {incomingBooking && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-sky-500 rounded-3xl max-w-sm w-full p-6 text-slate-800 text-center space-y-6 shadow-2xl relative overflow-hidden animate-bounce-short">
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-2 sm:p-4 overflow-y-auto overscroll-contain touch-pan-y animate-fade-in">
+          <div className="bg-white border-2 border-sky-500 rounded-3xl max-w-md w-full shadow-2xl relative my-auto max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-bounce-short text-slate-800">
             
-            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
-              <div className="absolute inset-0 rounded-full bg-sky-400/20 animate-ping" />
-              <div className="absolute inset-2 rounded-full bg-sky-500/30 animate-pulse" />
-              <div className="w-16 h-16 rounded-full bg-sky-500 text-white flex items-center justify-center relative shadow-lg">
-                <Bell className="w-8 h-8 animate-bounce" />
+            {/* Visual Drag / Scroll Handle for Mobile */}
+            <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
+
+            {/* Sticky/Fixed Modal Header */}
+            <div className="px-4 py-2.5 text-center shrink-0 border-b border-slate-100 bg-gradient-to-b from-sky-50/90 to-white flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="relative w-10 h-10 flex items-center justify-center shrink-0">
+                  <div className="absolute inset-0 rounded-full bg-sky-400/20 animate-ping" />
+                  <div className="w-9 h-9 rounded-full bg-sky-500 text-white flex items-center justify-center relative shadow-md">
+                    <Bell className="w-5 h-5 animate-bounce" />
+                  </div>
+                </div>
+                <div className="text-left">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1.5">
+                    <span>มีงานนวดใหม่เรียกตัวด่วน!</span>
+                    <span className="text-[10px] bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full font-bold">
+                      {countdown} วิ
+                    </span>
+                  </h3>
+                  <p className="text-[10px] text-sky-600 font-bold flex items-center gap-1">
+                    <Volume2 className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
+                    <span>เสียงไซเรน & สั่นเตือนมือถือ</span>
+                  </p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await unlockAudioContext();
+                  setAudioReady(true);
+                  startJobAlertRingtone();
+                  onShowToast("🔊 เร่งเสียงไซเรนเตือนงานเข้าดังสุดขีดเรียบร้อย!", "success");
+                }}
+                className="text-[10px] text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-xl font-bold inline-flex items-center gap-1 cursor-pointer transition-transform active:scale-95 shadow-2xs shrink-0 touch-manipulation"
+              >
+                <Volume2 className="w-3.5 h-3.5 text-rose-600 animate-pulse" />
+                <span>เร่งเสียง 🔊</span>
+              </button>
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-xs bg-sky-100 text-sky-800 px-3.5 py-1.5 rounded-full font-black uppercase tracking-wider flex items-center gap-1.5 shadow-xs">
-                  <Volume2 className="w-4 h-4 text-sky-600 animate-pulse" />
-                  <span>มีงานใหม่เรียกตัวด่วน ({countdown} วิ)</span>
-                </span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-xs text-sky-600 font-black animate-pulse flex items-center gap-1">
-                  <Volume2 className="w-4 h-4 text-rose-500 animate-bounce" />
-                  <span>กำลังส่งเสียงไซเรน & สั่นเตือนมือถือ...</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await unlockAudioContext();
-                    setAudioReady(true);
-                    startJobAlertRingtone();
-                    onShowToast("🔊 เร่งเสียงไซเรนเตือนงานเข้าดังสุดขีดเรียบร้อย!", "success");
-                  }}
-                  className="text-xs text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-4 py-2 rounded-2xl font-black inline-flex items-center gap-1.5 cursor-pointer transition-transform active:scale-95 shadow-xs"
-                >
-                  <Volume2 className="w-4 h-4 text-rose-600 animate-pulse" />
-                  <span>แตะเพื่อเร่งเสียงไซเรนให้ดังที่สุด 🔊</span>
-                </button>
-              </div>
+            {/* Scrollable & Slideable Body (สไลด์เลื่อนขึ้น-ลงได้อย่างอิสระบน Android และ iPhone) */}
+            <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto overscroll-contain flex-1 touch-pan-y text-left">
               
-              {/* Show Customer Details During Testing */}
-              <div className="flex flex-col items-center gap-2 mt-4 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                <img src={incomingBooking.CustomerProfileImage || DEFAULT_BLANK_AVATAR} className="w-12 h-12 rounded-full border-2 border-sky-500 object-cover bg-slate-100" alt="Customer" />
-                <div>
-                  <h3 className="text-sm font-black text-slate-800">{incomingBooking.CustomerName}</h3>
-                  {incomingBooking.CustomerPhone && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mt-0.5">
+              {/* Scroll indicator banner for users */}
+              <div className="flex items-center justify-between bg-sky-50/60 border border-sky-100 px-3 py-1.5 rounded-xl text-[10px] text-sky-700 font-semibold">
+                <span className="flex items-center gap-1">
+                  <span>📱 หน้ารับงานสามารถสไลด์เลื่อนดูข้อมูลได้</span>
+                </span>
+                <span className="font-bold text-sky-800">เลื่อนลงเพื่อดูรายละเอียด ⬇</span>
+              </div>
+
+              {/* Customer Details Box */}
+              <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl flex items-start gap-3">
+                <img 
+                  src={incomingBooking.CustomerProfileImage || DEFAULT_BLANK_AVATAR} 
+                  className="w-12 h-12 rounded-full border-2 border-sky-500 object-cover bg-slate-100 shrink-0 shadow-2xs" 
+                  alt="Customer" 
+                />
+                <div className="space-y-1 flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-black text-slate-800 truncate">{incomingBooking.CustomerName}</h4>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                      ลูกค้าเรียกตัว
+                    </span>
+                  </div>
+
+                  {incomingBooking.CustomerPhone ? (
+                    <a 
+                      href={`tel:${incomingBooking.CustomerPhone}`}
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-white border border-emerald-200 rounded-lg px-2 py-0.5 shadow-2xs w-fit"
+                    >
                       <Phone className="w-3 h-3 fill-emerald-600" />
                       <span>{incomingBooking.CustomerPhone}</span>
+                    </a>
+                  ) : null}
+
+                  {(() => {
+                    const { mainAddress, detailAddress } = getCustomerAddressBreakdown(incomingBooking);
+                    return (
+                      <div className="space-y-1.5 mt-2">
+                        <div className="text-[11px] text-slate-700 bg-white border border-slate-200 rounded-xl p-2.5 space-y-0.5">
+                          <span className="text-[10px] font-black text-slate-500 uppercase flex items-center gap-1">
+                            <MapPin className="w-3 h-3 text-rose-500" />
+                            <span>ที่อยู่หลักจัดส่ง:</span>
+                          </span>
+                          <p className="font-bold text-slate-800 leading-snug break-words">
+                            {mainAddress || incomingBooking.CustomerAddress}
+                          </p>
+                        </div>
+                        {detailAddress && (
+                          <div className="text-[11px] text-amber-950 bg-amber-50 border border-amber-300 rounded-xl p-2.5 space-y-0.5">
+                            <span className="text-[10px] font-black text-amber-900 uppercase flex items-center gap-1">
+                              <FileText className="w-3 h-3 text-amber-600" />
+                              <span>ที่อยู่เพิ่มเติม / จุดสังเกต (ข้อความ):</span>
+                            </span>
+                            <p className="font-extrabold text-amber-950 leading-snug break-words">
+                              {detailAddress}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Price & Predicted Distance Highlight */}
+              <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200/80 rounded-xl p-3">
+                  <div className="text-left">
+                    <span className="text-[10px] text-emerald-800 block font-black uppercase tracking-wider">
+                      💵 ยอดเงินที่ต้องเก็บลูกค้า
                     </span>
-                  )}
-                  <p className="text-[10px] text-slate-500 font-semibold mt-0.5">{incomingBooking.CustomerAddress}</p>
+                    <span className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+                      ฿{Number(incomingBooking.TotalPrice || ((incomingBooking.ServicePrice || 0) + (incomingBooking.TravelFee || 0))).toLocaleString()}
+                    </span>
+                    <span className="text-[9px] text-emerald-600 font-bold block mt-0.5">
+                      (พนักงานเก็บเงินสด/โอนตรงกับลูกค้า)
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-sky-800 block font-black uppercase tracking-wider">
+                      รายได้สุทธิของคุณ
+                    </span>
+                    <span className="text-base sm:text-lg font-black text-sky-600 font-mono">
+                      ฿{Number(incomingBooking.NetIncome || incomingBooking.TotalPrice).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-around text-center pt-1 border-t border-slate-200/60">
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">ระยะทางจริง</span>
+                    <span className="text-xs font-black text-slate-800">{formatDistance(incomingBooking.Distance)}</span>
+                  </div>
+                  <div className="w-[1px] h-6 bg-slate-200" />
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าบริการ</span>
+                    <span className="text-xs font-black text-slate-800">฿{Number(incomingBooking.ServicePrice || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="w-[1px] h-6 bg-slate-200" />
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าเดินทาง</span>
+                    <span className="text-xs font-black text-slate-800">฿{Number(incomingBooking.TravelFee || 0).toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Service Requested details */}
+              <div className="bg-sky-50/50 border border-sky-100 rounded-2xl p-3 text-xs space-y-1">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-slate-600">บริการที่เรียก:</span>
+                  <span className="font-black text-sky-800">{incomingBooking.ServiceName}</span>
+                </div>
+                <div className="flex justify-between items-center text-[11px] text-slate-500">
+                  <span>ระยะเวลาบริการ:</span>
+                  <span className="font-bold text-slate-700">{incomingBooking.ServiceDuration} นาที</span>
+                </div>
+              </div>
+
+              {/* Credit deduction policy notice */}
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left space-y-1">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                  <span>หักเครดิตทันทีเมื่อกดรับงาน:</span>
+                  <span className="font-mono text-rose-600 font-black">-{incomingBooking.CreditRequired ?? 398} CR</span>
+                </div>
+                <p className="text-[10px] text-amber-700 leading-relaxed">
+                  • เครดิตคงเหลือของคุณ: <span className="font-bold">{staff?.Credit ?? 0} CR</span><br />
+                  • หากมีการยกเลิกงาน การคืนเครดิตจะได้รับการตรวจสอบและยืนยันจากแอดมิน
+                </p>
+              </div>
+
+              {/* Visual slide guide footer */}
+              <div className="text-center text-[10px] text-slate-400 font-bold pt-1 pb-1">
+                ↕ สไลด์เลื่อนเพื่อตรวจดูรายละเอียดทั้งหมด
+              </div>
+
             </div>
 
-            {/* Price & predicted distance */}
-            <div className="bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl space-y-2.5">
-              <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200/80 rounded-xl p-2.5">
-                <div className="text-left">
-                  <span className="text-[10px] text-emerald-800 block font-black uppercase tracking-wider">
-                    ยอดเงินที่ต้องเก็บลูกค้า
-                  </span>
-                  <span className="text-lg font-black text-emerald-700 font-mono">
-                    ฿{Number(incomingBooking.TotalPrice || ((incomingBooking.ServicePrice || 0) + (incomingBooking.TravelFee || 0))).toLocaleString()}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-sky-800 block font-black uppercase tracking-wider">
-                    รายได้สุทธิของคุณ
-                  </span>
-                  <span className="text-base font-black text-sky-600 font-mono">
-                    ฿{Number(incomingBooking.NetIncome || incomingBooking.TotalPrice).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-around text-center pt-1 border-t border-slate-200/60">
-                <div>
-                  <span className="text-[9px] text-slate-400 block font-bold uppercase">ระยะทางจริง</span>
-                  <span className="text-xs font-black text-slate-800">{formatDistance(incomingBooking.Distance)}</span>
-                </div>
-                <div className="w-[1px] h-6 bg-slate-200" />
-                <div>
-                  <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าบริการ</span>
-                  <span className="text-xs font-black text-slate-800">฿{Number(incomingBooking.ServicePrice || 0).toLocaleString()}</span>
-                </div>
-                <div className="w-[1px] h-6 bg-slate-200" />
-                <div>
-                  <span className="text-[9px] text-slate-400 block font-bold uppercase">ค่าเดินทาง</span>
-                  <span className="text-xs font-black text-slate-800">฿{Number(incomingBooking.TravelFee || 0).toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Credit deduction policy notice */}
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left space-y-1">
-              <div className="flex items-center justify-between text-xs font-bold text-amber-900">
-                <span>หักเครดิตทันทีเมื่อกดรับงาน:</span>
-                <span className="font-mono text-rose-600 font-black">-{incomingBooking.CreditRequired ?? 398} CR</span>
-              </div>
-              <p className="text-[10px] text-amber-700 leading-relaxed">
-                • เครดิตคงเหลือของคุณ: <span className="font-bold">{staff?.Credit ?? 0} CR</span><br />
-                • หากมีการยกเลิกงาน การคืนเครดิตจะต้องได้รับการตรวจสอบและยืนยันจากแอดมิน
-              </p>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex gap-4 pt-2">
+            {/* Sticky Action Footer at Bottom (ปุ่มกดรับงานอยู่ด้านล่างเสมอ ไม่หลุดขอบจอแม้บนมือถือจอเล็ก) */}
+            <div className="p-3.5 sm:p-4 bg-white/98 backdrop-blur-xs border-t border-slate-200 shrink-0 flex gap-3 shadow-lg z-20 rounded-b-3xl">
               <button
+                type="button"
                 onClick={() => handleAcceptJob('reject')}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3.5 rounded-2xl text-xs transition-colors cursor-pointer"
+                className="flex-1 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 font-bold py-3.5 rounded-2xl text-xs sm:text-sm transition-all cursor-pointer touch-manipulation select-none active:scale-[0.98] text-center"
               >
                 ปฏิเสธงาน
               </button>
               <button
+                type="button"
                 onClick={() => handleAcceptJob('accept')}
-                className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-black py-3.5 rounded-2xl text-xs shadow-md transition-all cursor-pointer"
+                className="flex-1 bg-gradient-to-r from-sky-500 to-emerald-500 hover:from-sky-600 hover:to-emerald-600 active:from-sky-700 active:to-emerald-700 text-white font-black py-3.5 rounded-2xl text-xs sm:text-sm shadow-md hover:shadow-lg transition-all cursor-pointer touch-manipulation select-none active:scale-[0.98] flex items-center justify-center gap-1.5 text-center"
               >
-                กดรับงานนวด (฿)
+                <Check className="w-4 h-4 shrink-0" />
+                <span>กดรับงานนวด (฿)</span>
               </button>
             </div>
+
           </div>
         </div>
       )}
 
       {/* 💰 OVERLAY: ACCEPTED JOB SUCCESS & PAYMENT COLLECTION MODAL */}
       {acceptedJobModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-emerald-500 rounded-3xl max-w-sm w-full p-6 text-slate-800 space-y-5 shadow-2xl relative text-left">
+        <div className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-end sm:items-center justify-center p-2 sm:p-4 overflow-y-auto overscroll-contain touch-pan-y animate-fade-in">
+          <div className="bg-white border-2 border-emerald-500 rounded-3xl max-w-md w-full shadow-2xl relative my-auto max-h-[92dvh] sm:max-h-[88vh] flex flex-col overflow-hidden text-slate-800 text-left">
+            
+            {/* Visual Drag / Scroll Handle */}
+            <div className="w-12 h-1.5 bg-slate-300 rounded-full mx-auto mt-2.5 mb-1 shrink-0" />
+
             {/* Header */}
-            <div className="text-center space-y-2">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-sm">
-                <CheckCircle className="w-9 h-9" />
+            <div className="px-5 pt-2 pb-3 text-center space-y-1 shrink-0 border-b border-slate-100 bg-gradient-to-b from-emerald-50/80 to-white">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-2xs">
+                <CheckCircle className="w-7 h-7" />
               </div>
-              <h3 className="text-base font-black text-slate-900">🎉 รับงานบริการนวดเรียบร้อยแล้ว!</h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <h3 className="text-sm sm:text-base font-black text-slate-900">🎉 รับงานบริการนวดเรียบร้อยแล้ว!</h3>
+              <p className="text-[11px] text-slate-500 font-medium">
                 กรุณาตรวจสอบยอดเงินที่ต้องเรียกเก็บจากลูกค้าก่อนเริ่มเดินทาง
               </p>
             </div>
 
-            {/* 💵 Main highlight: Amount to collect from customer */}
-            <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 rounded-2xl p-4 text-white shadow-md border border-emerald-400 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs shrink-0">
-                    <Banknote className="w-6 h-6 text-white" />
+            {/* Scrollable & Slideable Content */}
+            <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto overscroll-contain flex-1 touch-pan-y">
+              {/* 💵 Main highlight: Amount to collect from customer */}
+              <div className="bg-gradient-to-br from-emerald-600 via-emerald-700 to-teal-800 rounded-2xl p-4 text-white shadow-md border border-emerald-400 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs shrink-0">
+                      <Banknote className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-100 block">
+                        ยอดเงินที่ต้องเก็บจากลูกค้า
+                      </span>
+                      <span className="text-[10px] text-emerald-100/90 font-medium">
+                        💵 พนักงานเก็บเงินกับลูกค้าเอง (เงินสด หรือ สแกนโอนตรง)
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-100 block">
-                      ยอดเงินที่ต้องเก็บจากลูกค้า
+                  <div className="text-right shrink-0">
+                    <div className="text-2xl sm:text-3xl font-black text-white font-mono">
+                      ฿{Number(acceptedJobModal.TotalPrice || ((acceptedJobModal.ServicePrice || 0) + (acceptedJobModal.TravelFee || 0))).toLocaleString()}
+                    </div>
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full inline-block mt-0.5 bg-amber-300 text-amber-950 shadow-xs font-bold">
+                      พนักงานเก็บเงินเอง
                     </span>
-                    <span className="text-[10px] text-emerald-100/90 font-medium">
-                      💵 พนักงานเก็บเงินกับลูกค้าเอง (เงินสด หรือ สแกนโอนตรงกับคุณ)
-                    </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="text-2xl sm:text-3xl font-black text-white font-mono">
-                    ฿{Number(acceptedJobModal.TotalPrice || ((acceptedJobModal.ServicePrice || 0) + (acceptedJobModal.TravelFee || 0))).toLocaleString()}
+
+                {/* Breakdown */}
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-500/50 text-xs">
+                  <div className="bg-black/15 rounded-xl p-2 flex justify-between items-center">
+                    <span className="text-emerald-100 text-[11px]">ค่าบริการนวด:</span>
+                    <span className="font-black text-white font-mono">฿{Number(acceptedJobModal.ServicePrice || 0).toLocaleString()}</span>
                   </div>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full inline-block mt-0.5 bg-amber-300 text-amber-950 shadow-xs font-bold">
-                    พนักงานเก็บเงินเอง
-                  </span>
+                  <div className="bg-black/15 rounded-xl p-2 flex justify-between items-center">
+                    <span className="text-emerald-100 text-[11px]">ค่าเดินทาง:</span>
+                    <span className="font-black text-white font-mono">฿{Number(acceptedJobModal.TravelFee || 0).toLocaleString()}</span>
+                  </div>
                 </div>
+
+                {acceptedJobModal.NetIncome !== undefined && (
+                  <div className="flex justify-between items-center bg-white/10 rounded-xl px-3 py-1.5 text-[11px]">
+                    <span className="text-emerald-100 font-medium">รายได้สุทธิที่คุณได้รับ (หักเครดิตแล้ว):</span>
+                    <span className="font-black text-amber-200 font-mono">฿{Number(acceptedJobModal.NetIncome).toLocaleString()}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Breakdown */}
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-500/50 text-xs">
-                <div className="bg-black/15 rounded-xl p-2 flex justify-between items-center">
-                  <span className="text-emerald-100 text-[11px]">ค่าบริการนวด:</span>
-                  <span className="font-black text-white font-mono">฿{Number(acceptedJobModal.ServicePrice || 0).toLocaleString()}</span>
-                </div>
-                <div className="bg-black/15 rounded-xl p-2 flex justify-between items-center">
-                  <span className="text-emerald-100 text-[11px]">ค่าเดินทาง:</span>
-                  <span className="font-black text-white font-mono">฿{Number(acceptedJobModal.TravelFee || 0).toLocaleString()}</span>
-                </div>
-              </div>
-
-              {acceptedJobModal.NetIncome !== undefined && (
-                <div className="flex justify-between items-center bg-white/10 rounded-xl px-3 py-1.5 text-[11px]">
-                  <span className="text-emerald-100 font-medium">รายได้สุทธิที่คุณได้รับ (หักเครดิตแล้ว):</span>
-                  <span className="font-black text-amber-200 font-mono">฿{Number(acceptedJobModal.NetIncome).toLocaleString()}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Customer info card */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-semibold">ลูกค้า:</span>
-                <span className="font-black text-slate-800">{acceptedJobModal.CustomerName}</span>
-              </div>
-              {acceptedJobModal.CustomerPhone && (
+              {/* Customer info card */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-2 text-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-semibold">เบอร์โทรศัพท์:</span>
-                  <a 
-                    href={`tel:${acceptedJobModal.CustomerPhone}`} 
-                    className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
-                  >
-                    <Phone className="w-3.5 h-3.5" />
-                    {acceptedJobModal.CustomerPhone}
-                  </a>
+                  <span className="text-slate-500 font-semibold">ลูกค้า:</span>
+                  <span className="font-black text-slate-800">{acceptedJobModal.CustomerName}</span>
                 </div>
-              )}
-              <div className="flex items-start justify-between gap-2 pt-1 border-t border-slate-200/60">
-                <span className="text-slate-500 font-semibold shrink-0">ที่อยู่จัดส่ง:</span>
-                <span className="font-bold text-slate-800 text-right line-clamp-2">{acceptedJobModal.CustomerAddress}</span>
+                {acceptedJobModal.CustomerPhone && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-semibold">เบอร์โทรศัพท์:</span>
+                    <a 
+                      href={`tel:${acceptedJobModal.CustomerPhone}`} 
+                      className="font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                    >
+                      <Phone className="w-3.5 h-3.5" />
+                      {acceptedJobModal.CustomerPhone}
+                    </a>
+                  </div>
+                )}
+                {(() => {
+                  const { mainAddress, detailAddress } = getCustomerAddressBreakdown(acceptedJobModal);
+                  return (
+                    <div className="space-y-1.5 pt-2 border-t border-slate-200/60">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-slate-500 font-semibold shrink-0">ที่อยู่หลักจัดส่ง:</span>
+                        <span className="font-bold text-slate-800 text-right break-words">{mainAddress || acceptedJobModal.CustomerAddress}</span>
+                      </div>
+                      {detailAddress && (
+                        <div className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 text-left space-y-0.5 mt-1">
+                          <span className="text-[10px] font-black text-amber-900 uppercase flex items-center gap-1">
+                            <FileText className="w-3 h-3 text-amber-600" />
+                            <span>ที่อยู่เพิ่มเติม / จุดสังเกต (ข้อความ):</span>
+                          </span>
+                          <p className="text-xs font-extrabold text-amber-950 leading-snug break-words">
+                            {detailAddress}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="space-y-2 pt-1">
+            {/* Sticky Actions Footer */}
+            <div className="p-3.5 sm:p-4 bg-white/98 backdrop-blur-xs border-t border-slate-200 shrink-0 space-y-2 rounded-b-3xl">
               <a
                 href={getGoogleMapsDirectionsUrl(
                   staff?.CurrentLatitude,
@@ -3150,7 +3403,7 @@ export default function StaffPanel({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setAcceptedJobModal(null)}
-                className="w-full bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs py-3.5 rounded-2xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs sm:text-sm py-3.5 rounded-2xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation"
               >
                 <Compass className="w-4 h-4" />
                 <span>เปิดแผนที่นำทาง Google Maps</span>
@@ -3158,11 +3411,12 @@ export default function StaffPanel({
               <button
                 type="button"
                 onClick={() => setAcceptedJobModal(null)}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-2xl transition-colors cursor-pointer text-center"
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-2xl transition-colors cursor-pointer text-center touch-manipulation"
               >
                 เข้าใจแล้ว (ไปที่หน้าควบคุมงาน)
               </button>
             </div>
+
           </div>
         </div>
       )}
@@ -3353,8 +3607,8 @@ export default function StaffPanel({
 
       {/* ⚠️ OVERLAY 4: CANCEL JOB MODAL */}
       {showCancelJobModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-slate-800 space-y-4 shadow-2xl relative text-left">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto overscroll-contain">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-slate-800 space-y-4 shadow-2xl relative text-left my-auto max-h-[92dvh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">

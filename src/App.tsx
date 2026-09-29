@@ -251,7 +251,8 @@ const syncVaultWithServer = async () => {
     });
 
     if (res.ok) {
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!data) return;
       const serverDeletedUsers = new Set<string>(data.deletedUserIds || []);
       const serverDeletedStaff = new Set<string>(data.deletedStaffIds || []);
 
@@ -354,9 +355,10 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ phone, password })
               });
-              return retryRes.json();
+              if (!retryRes.ok) return null;
+              return retryRes.json().catch(() => null);
             }
-            return res.json();
+            return res.json().catch(() => null);
           })
           .then(data => {
             if (data?.user) {
@@ -416,7 +418,8 @@ export default function App() {
       try {
         const res = await fetch(`/api/users/${currentUser.UserID}`);
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => null);
+          if (!data) return;
           if (data.user) {
             setCurrentUser(prev => {
               if (!prev || JSON.stringify(prev) !== JSON.stringify(data.user)) {
@@ -466,7 +469,7 @@ export default function App() {
     try {
       const res = await fetch('/api/settings');
       if (res.ok) {
-        const serverData: AppSettings = await res.json();
+        const serverData: AppSettings = await res.json().catch(() => null);
         if (serverData && typeof serverData === 'object' && serverData.companyName) {
           // Check if local cache has customized settings that should be preserved
           const localStr = typeof window !== 'undefined' ? localStorage.getItem('sabaidee_app_settings') : null;

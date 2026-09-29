@@ -1536,7 +1536,7 @@ async function startServer() {
   // Create a Booking
   app.post('/api/bookings', (req, res) => {
     const db = getDatabase();
-    const { customerId, serviceId, customerAddress, customerLatitude, customerLongitude, preferredStaffId } = req.body;
+    const { customerId, serviceId, customerAddress, customerAddressDetail, customerLatitude, customerLongitude, preferredStaffId } = req.body;
 
     if (!customerId || !serviceId || !customerLatitude || !customerLongitude) {
       return res.status(400).json({ error: 'กรุณากรอกข้อมูลที่จำเป็นสำหรับการจอง' });
@@ -1550,6 +1550,17 @@ async function startServer() {
     const customerUser = db.users.find(u => u.UserID === customerId);
     if (!customerUser) {
       return res.status(404).json({ error: 'ไม่พบผู้ใช้ลูกค้า' });
+    }
+
+    // Parse main address and additional text address detail
+    let finalMainAddress = (customerAddress || customerUser.Address || '').trim();
+    let finalDetailAddress = (customerAddressDetail || '').trim();
+    if (!finalDetailAddress && finalMainAddress) {
+      const match = finalMainAddress.match(/^(.*?)(?:\s*\((?:รายละเอียดเพิ่มเติม|ข้อมูลเพิ่มเติม|ที่อยู่เพิ่มเติม):\s*([^)]+)\))\s*$/);
+      if (match) {
+        finalMainAddress = match[1].trim();
+        finalDetailAddress = match[2].trim();
+      }
     }
 
     // Accurate Haversine distance calculator helper (in kilometers)
@@ -1655,7 +1666,8 @@ async function startServer() {
       TotalPrice: totalPriceVal,
       CustomerLatitude: clientLat,
       CustomerLongitude: clientLng,
-      CustomerAddress: customerAddress || customerUser.Address,
+      CustomerAddress: finalMainAddress,
+      CustomerAddressDetail: finalDetailAddress,
       Status: bestStaff ? 'Waiting' : 'Cancel', // Cancel directly if no staff online
       PaymentStatus: 'Unpaid',
       CreatedDate: new Date().toISOString()
@@ -1793,8 +1805,20 @@ async function startServer() {
       const service = db.services.find(s => s.ServiceID === b.ServiceID);
       const review = db.reviews.find(r => r.BookingID === b.BookingID);
 
+      let bMainAddress = (b.CustomerAddress || '').trim();
+      let bDetailAddress = (b.CustomerAddressDetail || '').trim();
+      if (!bDetailAddress && bMainAddress) {
+        const match = bMainAddress.match(/^(.*?)(?:\s*\((?:รายละเอียดเพิ่มเติม|ข้อมูลเพิ่มเติม|ที่อยู่เพิ่มเติม):\s*([^)]+)\))\s*$/);
+        if (match) {
+          bMainAddress = match[1].trim();
+          bDetailAddress = match[2].trim();
+        }
+      }
+
       return {
         ...b,
+        CustomerAddress: bMainAddress,
+        CustomerAddressDetail: bDetailAddress,
         CustomerName: customer ? customer.Name : 'ลูกค้า',
         CustomerPhone: customer ? customer.Phone : '',
         CustomerProfileImage: customer ? (customer.ProfileImage || DEFAULT_BLANK_AVATAR) : DEFAULT_BLANK_AVATAR,
@@ -3038,6 +3062,16 @@ async function startServer() {
   });
 
   // --- End of API Routes ---
+
+  // Safety catch-all for any unmatched /api requests:
+  // MUST return JSON 404 and NEVER pass to Vite SPA middleware which serves index.html!
+  app.all('/api/*', (req, res) => {
+    res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
+  });
+
+  app.all('/api', (req, res) => {
+    res.status(404).json({ error: 'API endpoint not found' });
+  });
 
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
