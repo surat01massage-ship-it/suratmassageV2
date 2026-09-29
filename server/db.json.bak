@@ -16,130 +16,9 @@
       "Role": "Admin",
       "Status": "Active",
       "CreatedDate": "2026-01-01T08:00:00Z"
-    },
-    {
-      "UserID": "U005",
-      "Name": "อภิสิทธิ์ วรศิลป์",
-      "Phone": "0898765432",
-      "PasswordHash": "customer123",
-      "Email": "apisit@gmail.com",
-      "Address": "128/9 ถนนชนเกษม ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
-      "Province": "สุราษฎร์ธานี",
-      "District": "เมืองสุราษฎร์ธานี",
-      "SubDistrict": "ตลาด",
-      "Latitude": 9.1372,
-      "Longitude": 99.3245,
-      "ProfileImage": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=60",
-      "Role": "Customer",
-      "Status": "Active",
-      "CreatedDate": "2026-05-20T11:00:00Z"
-    },
-    {
-      "UserID": "U759249",
-      "Name": "น้องฟ้า บริการดี",
-      "Phone": "0899999999",
-      "PasswordHash": "pass",
-      "Email": "",
-      "Address": "",
-      "Province": "",
-      "District": "",
-      "SubDistrict": "",
-      "Latitude": 9.1415,
-      "Longitude": 99.3292,
-      "ProfileImage": "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=60",
-      "Role": "Staff",
-      "Status": "Active",
-      "CreatedDate": "2026-09-08T08:26:40.273Z"
-    },
-    {
-      "UserID": "U347114",
-      "Name": "ทดสอบ แอดมินอนุมัติ",
-      "Phone": "0899990001",
-      "PasswordHash": "pass",
-      "Email": "",
-      "Address": "",
-      "Province": "",
-      "District": "",
-      "SubDistrict": "",
-      "Latitude": 9.138244,
-      "Longitude": 99.321748,
-      "ProfileImage": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%23F1F5F9'/%3E%3Ccircle cx='64' cy='52' r='24' fill='%2394A3B8'/%3E%3Cpath fill='%2394A3B8' d='M64 82c-23.2 0-42 14.5-45 33.2 10.7 7.9 23.9 12.8 38.3 12.8 17 0 32.3-6.4 43.8-16.9C97.5 95 78.8 82 64 82z'/%3E%3C/svg%3E",
-      "Role": "Staff",
-      "Status": "Active",
-      "CreatedDate": "2026-09-22T07:35:04.801Z"
     }
   ],
-  "staff": [
-    {
-      "StaffID": "SFT956678",
-      "UserID": "U759249",
-      "Nickname": "ฟ้า",
-      "Gender": "Female",
-      "Age": 26,
-      "Weight": 50,
-      "Height": 160,
-      "RegisteredAddress": "88/5 หมู่ 2 ต.มะขามเตี้ย อ.เมือง จ.สุราษฎร์ธานี",
-      "Experience": 2,
-      "Description": "บริการนวดเพื่อสุขภาพ นวดน้ำมันอโรม่า และนวดแก้อาการ",
-      "Rating": 5,
-      "ReviewCount": 0,
-      "Credit": 0,
-      "Available": "ON",
-      "VerifyStatus": "Approved",
-      "CurrentLatitude": 9.1415,
-      "CurrentLongitude": 99.3292,
-      "LastLocationUpdate": "2026-09-08T08:26:40.283Z",
-      "TotalIncome": 400,
-      "TotalJobs": 1,
-      "OfferedServices": [
-        "S001",
-        "S002",
-        "S003"
-      ],
-      "MaxJobDistance": 25,
-      "Photos": [
-        "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=600&auto=format&fit=crop&q=60",
-        "https://images.unsplash.com/photo-1515377905703-c4788e51af15?w=800&auto=format&fit=crop&q=80"
-      ],
-      "LicenseFile": "https://images.unsplash.com/photo-1589330694653-dad6d3240a2b?w=1000&auto=format&fit=crop&q=80",
-      "IdCardFile": "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1000&auto=format&fit=crop&q=80",
-      "HouseRegFile": "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=1000&auto=format&fit=crop&q=80"
-    },
-    {
-      "StaffID": "SFT738787",
-      "UserID": "U347114",
-      "Nickname": "หมอทดสอบ",
-      "Gender": "Female",
-      "Age": 28,
-      "Weight": 50,
-      "Height": 160,
-      "RegisteredAddress": "",
-      "Experience": 2,
-      "Description": "ยินดีให้บริการนวดเพื่อสุขภาพค่ะ",
-      "Rating": 5,
-      "ReviewCount": 0,
-      "Credit": 398,
-      "Available": "ON",
-      "VerifyStatus": "Approved",
-      "CurrentLatitude": 9.138244,
-      "CurrentLongitude": 99.321748,
-      "LastLocationUpdate": "2026-09-22T07:35:04.860Z",
-      "TotalIncome": 0,
-      "TotalJobs": 0,
-      "OfferedServices": [
-        "S001",
-        "S002",
-        "S003"
-      ],
-      "MaxJobDistance": 25,
-      "Photos": [
-        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%23F1F5F9'/%3E%3Ccircle cx='64' cy='52' r='24' fill='%2394A3B8'/%3E%3Cpath fill='%2394A3B8' d='M64 82c-23.2 0-42 14.5-45 33.2 10.7 7.9 23.9 12.8 38.3 12.8 17 0 32.3-6.4 43.8-16.9C97.5 95 78.8 82 64 82z'/%3E%3C/svg%3E"
-      ],
-      "LicenseFile": "data:image/png;base64,dummy",
-      "IdCardFile": "data:image/png;base64,dummy",
-      "HouseRegFile": "data:image/png;base64,dummy"
-    }
-  ],
+  "staff": [],
   "services": [
     {
       "ServiceID": "S001",
@@ -172,32 +51,7 @@
       "SortOrder": 3
     }
   ],
-  "bookings": [
-    {
-      "BookingID": "B959790",
-      "CustomerID": "U001",
-      "StaffID": "SFT956678",
-      "BookingDate": "2026-09-08",
-      "BookingTime": "08:26",
-      "ServiceID": "S001",
-      "ServicePrice": 798,
-      "Distance": 0.84,
-      "TravelFee": 0,
-      "TotalPrice": 798,
-      "CustomerLatitude": 9.145,
-      "CustomerLongitude": 99.336,
-      "CustomerAddress": "เมืองสุราษฎร์",
-      "Status": "Working",
-      "PaymentStatus": "Paid",
-      "CreatedDate": "2026-09-08T08:26:40.344Z",
-      "offeredQueue": [
-        "SFT956678",
-        "SFT001"
-      ],
-      "currentOfferIndex": 0,
-      "offerExpireTime": "2026-09-08T08:27:10.344Z"
-    }
-  ],
+  "bookings": [],
   "transactions": [
     {
       "TransactionID": "TX680911",
@@ -210,42 +64,6 @@
       "Status": "Approved",
       "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้ง)",
       "CreatedDate": "2026-09-08T07:17:02.169Z"
-    },
-    {
-      "TransactionID": "TX631001",
-      "StaffID": "SFT956678",
-      "Amount": 398,
-      "BeforeCredit": 0,
-      "AfterCredit": 398,
-      "Type": "Topup",
-      "SlipImage": "",
-      "Status": "Approved",
-      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้ง)",
-      "CreatedDate": "2026-09-08T08:26:40.284Z"
-    },
-    {
-      "TransactionID": "TX312449",
-      "StaffID": "SFT956678",
-      "Amount": 398,
-      "BeforeCredit": 398,
-      "AfterCredit": 0,
-      "Type": "Deduct",
-      "SlipImage": "",
-      "Status": "Approved",
-      "AdminRemark": "หักค่าคอมมิชชันล่วงหน้าสำหรับ Booking #B959790",
-      "CreatedDate": "2026-09-08T08:26:40.361Z"
-    },
-    {
-      "TransactionID": "TX750787",
-      "StaffID": "SFT738787",
-      "Amount": 398,
-      "BeforeCredit": 0,
-      "AfterCredit": 398,
-      "Type": "Topup",
-      "SlipImage": "",
-      "Status": "Approved",
-      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 398 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)",
-      "CreatedDate": "2026-09-22T07:35:04.811Z"
     }
   ],
   "reviews": [],
@@ -259,28 +77,12 @@
       "CreatedDate": "2026-09-08T06:01:46.038Z"
     },
     {
-      "NotificationID": "N773203",
-      "UserID": "U759249",
-      "Title": "🎁 ยินดีต้อนรับ! คุณได้รับ 398 เครดิตฟรี",
-      "Detail": "ยินดีต้อนรับสู่ SabaiDee Massage! คุณได้รับเครดิตฟรี 398 เครดิต สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งทันทีค่ะ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-08T08:26:40.287Z"
-    },
-    {
       "NotificationID": "N218956",
       "UserID": "U001",
       "Title": "มีผู้สมัครเป็นพนักงานใหม่",
       "Detail": "พนักงานนวดคนใหม่ คุณ น้องฟ้า บริการดี (ชื่อเล่น ฟ้า) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
       "ReadStatus": "Unread",
       "CreatedDate": "2026-09-08T08:26:40.288Z"
-    },
-    {
-      "NotificationID": "N449727",
-      "UserID": "U759249",
-      "Title": "🔔 มีงานนวดใหม่เรียกใช้คุณ!",
-      "Detail": "คุณได้รับการเรียกงานนวดบริการ นวดผ่อนคลาย (Relaxing Massage) ระยะทาง 0.84 กม. รายได้รวม 798 บาท กรุณาตอบรับภายใน 30 วินาที",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-08T08:26:40.344Z"
     },
     {
       "NotificationID": "N456967",
@@ -329,22 +131,6 @@
       "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) เบอร์ 0899990001 ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ",
       "ReadStatus": "Unread",
       "CreatedDate": "2026-09-22T07:35:04.812Z"
-    },
-    {
-      "NotificationID": "N645765",
-      "UserID": "U347114",
-      "Title": "⏳ ใบสมัครพนักงานของคุณอยู่ระหว่างรอแอดมินอนุมัติ",
-      "Detail": "ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 398 เครดิตฟรีค่ะ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-22T07:35:04.812Z"
-    },
-    {
-      "NotificationID": "N312668",
-      "UserID": "U347114",
-      "Title": "🎉 บัญชีพนักงานของคุณได้รับการอนุมัติแล้ว!",
-      "Detail": "แอดมินได้อนุมัติบัญชีของคุณเรียบร้อยแล้ว ขณะนี้คุณสามารถเปิดสถานะออนไลน์เพื่อเริ่มรับงานจากลูกค้าได้ทันทีค่ะ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-22T07:35:04.848Z"
     }
   ],
   "settings": {
@@ -392,9 +178,14 @@
     "updatedAt": "2026-09-18T09:20:56.033Z"
   },
   "deletedUserIds": [
-    "U002"
+    "U002",
+    "U005",
+    "U759249",
+    "U347114"
   ],
   "deletedStaffIds": [
-    "SFT001"
+    "SFT001",
+    "SFT956678",
+    "SFT738787"
   ]
 }

@@ -261,6 +261,17 @@ const syncVaultWithServer = async () => {
         const cleanStaff = staff.filter((s: Staff) => !serverDeletedStaff.has(s.StaffID) && !serverDeletedUsers.has(s.UserID));
         localStorage.setItem('sabaidee_persisted_users', JSON.stringify(cleanUsers));
         localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(cleanStaff));
+
+        const sessionRaw = localStorage.getItem('sabaidee_active_session');
+        if (sessionRaw) {
+          try {
+            const sess = JSON.parse(sessionRaw);
+            if (sess?.user?.UserID && serverDeletedUsers.has(sess.user.UserID)) {
+              localStorage.removeItem('sabaidee_active_session');
+              localStorage.removeItem('sabaidee_auth');
+            }
+          } catch {}
+        }
       }
     }
   } catch (e) {

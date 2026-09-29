@@ -110,79 +110,10 @@ const defaultUsers: User[] = [
     Role: "Admin",
     Status: "Active",
     CreatedDate: "2026-01-01T08:00:00Z"
-  },
-  // Test Staff User
-  {
-    UserID: "U002",
-    Name: "วรรณภา แสนดี (พี่นง)",
-    Phone: "0823456789",
-    PasswordHash: "staff123",
-    Email: "nong@sabaidee.com",
-    Address: "45/12 ถนนหน้าเมือง ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
-    Province: "สุราษฎร์ธานี",
-    District: "เมืองสุราษฎร์ธานี",
-    SubDistrict: "ตลาด",
-    Latitude: 9.141500,
-    Longitude: 99.329200,
-    ProfileImage: "",
-    Role: "Staff",
-    Status: "Active",
-    CreatedDate: "2026-03-15T09:30:00Z"
-  },
-  // Test Customer User
-  {
-    UserID: "U005",
-    Name: "อภิสิทธิ์ วรศิลป์",
-    Phone: "0898765432",
-    PasswordHash: "customer123",
-    Email: "apisit@gmail.com",
-    Address: "128/9 ถนนชนเกษม ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
-    Province: "สุราษฎร์ธานี",
-    District: "เมืองสุราษฎร์ธานี",
-    SubDistrict: "ตลาด",
-    Latitude: 9.137200,
-    Longitude: 99.324500,
-    ProfileImage: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=60",
-    Role: "Customer",
-    Status: "Active",
-    CreatedDate: "2026-05-20T11:00:00Z"
   }
 ];
 
-const defaultStaff: Staff[] = [
-  {
-    StaffID: "SFT001",
-    UserID: "U002",
-    Nickname: "เจ้นง",
-    Gender: "Female",
-    Age: 38,
-    Weight: 54,
-    Height: 162,
-    RegisteredAddress: "45/12 ถนนหน้าเมือง ต.ตลาด อ.เมือง จ.สุราษฎร์ธานี 84000",
-    Experience: 8,
-    Description: "ถนัดนวดไทยกดจุด แก้อาการออฟฟิศซินโดรม นวดรีดเส้น และนวดประคบสมุนไพร ใจดี พูดจาไพเราะ ยินดีให้บริการในสุราษฎร์ธานีค่ะ",
-    Rating: 5.0,
-    ReviewCount: 0,
-    Credit: 1000,
-    Available: "ON",
-    VerifyStatus: "Approved",
-    CurrentLatitude: 9.141500,
-    CurrentLongitude: 99.329200,
-    LastLocationUpdate: "2026-06-27T18:50:00Z",
-    TotalIncome: 0,
-    TotalJobs: 0,
-    OfferedServices: ["S001", "S002", "S003"],
-    MaxJobDistance: 20,
-    Photos: [
-      "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=800&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=800&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1519823551278-64ac92734fb1?w=800&auto=format&fit=crop&q=80"
-    ],
-    LicenseFile: "https://images.unsplash.com/photo-1607344645866-009c320c5ab8?w=1000&auto=format&fit=crop&q=80",
-    IdCardFile: "https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=1000&auto=format&fit=crop&q=80",
-    HouseRegFile: "https://images.unsplash.com/photo-1450133064473-71024230f91b?w=1000&auto=format&fit=crop&q=80"
-  }
-];
+const defaultStaff: Staff[] = [];
 
 const defaultBookings: Booking[] = [];
 
@@ -320,11 +251,13 @@ export function getDatabase(): DatabaseSchema {
 
     // Collect all deleted tombstones across files so deleted records are never resurrected
     const allDeletedUsers = new Set<string>([
+      'U002', 'U005', 'U759249', 'U347114',
       ...(primaryDb?.deletedUserIds || []),
       ...(persistentDb?.deletedUserIds || []),
       ...(backupDb?.deletedUserIds || [])
     ]);
     const allDeletedStaff = new Set<string>([
+      'SFT001', 'SFT956678', 'SFT738787',
       ...(primaryDb?.deletedStaffIds || []),
       ...(persistentDb?.deletedStaffIds || []),
       ...(backupDb?.deletedStaffIds || [])
@@ -361,8 +294,8 @@ export function getDatabase(): DatabaseSchema {
     reviews: defaultReviews,
     notifications: defaultNotifications,
     settings: defaultSettings,
-    deletedUserIds: [],
-    deletedStaffIds: []
+    deletedUserIds: ['U002', 'U005', 'U759249', 'U347114'],
+    deletedStaffIds: ['SFT001', 'SFT956678', 'SFT738787']
   };
 
   inMemoryDB = initialDB;
