@@ -671,29 +671,6 @@ export default function AdminPanel({
     e.target.value = '';
   };
 
-  // Reset to system defaults with confirmation
-  const handleResetToFactory = async () => {
-    if (!confirm("⚠️ คำเตือน: คุณแน่ใจหรือไม่ว่าต้องการรีเซ็ตการตั้งค่าระบบทั้งหมดกลับเป็นค่าเริ่มต้นจากโรงงาน?")) {
-      return;
-    }
-    try {
-      const res = await fetch('/api/settings/reset', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) {
-        try {
-          localStorage.removeItem('sabaidee_app_settings');
-        } catch {}
-        setFormSettings(data.settings);
-        onUpdateSettings(data.settings);
-        setLastSavedTime(null);
-        onShowToast("รีเซ็ตการตั้งค่ากลับเป็นค่าเริ่มต้นโรงงานเรียบร้อยแล้ว", "info");
-      }
-    } catch (err) {
-      console.error("Reset error:", err);
-      onShowToast("เกิดข้อผิดพลาดในการรีเซ็ต", "error");
-    }
-  };
-
   // 5. Code copier helper
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
@@ -2103,16 +2080,6 @@ export default function AdminPanel({
                   className="hidden"
                 />
               </label>
-
-              <button
-                type="button"
-                onClick={handleResetToFactory}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="รีเซ็ตกลับเป็นค่าเริ่มต้นโรงงาน"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                ค่าเริ่มต้นโรงงาน
-              </button>
             </div>
           </div>
 
