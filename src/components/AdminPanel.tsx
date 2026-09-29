@@ -419,33 +419,6 @@ export default function AdminPanel({
     }
   };
 
-  const handleCleanToAdminOnly = async () => {
-    const ok = window.confirm("⚠️ คำเตือน: คุณต้องการล้างข้อมูลทดสอบทั้งหมด (ลูกค้า, พนักงาน, ประวัติงานจอง, ประวัติเครดิต) โดยเก็บรักษาไว้เฉพาะบัญชีแอดมินเท่านั้น ใช่หรือไม่?\n\nเมื่อล้างแล้ว ข้อมูลผู้ใช้งานที่เหลือจะมีเพียงแอดมิน และคุณสามารถทดลองสมัครเป็นลูกค้าและพนักงานใหม่เพื่อทดสอบระบบได้ทันที ข้อมูลจะไม่หายแน่นอนค่ะ");
-    if (!ok) return;
-
-    try {
-      const res = await fetch('/api/admin/clean-to-admin-only', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดในการล้างข้อมูล');
-
-      // Clear local vaults and keep only Admin
-      try {
-        const onlyAdmin = (data.remainingUsers || []).filter((u: any) => u.Role === 'Admin');
-        localStorage.setItem('sabaidee_persisted_users', JSON.stringify(onlyAdmin));
-        localStorage.setItem('sabaidee_persisted_staff', JSON.stringify([]));
-      } catch {}
-
-      onShowToast(data.message || "ล้างข้อมูลสำเร็จ เหลือเฉพาะบัญชีแอดมินเรียบร้อยค่ะ", "success");
-      fetchAllUsers();
-      fetchStaffList();
-      fetchDashboardStats();
-      fetchRawDatabase();
-      fetchTransactions();
-    } catch (e: any) {
-      onShowToast(e.message || "เกิดข้อผิดพลาดในการล้างข้อมูล", "error");
-    }
-  };
-
   // 1. Staff Approvals & Suspend actions
   const handleApproveStaff = async (staffId: string, status: 'Approved' | 'Reject') => {
     try {
@@ -901,15 +874,6 @@ export default function AdminPanel({
               <p className="text-xs text-slate-500 font-medium">รวมบัญชีลูกค้า, พนักงานนวด และแอดมิน (บันทึกข้อมูลและประวัติต่างๆ เป็นปัจจุบันถาวร)</p>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleCleanToAdminOnly}
-                className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold px-3 py-1.5 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                title="ล้างข้อมูลทดสอบทั้งหมด เหลือเฉพาะแอดมินเพื่อเริ่มทดสอบใหม่"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>ล้างข้อมูลเหลือเฉพาะแอดมิน</span>
-              </button>
               <button
                 onClick={() => {
                   setEditingUserId(null);
