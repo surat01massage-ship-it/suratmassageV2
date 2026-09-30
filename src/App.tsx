@@ -68,7 +68,7 @@ const defaultAppSettings: AppSettings = {
     { minKm: 10, maxKm: 15, fee: 200 }
   ],
   commissionRate: 15,
-  minCredit: 398,
+  minCredit: 298,
   searchRadius: 15,
   systemOpen: 'ON',
   contactPhone: "081-234-5678",
@@ -96,8 +96,8 @@ const getPersistedSettings = (): AppSettings => {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && parsed.companyName) {
           const merged = { ...defaultAppSettings, ...parsed };
-          if (!merged.minCredit || merged.minCredit < 398) {
-            merged.minCredit = 398;
+          if (!merged.minCredit || merged.minCredit < 298) {
+            merged.minCredit = 298;
           }
           // Prevent bouncing back to old test group
           if (!merged.lineAdminUserId || merged.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
@@ -377,7 +377,7 @@ export default function App() {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ latitude: geo.latitude, longitude: geo.longitude })
-                  }).catch(console.error);
+                  }).catch(console.warn);
                   setCurrentUser((prev) => prev ? { ...prev, Latitude: geo.latitude, Longitude: geo.longitude } : null);
                 }
                 if (data.staff?.StaffID) {
@@ -385,18 +385,18 @@ export default function App() {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ staffId: data.staff.StaffID, latitude: geo.latitude, longitude: geo.longitude })
-                  }).catch(console.error);
+                  }).catch(console.warn);
                   setCurrentStaff((prev) => prev ? { ...prev, CurrentLatitude: geo.latitude, CurrentLongitude: geo.longitude } : null);
                 }
               }).catch(console.warn);
             }
           })
           .catch(err => {
-            console.error("Auto login failed:", err);
+            console.warn("Auto login notice:", err);
           });
         }
       } catch (err) {
-        console.error("Error parsing saved auth:", err);
+        console.warn("Error parsing saved auth:", err);
       }
     } else {
       // Auto-detect real phone GPS coordinates on app load if not logging in automatically
@@ -493,7 +493,7 @@ export default function App() {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(localSettings)
-                }).catch(console.error);
+                }).catch(console.warn);
                 setSettings(localSettings);
                 return;
               }
@@ -506,8 +506,8 @@ export default function App() {
             }
           }
 
-          if (!serverData.minCredit || serverData.minCredit < 398) {
-            serverData.minCredit = 398;
+          if (!serverData.minCredit || serverData.minCredit < 298) {
+            serverData.minCredit = 298;
           }
           if (serverData.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
             serverData.lineAdminUserId = 'Cf544171f0f9753863ade1ddd1acd67a7';
@@ -522,7 +522,7 @@ export default function App() {
         }
       }
     } catch (e) {
-      console.error("fetchSettings error:", e);
+      console.warn("fetchSettings notice:", e);
     }
   };
 
@@ -600,7 +600,7 @@ export default function App() {
                 latitude: geo.latitude,
                 longitude: geo.longitude
               })
-            }).catch(console.error);
+            }).catch(console.warn);
 
             setCurrentUser((prev) => prev ? { ...prev, Latitude: geo.latitude, Longitude: geo.longitude } : null);
           }
@@ -615,7 +615,7 @@ export default function App() {
                 latitude: geo.latitude,
                 longitude: geo.longitude
               })
-            }).catch(console.error);
+            }).catch(console.warn);
 
             setCurrentStaff((prev) => prev ? { ...prev, CurrentLatitude: geo.latitude, CurrentLongitude: geo.longitude } : null);
           }
@@ -751,7 +751,7 @@ export default function App() {
       if (staff) persistStaffLocally(staff);
 
       showToast(currentRole === 'Staff' 
-        ? `🎉 สมัครพนักงานนวดสำเร็จและเข้าสู่ระบบเรียบร้อยค่ะ! ยินดีต้อนรับคุณ ${user.Name} (ได้รับ 398 เครดิตต้อนรับ รอแอดมินอนุมัติเพื่อเริ่มรับงาน)` 
+        ? `🎉 สมัครพนักงานนวดสำเร็จและเข้าสู่ระบบเรียบร้อยค่ะ! ยินดีต้อนรับคุณ ${user.Name} (ได้รับ 298 เครดิตต้อนรับ รอแอดมินอนุมัติเพื่อเริ่มรับงาน)` 
         : `🎉 สมัครสมาชิกและเข้าสู่ระบบสำเร็จแล้วค่ะ ยินดีต้อนรับคุณ ${user.Name}!`, "success");
 
       setAuthMode('welcome');
@@ -762,14 +762,14 @@ export default function App() {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ latitude: userLat, longitude: userLng })
-        }).catch(console.error);
+        }).catch(console.warn);
       }
       if (staff?.StaffID) {
         fetch('/api/staff/location', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ staffId: staff.StaffID, latitude: userLat, longitude: userLng })
-        }).catch(console.error);
+        }).catch(console.warn);
       }
 
       // Reset form
@@ -1044,7 +1044,7 @@ export default function App() {
                       <div className="flex items-center gap-1.5">
                         <span className="block text-sm font-black text-slate-900">สมัครสมาชิกพนักงานนวด</span>
                         <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md">
-                          ฟรี 398 CR
+                          ฟรี 298 CR
                         </span>
                       </div>
                       <span className="block text-[10px] font-bold text-slate-500">สำหรับผู้ให้บริการหมอนวดมืออาชีพ รับงานฟรี 1 ครั้งแรก</span>
@@ -1248,11 +1248,11 @@ export default function App() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-black">สิทธิพิเศษพนักงานใหม่!</span>
                       <span className="text-[10px] font-black bg-amber-300 text-slate-900 px-2 py-0.5 rounded-full shadow-xs">
-                        ฟรี 398 เครดิต
+                        ฟรี 298 เครดิต
                       </span>
                     </div>
                     <p className="text-[11px] text-emerald-50 font-medium leading-tight mt-1">
-                      สมัครวันนี้ รับเครดิตเริ่มต้น 398 CR ทันที สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งโดยไม่ต้องเติมเงิน
+                      สมัครวันนี้ รับเครดิตเริ่มต้น 298 CR ทันที สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งโดยไม่ต้องเติมเงิน
                     </p>
                   </div>
                 </div>
@@ -1675,7 +1675,7 @@ export default function App() {
                 >
                   <span>💆 ยืนยันสมัครสมาชิกพนักงานนวด</span>
                   <span className="bg-emerald-700/60 text-emerald-100 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                    (รับฟรี 398 เครดิต)
+                    (รับฟรี 298 เครดิต)
                   </span>
                 </button>
 

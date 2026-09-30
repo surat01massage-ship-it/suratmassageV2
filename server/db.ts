@@ -40,7 +40,7 @@ export const defaultSettings: AppSettings = {
     { minKm: 10, maxKm: 15, fee: 200 }
   ],
   commissionRate: 15, // 15%
-  minCredit: 398,
+  minCredit: 298,
   searchRadius: 15, // 15 km
   systemOpen: 'ON',
   contactPhone: "081-234-5678",
@@ -57,7 +57,8 @@ export const defaultSettings: AppSettings = {
   qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg",
   lineChannelAccessToken: "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=",
   lineAdminUserId: "Cf544171f0f9753863ade1ddd1acd67a7",
-  enableLineAdminNotify: true
+  enableLineAdminNotify: true,
+  autoCompleteMinutes: 30
 };
 
 const defaultServices: Service[] = [
@@ -67,7 +68,7 @@ const defaultServices: Service[] = [
     Detail: "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
     Duration: 120,
     Price: 798,
-    CreditRequired: 398,
+    CreditRequired: 298,
     Active: 'ON',
     SortOrder: 1
   },
@@ -77,7 +78,7 @@ const defaultServices: Service[] = [
     Detail: "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
     Duration: 120,
     Price: 798,
-    CreditRequired: 398,
+    CreditRequired: 298,
     Active: 'ON',
     SortOrder: 2
   },
@@ -87,7 +88,7 @@ const defaultServices: Service[] = [
     Detail: "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
     Duration: 120,
     Price: 798,
-    CreditRequired: 398,
+    CreditRequired: 298,
     Active: 'ON',
     SortOrder: 3
   }
@@ -277,7 +278,11 @@ export function getDatabase(): DatabaseSchema {
     if (!Array.isArray(liveDb.transactions)) liveDb.transactions = [];
     if (!Array.isArray(liveDb.reviews)) liveDb.reviews = [];
     if (!Array.isArray(liveDb.notifications)) liveDb.notifications = [];
-    if (!liveDb.settings) liveDb.settings = defaultSettings;
+    if (!liveDb.settings) {
+      liveDb.settings = defaultSettings;
+    } else {
+      liveDb.settings = { ...defaultSettings, ...liveDb.settings };
+    }
 
     inMemoryDB = liveDb;
     saveDatabase(liveDb);

@@ -589,7 +589,7 @@ function handleRegister(payload) {
       Description: payload.description || "ยินดีให้บริการนวดเพื่อสุขภาพค่ะ",
       Rating: 5.0,
       ReviewCount: 0,
-      Credit: 398,
+      Credit: 298,
       Available: "OFF",
       VerifyStatus: "Pending",
       CurrentLatitude: newUser.Latitude,
@@ -709,13 +709,12 @@ function updateBookingState(bookingId, actionName, staffId) {
   const updates = {};
   if (actionName === "accept") {
     const staff = getSheetData("Staff").find(s => s.StaffID === staffId);
-    if (staff.Credit < 50) throw new Error("เครดิตต่ำกว่าเกณฑ์ขั้นต่ำ");
+    if (staff.Credit < 298) throw new Error("เครดิตต่ำกว่าเกณฑ์ขั้นต่ำ (298 เครดิต)");
     
-    // Deduct Credit
-    updateSheetRow("Staff", "StaffID", staffId, { Credit: staff.Credit - 50, TotalJobs: Number(staff.TotalJobs) + 1 });
-    
+    // ตัดเครดิตหลังจบงาน ไม่ตัดตอนรับงาน
     updates.Status = "Accepted";
     updates.StaffID = staffId;
+    updates.AcceptedDate = new Date().toISOString();
     createNotification(b.CustomerID, "🟢 พนักงานรับงานแล้ว!", "พี่ " + staff.Nickname + " กำลังเตรียมตัวเดินทางมาบริการค่ะ");
   } else if (actionName === "start_travel") {
     updates.Status = "Working";
@@ -724,16 +723,21 @@ function updateBookingState(bookingId, actionName, staffId) {
     updates.Status = "Completed";
     updates.PaymentStatus = "Paid";
     
-    // Add income to staff & auto turn off if credit exhausted/below min
+    // Deduct credit & add income to staff after job completion
     const staff = getSheetData("Staff").find(s => s.StaffID === b.StaffID);
     if (staff) {
+      var creditDeduct = Number(b.CreditRequired || 298);
+      var currentCredit = Math.max(0, Number(staff.Credit || 0) - creditDeduct);
       var newIncome = Number(staff.TotalIncome || 0) + Number(b.TotalPrice || 0);
-      var staffUpdates = { TotalIncome: newIncome };
-      var currentCredit = Number(staff.Credit || 0);
-      var minCredit = 398;
+      var staffUpdates = { 
+        Credit: currentCredit,
+        TotalIncome: newIncome,
+        TotalJobs: Number(staff.TotalJobs || 0) + 1 
+      };
+      var minCredit = 298;
       if (currentCredit <= 0 || currentCredit < minCredit) {
         staffUpdates.Available = "OFF";
-        createNotification(staff.UserID, "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว & เครดิตหมด)", "งาน #" + bookingId + " เสร็จสิ้นแล้ว เนื่องจากเครดิตคงเหลือหมดหรือต่ำกว่าเกณฑ์ขั้นต่ำ (" + minCredit + " เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่ค่ะ");
+        createNotification(staff.UserID, "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว & เครดิตหมด)", "งาน #" + bookingId + " เสร็จสิ้นแล้ว ตัดเครดิต -" + creditDeduct + " CR เนื่องจากเครดิตคงเหลือหมดหรือต่ำกว่าเกณฑ์ขั้นต่ำ (" + minCredit + " เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่ค่ะ");
       }
       updateSheetRow("Staff", "StaffID", b.StaffID, staffUpdates);
     }
@@ -746,6 +750,21 @@ function updateBookingState(bookingId, actionName, staffId) {
 
   updateSheetRow("Booking", "BookingID", bookingId, updates);
   return { success: true };
+}
+
+// ฟังก์ชันจบงานอัตโนมัติ 30 นาทีหลังรับงาน (สำหรับตั้ง Time-driven Trigger ใน Google Apps Script)
+function autoCompleteExpiredBookings() {
+  var bookings = getSheetData("Booking");
+  var now = new Date().getTime();
+  var thirtyMins = 30 * 60 * 1000;
+  bookings.forEach(function(b) {
+    if (b.Status === "Accepted" || b.Status === "Working") {
+      var acceptedTime = b.AcceptedDate ? new Date(b.AcceptedDate).getTime() : new Date(b.CreatedDate).getTime();
+      if (!isNaN(acceptedTime) && (now - acceptedTime) >= thirtyMins) {
+        updateBookingAction(b.BookingID, "complete");
+      }
+    }
+  });
 }
 `
   },

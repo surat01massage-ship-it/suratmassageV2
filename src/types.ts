@@ -83,6 +83,9 @@ export interface Booking {
   Status: BookingStatus;
   PaymentStatus: 'Unpaid' | 'Paid';
   CreatedDate: string;
+  AcceptedDate?: string;
+  CompletedDate?: string;
+  AutoCompleted?: boolean;
   CancellationReason?: string;
 }
 
@@ -162,6 +165,7 @@ export interface AppSettings {
   lineChannelAccessToken?: string;
   lineAdminUserId?: string;
   enableLineAdminNotify?: boolean;
+  autoCompleteMinutes?: number;
   isCustomized?: boolean;
   updatedAt?: string;
 }

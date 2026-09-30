@@ -218,7 +218,7 @@ export default function AdminPanel({
       const data = await res.json().catch(() => null);
       if (data) setDashboardStats(data);
     } catch (e) {
-      console.error(e);
+      console.warn("admin dashboard fetch notice:", e);
     }
   };
 
@@ -235,7 +235,7 @@ export default function AdminPanel({
         } catch {}
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchStaffList notice:", e);
     }
   };
 
@@ -257,7 +257,7 @@ export default function AdminPanel({
         } catch {}
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchAllUsers notice:", e);
     }
   };
 
@@ -270,7 +270,7 @@ export default function AdminPanel({
         setServices(data);
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchServices notice:", e);
     }
   };
 
@@ -283,7 +283,7 @@ export default function AdminPanel({
         setTransactions(data);
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchTransactions notice:", e);
     }
   };
 
@@ -294,7 +294,7 @@ export default function AdminPanel({
       const data = await res.json().catch(() => null);
       if (data) setRawDb(data);
     } catch (e) {
-      console.error(e);
+      console.warn("fetchRawDatabase notice:", e);
     }
   };
 
@@ -1497,7 +1497,7 @@ export default function AdminPanel({
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
-                    * เมื่อพนักงานกดรับงาน ระบบจะหักเครดิตจากกระเป๋าเงินพนักงานตามยอด "หักเครดิต" ทันที และพนักงานจะได้รับเงินสดจากลูกค้าโดยตรงเต็มจำนวน (หักลบกันคือรายได้สุทธิของพนักงาน)
+                    * เมื่อพนักงานให้บริการเสร็จสิ้น ระบบจะตัดเครดิตจากกระเป๋าเงินพนักงานตามยอดเครดิตที่กำหนดหลังจบงาน และพนักงานจะได้รับเงินสดจากลูกค้าโดยตรงเต็มจำนวน (หักลบกันคือรายได้สุทธิของพนักงาน) (หมายเหตุ: หากพนักงานไม่กดจบงาน ระบบจะตัดเครดิตและปิดจบงานให้อัตโนมัติหลังรับงาน 30 นาที)
                   </p>
                 </div>
 
@@ -2113,8 +2113,8 @@ export default function AdminPanel({
                   type="number"
                   min={1}
                   step="1"
-                  value={formSettings.minCredit || 398}
-                  onChange={(e) => setFormSettings({ ...formSettings, minCredit: parseInt(e.target.value) || 398 })}
+                  value={formSettings.minCredit || 298}
+                  onChange={(e) => setFormSettings({ ...formSettings, minCredit: parseInt(e.target.value) || 298 })}
                   required
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />

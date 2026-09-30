@@ -26,7 +26,7 @@
       "Detail": "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
       "Duration": 120,
       "Price": 798,
-      "CreditRequired": 398,
+      "CreditRequired": 298,
       "Active": "ON",
       "SortOrder": 1
     },
@@ -36,7 +36,7 @@
       "Detail": "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
       "Duration": 120,
       "Price": 798,
-      "CreditRequired": 398,
+      "CreditRequired": 298,
       "Active": "ON",
       "SortOrder": 2
     },
@@ -46,7 +46,7 @@
       "Detail": "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
       "Duration": 120,
       "Price": 798,
-      "CreditRequired": 398,
+      "CreditRequired": 298,
       "Active": "ON",
       "SortOrder": 3
     }
@@ -156,7 +156,7 @@
       }
     ],
     "commissionRate": 15,
-    "minCredit": 398,
+    "minCredit": 298,
     "searchRadius": 15,
     "systemOpen": "ON",
     "contactPhone": "081-234-5678",

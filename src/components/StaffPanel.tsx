@@ -117,10 +117,22 @@ export default function StaffPanel({
   const [ongoingBooking, setOngoingBooking] = useState<any | null>(null);
   const [acceptedJobModal, setAcceptedJobModal] = useState<any | null>(null);
 
-  // Job cancellation by staff states
-  const [showCancelJobModal, setShowCancelJobModal] = useState(false);
-  const [cancelReasonInput, setCancelReasonInput] = useState('');
-  const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
+  const [currentTimestamp, setCurrentTimestamp] = useState<number>(Date.now());
+  const ongoingBookingRef = useRef<any | null>(ongoingBooking);
+
+  useEffect(() => {
+    ongoingBookingRef.current = ongoingBooking;
+  }, [ongoingBooking]);
+
+  // 1-second ticker when an ongoing booking exists for real-time 30-min auto-complete countdown
+  useEffect(() => {
+    if (!ongoingBooking) return;
+    const interval = setInterval(() => {
+      setCurrentTimestamp(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [ongoingBooking?.BookingID]);
+
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const isFetchingStaffDataRef = useRef(false);
   const isUpdatingStatusRef = useRef(false);
@@ -300,7 +312,7 @@ export default function StaffPanel({
           setServices(data.filter((s: any) => s.Active === 'ON'));
         }
       })
-      .catch(console.error);
+      .catch(console.warn);
   }, []);
 
   // Periodic Polling for incoming bookings, ongoing state, and credit transactions
@@ -321,11 +333,23 @@ export default function StaffPanel({
     isFetchingStaffDataRef.current = true;
 
     try {
+      // Safe cross-browser timeout signal helper
+      const getTimeoutSignal = (ms: number) => {
+        if (typeof AbortController !== 'undefined') {
+          const controller = new AbortController();
+          setTimeout(() => {
+            try { controller.abort(); } catch {}
+          }, ms);
+          return controller.signal;
+        }
+        return undefined;
+      };
+
       // Parallelize requests to eliminate waterfall delay
       const [staffRes, bRes, txRes] = await Promise.all([
-        fetch(`/api/staff/${staff.StaffID}/details`, { signal: AbortSignal.timeout(5000) }).catch(() => null),
-        fetch('/api/bookings', { signal: AbortSignal.timeout(5000) }).catch(() => null),
-        fetch('/api/credits/transactions', { signal: AbortSignal.timeout(5000) }).catch(() => null)
+        fetch(`/api/staff/${staff.StaffID}/details`, { signal: getTimeoutSignal(6000) }).catch(() => null),
+        fetch('/api/bookings', { signal: getTimeoutSignal(6000) }).catch(() => null),
+        fetch('/api/credits/transactions', { signal: getTimeoutSignal(6000) }).catch(() => null)
       ]);
 
       // 0. Update staff details
@@ -373,6 +397,13 @@ export default function StaffPanel({
             const ongoing = staffJobs.find((b: any) => 
               b.Status === 'Accepted' || b.Status === 'Working'
             );
+            if (!ongoing && ongoingBookingRef.current) {
+              const prevId = ongoingBookingRef.current.BookingID;
+              const finishedJob = staffJobs.find((b: any) => b.BookingID === prevId && b.Status === 'Completed');
+              if (finishedJob && finishedJob.AutoCompleted) {
+                onShowToast(`⏰ งาน #${finishedJob.BookingID} ถูกปิดจบงานอัตโนมัติ (ครบ 30 นาทีหลังรับงาน) ระบบได้บันทึกรายได้และตัดเครดิตเรียบร้อยค่ะ`, "info");
+              }
+            }
             setOngoingBooking(ongoing || null);
           }
         }
@@ -387,7 +418,7 @@ export default function StaffPanel({
       }
 
     } catch (e) {
-      console.error("fetchStaffData error:", e);
+      console.warn("fetchStaffData notice:", e);
     } finally {
       isFetchingStaffDataRef.current = false;
     }
@@ -438,7 +469,7 @@ export default function StaffPanel({
           onUpdateStaffData(updated);
         }
       } catch (e) {
-        console.error("Failed to update staff location to server:", e);
+        console.warn("Notice updating staff location to server:", e);
       }
     };
 
@@ -476,7 +507,7 @@ export default function StaffPanel({
 
     const nextStatus = staff.Available === 'ON' ? 'OFF' : 'ON';
 
-    const minCreditReq = Math.max(settings?.minCredit || 398, 398);
+    const minCreditReq = Math.max(settings?.minCredit || 298, 298);
     if (nextStatus === 'ON' && staff.Credit < minCreditReq) {
       onShowToast(`❌ เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCreditReq} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ`, "error");
       return;
@@ -520,7 +551,7 @@ export default function StaffPanel({
               })
             }).then(() => {
               onUpdateStaffData({ ...staff, Available: 'ON', CurrentLatitude: geo.latitude, CurrentLongitude: geo.longitude });
-            }).catch(console.error);
+            }).catch(console.warn);
           })
           .catch(console.warn);
       }
@@ -596,7 +627,8 @@ export default function StaffPanel({
       const acceptedData = { 
         ...incomingBooking, 
         Status: 'Accepted',
-        TotalPrice: totalCollect
+        TotalPrice: totalCollect,
+        AcceptedDate: data.booking?.AcceptedDate || new Date().toISOString()
       };
       
       onShowToast(`🎉 ยอมรับงานสำเร็จ! ยอดที่ต้องเก็บเงินลูกค้า ฿${totalCollect.toLocaleString()} บาท`, "success");
@@ -610,11 +642,10 @@ export default function StaffPanel({
           Available: 'ON' // Always stay online while performing accepted work
         });
       } else {
-        // Local optimistic fallback
+        // Local optimistic fallback (ตัดเครดิตหลังจบงาน ไม่ตัดตอนรับงาน)
         onUpdateStaffData({
           ...staff,
           Available: 'ON',
-          Credit: Math.max(0, staff.Credit - (incomingBooking.CreditRequired ?? 398)),
           TotalJobs: (staff.TotalJobs || 0) + 1
         });
       }
@@ -642,15 +673,19 @@ export default function StaffPanel({
     }
 
     try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => { try { controller.abort(); } catch {} }, 10000) : null;
+
       const res = await fetch(`/api/bookings/${bookingId}/action`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(8000),
+        signal: controller?.signal,
         body: JSON.stringify({
           action: actionName,
           staffId: staff?.StaffID
         })
       });
+      if (timeoutId) clearTimeout(timeoutId);
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'ไม่สามารถอัปเดตสถานะได้');
@@ -674,9 +709,11 @@ export default function StaffPanel({
         );
         const isLastJob = otherActiveJobs.length === 0;
 
-        const minCredit = Math.max(settings?.minCredit || 398, 398);
+        const serviceCreditReq = previousOngoing.CreditRequired ?? 298;
+        const minCredit = Math.max(settings?.minCredit || 298, 298);
         const finalStaff = data.staff || (staff ? {
           ...staff,
+          Credit: Math.max(0, staff.Credit - serviceCreditReq),
           TotalIncome: staff.TotalIncome + (previousOngoing.NetIncome || previousOngoing.TotalPrice),
           TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
         } : null);
@@ -695,15 +732,15 @@ export default function StaffPanel({
         if (otherActiveJobs.length > 0) {
           // Move to next active job
           setOngoingBooking(otherActiveJobs[0]);
-          onShowToast("💆 บันทึกจบงานนี้เรียบร้อยแล้ว! กำลังนำคุณไปยังงานถัดไปที่ต้องให้บริการค่ะ", "success");
+          onShowToast(`💆 บันทึกจบงานนี้สำเร็จ! ตัดเครดิตค่าธรรมเนียม -${serviceCreditReq} CR กำลังนำคุณไปยังงานถัดไปค่ะ`, "success");
         } else {
           // Last job finished!
           setOngoingBooking(null);
 
           if (shouldTurnOff) {
-            onShowToast(`💆 จบงานสุดท้ายเรียบร้อยแล้ว! เนื่องจากเครดิตคงเหลือ (${finalStaff?.Credit?.toFixed(0) || 0} CR) หมดหรือต่ำกว่าเกณฑ์ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่ค่ะ`, "info");
+            onShowToast(`💆 จบงานสำเร็จ! ตัดเครดิตค่าธรรมเนียม -${serviceCreditReq} CR เนื่องจากเครดิตคงเหลือ (${finalStaff?.Credit?.toFixed(0) || 0} CR) หมดหรือต่ำกว่าเกณฑ์ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่ค่ะ`, "info");
           } else {
-            onShowToast("💆 การให้บริการเสร็จสมบูรณ์เรียบร้อยแล้ว! รายได้โอนเข้าประวัติแล้ว", "success");
+            onShowToast(`💆 จบงานบริการเสร็จสมบูรณ์เรียบร้อยแล้ว! ตัดเครดิตค่าธรรมเนียม -${serviceCreditReq} CR และโอนรายได้เข้าประวัติแล้วค่ะ`, "success");
           }
         }
       }
@@ -723,35 +760,6 @@ export default function StaffPanel({
     } finally {
       setIsUpdatingStatus(false);
       isUpdatingStatusRef.current = false;
-    }
-  };
-
-  // Cancel ongoing job by staff (requires admin confirmation to refund credit)
-  const handleCancelOngoingJob = async () => {
-    if (!ongoingBooking || !staff) return;
-    setIsSubmittingCancel(true);
-    try {
-      const res = await fetch(`/api/bookings/${ongoingBooking.BookingID}/action`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'cancel',
-          staffId: staff.StaffID,
-          reason: cancelReasonInput.trim() || 'พนักงานมีเหตุฉุกเฉินขอยกเลิกงาน'
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'ไม่สามารถยกเลิกงานได้');
-
-      onShowToast("⚠️ แจ้งยกเลิกงานสำเร็จแล้ว คำขอคืนเครดิตถูกส่งให้แอดมินตรวจสอบและยืนยันแล้วค่ะ", "info");
-      setShowCancelJobModal(false);
-      setCancelReasonInput('');
-      setOngoingBooking(null);
-      fetchStaffData();
-    } catch (e: any) {
-      onShowToast(e.message, "error");
-    } finally {
-      setIsSubmittingCancel(false);
     }
   };
 
@@ -1052,7 +1060,7 @@ export default function StaffPanel({
       });
       onShowToast("📸 เพิ่มรูปภาพลงในคลังรูปภาพเรียบร้อยแล้วค่ะ", "success");
     } catch (e: any) {
-      console.error(e);
+      console.warn("Photo upload warning:", e);
     }
   };
 
@@ -1075,7 +1083,7 @@ export default function StaffPanel({
       });
       onShowToast("🗑️ ลบรูปภาพออกจากคลังเรียบร้อย", "info");
     } catch (e: any) {
-      console.error(e);
+      console.warn("Photo delete warning:", e);
     }
   };
 
@@ -1277,7 +1285,7 @@ export default function StaffPanel({
                 </span>
               </div>
               <p className="text-[11px] text-amber-800 font-medium mt-0.5 leading-relaxed">
-                ข้อมูลและเอกสารของคุณถูกส่งถึงผู้ดูแลระบบแล้ว เมื่อแอดมินทำการอนุมัติ คุณจะสามารถเปิดสวิตช์รับงาน (Online) เพื่อเริ่มให้บริการได้ทันที พร้อมรับเครดิตฟรี 398 CR ค่ะ
+                ข้อมูลและเอกสารของคุณถูกส่งถึงผู้ดูแลระบบแล้ว เมื่อแอดมินทำการอนุมัติ คุณจะสามารถเปิดสวิตช์รับงาน (Online) เพื่อเริ่มให้บริการได้ทันที พร้อมรับเครดิตฟรี 298 CR ค่ะ
               </p>
             </div>
           </div>
@@ -1300,33 +1308,6 @@ export default function StaffPanel({
               </p>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* Red Low-Credit Alert Banner */}
-      {staff.Credit < Math.max(settings?.minCredit || 398, 398) && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left animate-fade-in shadow-xs">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2.5 bg-rose-500 text-white rounded-xl shrink-0 shadow-xs">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-black text-rose-900">
-                ⚠️ เครดิตไม่พอรับงาน (ขั้นต่ำ {Math.max(settings?.minCredit || 398, 398)} เครดิต)
-              </p>
-              <p className="text-[11px] text-rose-700 font-medium mt-0.5">
-                เครดิตปัจจุบันของคุณมี {staff.Credit.toFixed(0)} เครดิต (ต้องมีขั้นต่ำ {Math.max(settings?.minCredit || 398, 398)} เครดิตเพื่อเปิดสวิตช์รับงาน)
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setActiveTab('credit')}
-            className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-black px-4 py-2 rounded-xl shrink-0 shadow-xs cursor-pointer active:scale-95 transition-all flex items-center gap-1.5 self-end sm:self-auto"
-          >
-            <CreditCard className="w-3.5 h-3.5" />
-            <span>เติมเครดิต</span>
-          </button>
         </div>
       )}
 
@@ -1376,72 +1357,6 @@ export default function StaffPanel({
           </div>
         )
       )}
-
-      {/* GPS Location Broadcast Bar */}
-      <div className="bg-sky-50/80 border border-sky-200/80 rounded-2xl p-3.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-xs">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className={`p-2 rounded-xl shrink-0 ${staff.Available === 'ON' ? 'bg-sky-500 text-white shadow-sm' : 'bg-slate-200 text-slate-500'}`}>
-            <Compass className={`w-4 h-4 ${isUpdatingGPS ? 'animate-spin' : ''}`} />
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold text-slate-800">ตำแหน่ง GPS สดของคุณ</span>
-              {staff.Available === 'ON' ? (
-                <span className="text-[9px] bg-emerald-100 text-emerald-700 font-extrabold px-1.5 py-0.5 rounded">
-                  ลูกค้ามองเห็นคุณบนแผนที่
-                </span>
-              ) : (
-                <span className="text-[9px] bg-slate-100 text-slate-500 font-extrabold px-1.5 py-0.5 rounded">
-                  ซ่อนตำแหน่ง (ออฟไลน์)
-                </span>
-              )}
-            </div>
-            <p className="text-[10px] text-slate-500 font-mono truncate">
-              พิกัด: {(staff.CurrentLatitude || 9.1382).toFixed(4)}, {(staff.CurrentLongitude || 99.3217).toFixed(4)}
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          <button
-            type="button"
-            onClick={async () => {
-              await unlockAudioContext();
-              setAudioReady(true);
-              playJobAlertSound();
-              onShowToast("🔊 ทดสอบเสียงเตือนงานเข้า (เสียงดังชัดเจน & สั่นเตือน)", "info");
-            }}
-            className="flex-1 sm:flex-none bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-700 text-[10px] font-extrabold px-2.5 py-2 rounded-xl shadow-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1.5"
-            title="ทดสอบระดับเสียงและสั่นเตือนบนโทรศัพท์"
-          >
-            <Volume2 className="w-3.5 h-3.5 text-sky-600" />
-            <span>ทดสอบเสียงงานเข้า</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setTempStaffLat(staff.CurrentLatitude || 9.138244);
-              setTempStaffLng(staff.CurrentLongitude || 99.321748);
-              setShowStaffMapModal(true);
-            }}
-            className="flex-1 sm:flex-none bg-sky-500 hover:bg-sky-600 text-white text-[10px] font-extrabold px-3 py-2 rounded-xl shadow-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center gap-1"
-          >
-            <MapPin className="w-3.5 h-3.5" />
-            <span>ปักหมุดบนแผนที่</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleManualGPSUpdate}
-            disabled={isUpdatingGPS}
-            className="flex-1 sm:flex-none bg-white hover:bg-sky-100 border border-sky-300 text-sky-700 text-[10px] font-extrabold px-2.5 py-2 rounded-xl shadow-xs transition-all cursor-pointer active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1"
-          >
-            <Compass className={`w-3.5 h-3.5 text-sky-600 ${isUpdatingGPS ? 'animate-spin' : ''}`} />
-            <span>{isUpdatingGPS ? 'กำลังส่ง...' : 'ดึง GPS'}</span>
-          </button>
-        </div>
-      </div>
 
       {/* Staff Map Location Pinning Modal */}
       {showStaffMapModal && (
@@ -1544,8 +1459,8 @@ export default function StaffPanel({
               : 'text-slate-600 hover:bg-slate-50'
           }`}
         >
-          <TrendingUp className="w-3.5 h-3.5" />
-          <span>แดชบอร์ด</span>
+          <Bell className="w-3.5 h-3.5" />
+          <span>แผงรับงาน</span>
         </button>
         <button
           type="button"
@@ -1647,77 +1562,7 @@ export default function StaffPanel({
             </div>
           )}
 
-          {/* Main Wallet Grid cards */}
-          <div className="grid grid-cols-2 gap-4">
-            
-            {/* Wallet credit card */}
-            <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-12 h-12 bg-sky-500/5 rounded-full" />
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">กระเป๋าเครดิต (CR)</span>
-                {staff.Credit >= 398 && (
-                  <span className="text-[9px] font-extrabold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full">
-                    รับงานได้ {Math.floor(staff.Credit / 398)} ครั้ง
-                  </span>
-                )}
-              </div>
-              <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-2xl font-black text-slate-800">{staff.Credit.toFixed(0)}</span>
-                <span className="text-xs font-semibold text-slate-500">เครดิต</span>
-              </div>
-              {staff.Credit === 398 && staff.TotalJobs === 0 && (
-                <div className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md mt-1 inline-block">
-                  🎁 เครดิตฟรีสำหรับรับงานครั้งแรก
-                </div>
-              )}
-              <button
-                onClick={() => setActiveTab('credit')}
-                className="text-[9px] font-extrabold text-sky-600 hover:text-sky-700 flex items-center gap-0.5 mt-2 cursor-pointer bg-sky-50 px-2 py-1 rounded-md w-fit"
-              >
-                <CreditCard className="w-3 h-3" /> เติมเครดิตที่นี่
-              </button>
-            </div>
 
-            {/* Income Card */}
-            <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">รายได้วันนี้</span>
-              <div className="flex items-baseline gap-1 pt-1">
-                <span className="text-2xl font-black text-sky-600">฿{todayEarnings}</span>
-                <span className="text-xs font-semibold text-slate-500">บาท</span>
-              </div>
-              <div className="mt-4 pt-2 border-t border-slate-100 space-y-1">
-                <div className="flex justify-between items-center text-[9px] font-semibold text-slate-500">
-                  <span>รายได้เดือนนี้:</span>
-                  <span className="text-sky-600 font-bold">฿{thisMonthEarnings}</span>
-                </div>
-                <div className="flex justify-between items-center text-[9px] font-semibold text-slate-400">
-                  <span>รายได้สะสมทั้งหมด:</span>
-                  <span>฿{staff.TotalIncome}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Average Stars ratings summary widget */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-4 shadow-sm flex items-center justify-around text-center">
-            <div>
-              <span className="text-[9px] font-bold text-slate-400 block uppercase">งานสำเร็จทั้งหมด</span>
-              <span className="text-base font-extrabold text-slate-800 block mt-1">{staff.TotalJobs} ครั้ง</span>
-            </div>
-            <div className="w-[1px] h-8 bg-slate-100" />
-            <div>
-              <span className="text-[9px] font-bold text-slate-400 block uppercase">เรตติ้งดาวเฉลี่ย</span>
-              <div className="flex items-center justify-center text-amber-500 font-extrabold text-sm mt-1">
-                <Star className="w-4 h-4 fill-current mr-0.5" />
-                <span>{staff.Rating}</span>
-              </div>
-            </div>
-            <div className="w-[1px] h-8 bg-slate-100" />
-            <div>
-              <span className="text-[9px] font-bold text-slate-400 block uppercase">รีวิวความเห็นลูกค้า</span>
-              <span className="text-base font-extrabold text-slate-800 block mt-1">{staff.ReviewCount} รายการ</span>
-            </div>
-          </div>
 
           {/* ACTIVE ONGOING BOOKING CONTROLS */}
           {ongoingBooking && (
@@ -1731,6 +1576,62 @@ export default function StaffPanel({
                   {ongoingBooking.Status}
                 </span>
               </div>
+
+              {/* ⏰ 30-Minute Auto-Completion Countdown Banner */}
+              {(() => {
+                const acceptedTimeStr = ongoingBooking.AcceptedDate || ongoingBooking.CreatedDate;
+                const acceptedMs = acceptedTimeStr ? new Date(acceptedTimeStr).getTime() : currentTimestamp;
+                const limitMs = 30 * 60 * 1000;
+                const elapsedMs = Math.max(0, currentTimestamp - acceptedMs);
+                const remainMs = Math.max(0, limitMs - elapsedMs);
+                const remainSec = Math.floor(remainMs / 1000);
+                const remMin = Math.floor(remainSec / 60);
+                const remSec = remainSec % 60;
+                const isExpired = remainMs <= 0;
+
+                return (
+                  <div className={`rounded-2xl p-3 sm:p-3.5 border transition-all ${
+                    isExpired 
+                      ? 'bg-rose-50 border-rose-300 text-rose-950 animate-pulse'
+                      : remainSec <= 300 
+                        ? 'bg-amber-100/80 border-amber-300 text-amber-950' 
+                        : 'bg-sky-50 border-sky-200 text-sky-950'
+                  }`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          isExpired ? 'bg-rose-200 text-rose-700' : 'bg-sky-200/70 text-sky-700'
+                        }`}>
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[11px] sm:text-xs font-black block truncate">
+                            {isExpired 
+                              ? '⏰ ครบ 30 นาทีแล้ว: ระบบกำลังบันทึกปิดจบงานให้อัตโนมัติ' 
+                              : '⏱️ ระบบจะปิดจบงานอัตโนมัติ 30 นาทีหลังรับงาน'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium block">
+                            {isExpired
+                              ? 'ตัดเครดิตและบันทึกรายได้ให้พนักงานอัตโนมัติเรียบร้อยค่ะ'
+                              : 'หากนวดเสร็จก่อน สามารถกดปุ่มจบงานเพื่อรับเงินสดได้ทันทีค่ะ'}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className={`font-mono text-xs sm:text-sm font-black px-2.5 py-1 rounded-xl shadow-2xs inline-block ${
+                          isExpired 
+                            ? 'bg-rose-600 text-white' 
+                            : remainSec <= 300 
+                              ? 'bg-amber-500 text-slate-950' 
+                              : 'bg-sky-600 text-white'
+                        }`}>
+                          {isExpired ? '00:00' : `${remMin}:${remSec < 10 ? '0' : ''}${remSec}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Customer Contact Box */}
               <div className="bg-white border border-amber-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs">
@@ -1936,42 +1837,58 @@ export default function StaffPanel({
                   </button>
                 ) : null}
               </div>
-
-              {/* Staff Job Cancellation Request button */}
-              <div className="pt-2 border-t border-amber-200/50 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCancelReasonInput('');
-                    setShowCancelJobModal(true);
-                  }}
-                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <span>⚠️ มีเหตุฉุกเฉิน / ขอยกเลิกงานนี้</span>
-                </button>
-              </div>
             </div>
           )}
 
-          {/* Simple income list widget */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-3">
-            <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">ความเคลื่อนไหวล่าสุด</h4>
-            {completedJobs.length === 0 ? (
-              <div className="text-center py-6 text-slate-400 text-xs">คุณยังไม่มีประวัติรายรับในวันนี้</div>
-            ) : (
-              <div className="space-y-2">
-                {completedJobs.slice(-3).map((job) => (
-                  <div key={job.BookingID} className="flex items-center justify-between text-xs py-1">
-                    <div>
-                      <span className="font-bold text-slate-800 block">{job.ServiceName}</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">{job.BookingDate} • ลูกค้า {job.CustomerName}</span>
+          {/* STANDBY JOB PANEL (แผงรอรับงาน เมื่อยังไม่มีงานเรียก) */}
+          {!incomingBooking && !ongoingBooking && (
+            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 sm:p-8 text-center space-y-4 shadow-sm animate-fade-in">
+              {staff.Available === 'ON' ? (
+                <>
+                  <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-30" />
+                    <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-inner">
+                      <Bell className="w-7 h-7 text-emerald-600 animate-bounce" />
                     </div>
-                    <span className="font-bold text-sky-600">+฿{job.NetIncome || job.TotalPrice}</span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base sm:text-lg font-black text-slate-800">
+                      แผงรับงานพร้อมให้บริการ 🟢
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      ระบบกำลังสแตนด์บายรอรับงานจากลูกค้าในพื้นที่สุราษฎร์ธานี เมื่อมีงานเรียกเข้ามาจะแสดงข้อมูลและส่งเสียงเตือนทันทีค่ะ
+                    </p>
+                  </div>
+                  <div className="pt-2 flex items-center justify-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-700 text-xs font-black px-3.5 py-1.5 rounded-full border border-emerald-200">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      สถานะ: เปิดรับงาน (Online)
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-14 h-14 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                    <Bell className="w-7 h-7 text-slate-400 opacity-60" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base sm:text-lg font-black text-slate-800">
+                      ขณะนี้คุณปิดรับงานอยู่ (Offline)
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                      แตะสวิตช์ <strong>"เปิดรับงาน"</strong> ที่แถบด้านบน เพื่อเริ่มรับงานนวดจากลูกค้าได้ทันทีค่ะ
+                    </p>
+                  </div>
+                  <div className="pt-2 flex items-center justify-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-black px-3.5 py-1.5 rounded-full border border-slate-200">
+                      <span className="w-2 h-2 rounded-full bg-slate-400" />
+                      สถานะ: ปิดรับงาน (Offline)
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
         </div>
       )}
@@ -1979,7 +1896,31 @@ export default function StaffPanel({
       {/* TAB 2: CREDIT WALLET TOP-UP */}
       {activeTab === 'credit' && (
         <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-6">
-          <h3 className="text-base font-black text-slate-800">แจ้งประวัติโอนเงิน / เติมเครดิต</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-black text-slate-800">แจ้งประวัติโอนเงิน / เติมเครดิต</h3>
+            <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
+              staff.Credit >= Math.max(settings?.minCredit || 298, 298)
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-amber-100 text-amber-800'
+            }`}>
+              {staff.Credit >= Math.max(settings?.minCredit || 298, 298) ? 'เครดิตพร้อมรับงาน' : 'เครดิตต่ำ'}
+            </span>
+          </div>
+
+          {/* Credit balance display card on Credit Tab */}
+          <div className="bg-gradient-to-r from-sky-500 to-blue-600 rounded-2xl p-5 text-white shadow-md flex items-center justify-between text-left">
+            <div>
+              <span className="text-[10px] font-bold text-sky-100 uppercase tracking-wider block">กระเป๋าเครดิตของคุณ (CR)</span>
+              <div className="flex items-baseline gap-1 mt-1">
+                <span className="text-3xl font-black">{staff.Credit.toFixed(0)}</span>
+                <span className="text-xs text-sky-100 font-semibold">เครดิต</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] text-sky-100 block">เกณฑ์ขั้นต่ำเปิดรับงาน</span>
+              <span className="text-sm font-black">{Math.max(settings?.minCredit || 298, 298)} เครดิต</span>
+            </div>
+          </div>
           
           {/* Bank QR Code display with Download and Copy feature */}
           <div className="bg-slate-50/80 rounded-3xl p-5 sm:p-6 text-center space-y-4 border border-slate-200/80 max-w-sm mx-auto shadow-2xs">
@@ -2277,6 +2218,35 @@ export default function StaffPanel({
       {activeTab === 'history' && (
         <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm space-y-4">
           <h3 className="text-base font-black text-slate-800 text-left">ประวัติการรับงานทั้งหมด</h3>
+          
+          {/* Earnings & Performance Summary Cards in History Tab */}
+          <div className="grid grid-cols-2 gap-3 text-left">
+            <div className="bg-sky-50 border border-sky-200/80 rounded-2xl p-3.5 space-y-1">
+              <span className="text-[10px] font-bold text-sky-800 uppercase tracking-wider block">รายได้วันนี้</span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-black text-sky-700">฿{todayEarnings.toLocaleString()}</span>
+                <span className="text-[10px] font-semibold text-slate-500">บาท</span>
+              </div>
+              <div className="text-[10px] text-slate-500 pt-1 border-t border-sky-200/60">
+                เดือนนี้: <strong className="text-sky-700">฿{thisMonthEarnings.toLocaleString()}</strong>
+              </div>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-200/80 rounded-2xl p-3.5 space-y-1">
+              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">รายได้สะสมทั้งหมด</span>
+              <div className="flex items-baseline gap-1">
+                <span className="text-xl font-black text-emerald-700">฿{(staff.TotalIncome || 0).toLocaleString()}</span>
+                <span className="text-[10px] font-semibold text-slate-500">บาท</span>
+              </div>
+              <div className="text-[10px] text-slate-500 pt-1 border-t border-emerald-200/60 flex items-center justify-between">
+                <span>งานสำเร็จ: <strong>{staff.TotalJobs || 0} ครั้ง</strong></span>
+                <span className="flex items-center text-amber-600 font-bold">
+                  <Star className="w-3 h-3 fill-current mr-0.5" />
+                  {staff.Rating}
+                </span>
+              </div>
+            </div>
+          </div>
           
           <div className="divide-y divide-slate-100">
             {bookings.length === 0 ? (
@@ -3242,12 +3212,12 @@ export default function StaffPanel({
               {/* Credit deduction policy notice */}
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left space-y-1">
                 <div className="flex items-center justify-between text-xs font-bold text-amber-900">
-                  <span>หักเครดิตทันทีเมื่อกดรับงาน:</span>
-                  <span className="font-mono text-rose-600 font-black">-{incomingBooking.CreditRequired ?? 398} CR</span>
+                  <span>ตัดเครดิตค่าธรรมเนียมหลังจบงาน:</span>
+                  <span className="font-mono text-emerald-700 font-black">-{incomingBooking.CreditRequired ?? 298} CR</span>
                 </div>
                 <p className="text-[10px] text-amber-700 leading-relaxed">
                   • เครดิตคงเหลือของคุณ: <span className="font-bold">{staff?.Credit ?? 0} CR</span><br />
-                  • หากมีการยกเลิกงาน การคืนเครดิตจะได้รับการตรวจสอบและยืนยันจากแอดมิน
+                  • ระบบจะตัดเครดิตค่าธรรมเนียมอัตโนมัติเมื่อกดจบงานสำเร็จ
                 </p>
               </div>
 
@@ -3600,73 +3570,6 @@ export default function StaffPanel({
                   ตั้งเป็นรูปโปรไฟล์
                 </button>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ⚠️ OVERLAY 4: CANCEL JOB MODAL */}
-      {showCancelJobModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto overscroll-contain">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 text-slate-800 space-y-4 shadow-2xl relative text-left my-auto max-h-[92dvh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-800">ขอยกเลิกงานนี้</h3>
-                  <p className="text-[10px] text-slate-400">กรณีมีเหตุฉุกเฉินหรือจำเป็น</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCancelJobModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 space-y-1">
-              <p className="font-bold flex items-center gap-1">
-                <span>📌 เงื่อนไขการคืนเครดิต:</span>
-              </p>
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                เนื่องจากเครดิตถูกหักไปแล้วเมื่อกดรับงาน เมื่อคุณกดยกเลิก ระบบจะส่งคำขอคืนเครดิตไปยังแอดมินเพื่อตรวจสอบและยืนยันการคืนเครดิตให้คุณค่ะ
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                ระบุเหตุผลในการขอยกเลิก:
-              </label>
-              <textarea
-                value={cancelReasonInput}
-                onChange={(e) => setCancelReasonInput(e.target.value)}
-                placeholder="เช่น รถเสียระหว่างเดินทาง, เกิดอุบัติเหตุ, ติดต่อลูกค้าไม่ได้..."
-                rows={3}
-                className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                disabled={isSubmittingCancel}
-                onClick={() => setShowCancelJobModal(false)}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
-              >
-                ย้อนกลับ
-              </button>
-              <button
-                type="button"
-                disabled={isSubmittingCancel}
-                onClick={handleCancelOngoingJob}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors cursor-pointer disabled:opacity-50"
-              >
-                {isSubmittingCancel ? 'กำลังส่งคำขอ...' : 'ยืนยันยกเลิกงาน'}
-              </button>
             </div>
           </div>
         </div>

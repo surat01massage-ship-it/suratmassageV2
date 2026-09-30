@@ -260,7 +260,7 @@ export default function CustomerPanel({
               latitude: geo.latitude,
               longitude: geo.longitude
             })
-          }).catch(console.error);
+          }).catch(console.warn);
         }
       })
       .catch((err) => {
@@ -290,7 +290,7 @@ export default function CustomerPanel({
             latitude: geo.latitude,
             longitude: geo.longitude
           })
-        }).catch(console.error);
+        }).catch(console.warn);
       }
 
       onShowToast("✅ อัปเดตและปักหมุดตำแหน่งปัจจุบันจาก GPS สำเร็จแล้ว", "success");
@@ -326,7 +326,7 @@ export default function CustomerPanel({
         setServices(data.filter((s: Service) => s.Active === 'ON'));
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchServices notice:", e);
     }
   };
 
@@ -339,7 +339,7 @@ export default function CustomerPanel({
         setAllStaff(data);
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchStaff notice:", e);
     }
   };
 
@@ -353,7 +353,7 @@ export default function CustomerPanel({
         setNotifications(data);
       }
     } catch (e) {
-      console.error(e);
+      console.warn("fetchNotifications notice:", e);
     }
   };
 
@@ -413,7 +413,7 @@ export default function CustomerPanel({
 
       setActiveBooking(latest);
     } catch (e) {
-      console.error(e);
+      console.warn("fetchActiveBooking notice:", e);
     }
   };
 
@@ -528,7 +528,7 @@ export default function CustomerPanel({
 
   // Find eligible online staff within search radius (configured by admin), sorted by distance
   const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
-  const minCreditRequirement = Math.max(settings.minCredit || 398, 398);
+  const minCreditRequirement = Math.max(settings.minCredit || 298, 298);
   const activeOnlineStaff = allStaff
     .filter((s) => s.Available === 'ON' && s.VerifyStatus === 'Approved' && (s.Credit ?? 0) >= minCreditRequirement)
     .map((s) => {
@@ -908,7 +908,7 @@ export default function CustomerPanel({
                         const data = await res.json();
                         setSelectedStaffReviews(data);
                       } catch (e) {
-                        console.error('Failed to fetch reviews', e);
+                        console.warn('Reviews fetch notice:', e);
                       }
                     }}
                     className="border border-slate-200/80 hover:border-sky-500 rounded-3xl p-4 bg-white shadow-2xs hover:shadow-md transition-all cursor-pointer group active:scale-[0.99] duration-150 relative overflow-hidden text-left"
