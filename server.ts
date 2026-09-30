@@ -7,6 +7,56 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { getDatabase, saveDatabase, DatabaseSchema, defaultSettings } from './server/db';
 import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings, DEFAULT_BLANK_AVATAR } from './src/types';
 import { scanSlipQRCode, DecodedSlipQR } from './server/slipQrScanner';
+import QRCode from 'qrcode';
+
+// PromptPay EMVCo CRC-CCITT (0xFFFF) checksum calculation
+function crc16(data: string): string {
+  let crc = 0xFFFF;
+  for (let i = 0; i < data.length; i++) {
+    let x = ((crc >> 8) ^ data.charCodeAt(i)) & 0xFF;
+    x ^= x >> 4;
+    crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+
+// Generate official Bank of Thailand standard PromptPay QR payload
+function generatePromptPayPayload(target: string, amount?: number): string {
+  const cleanTarget = (target || '').replace(/[^0-9]/g, '');
+  let targetType = '01';
+  let formattedTarget = '';
+
+  if (cleanTarget.length === 10 && cleanTarget.startsWith('0')) {
+    // Mobile phone number: 0812345678 -> 0066812345678
+    targetType = '01';
+    formattedTarget = '0066' + cleanTarget.substring(1);
+  } else if (cleanTarget.length === 13) {
+    // National ID / Tax ID
+    targetType = '02';
+    formattedTarget = cleanTarget;
+  } else if (cleanTarget.length >= 8) {
+    // Bank account or other identifier
+    targetType = '01';
+    formattedTarget = cleanTarget.startsWith('0') ? '0066' + cleanTarget.substring(1) : cleanTarget;
+  } else {
+    // Fallback default
+    targetType = '01';
+    formattedTarget = '0066812345678';
+  }
+
+  const tag29Sub00 = '0016A000000677010111';
+  const tag29SubTarget = `${targetType}${formattedTarget.length.toString().padStart(2, '0')}${formattedTarget}`;
+  const tag29 = `29${(tag29Sub00.length + tag29SubTarget.length).toString().padStart(2, '0')}${tag29Sub00}${tag29SubTarget}`;
+
+  let payload = `000201010211${tag29}53037645802TH`;
+  if (amount && amount > 0) {
+    const formattedAmount = amount.toFixed(2);
+    payload += `54${formattedAmount.length.toString().padStart(2, '0')}${formattedAmount}`;
+  }
+  payload += '6304';
+  const checksum = crc16(payload);
+  return payload + checksum;
+}
 
 // Simple unique ID generator
 const generateId = (prefix: string): string => {
@@ -2528,6 +2578,450 @@ async function startServer() {
     }
     saveDatabase(db);
     res.json({ success: true, transaction: newTx, autoApproved, newCredit: staff.Credit });
+  });
+
+  // High-Resolution PromptPay QR Code Image & Direct Device Download API
+  app.get(['/api/qr-image', '/api/qr-download'], async (req, res) => {
+    const db = getDatabase();
+    const settings = db.settings || defaultSettings;
+    const isDownload = req.path === '/api/qr-download' || req.query.download === '1';
+
+    try {
+      let pngBuffer: Buffer | null = null;
+      const qrImage = settings.qrCodeImage || '';
+
+      if (qrImage.startsWith('data:image/')) {
+        const commaIdx = qrImage.indexOf(',');
+        if (commaIdx !== -1) {
+          const base64Data = qrImage.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
+          pngBuffer = Buffer.from(base64Data, 'base64');
+        }
+      } else if (qrImage.startsWith('http://') || qrImage.startsWith('https://')) {
+        // If not an SVG, try to fetch the remote image
+        if (!qrImage.toLowerCase().endsWith('.svg')) {
+          try {
+            const fetchRes = await fetch(qrImage);
+            if (fetchRes.ok) {
+              const arrayBuf = await fetchRes.arrayBuffer();
+              pngBuffer = Buffer.from(arrayBuf);
+            }
+          } catch (e) {
+            console.warn('[QR] Could not fetch remote QR image, generating fallback PromptPay QR:', e);
+          }
+        }
+      }
+
+      // If no valid buffer (e.g. SVG or empty), generate crisp high-res PromptPay PNG QR code
+      if (!pngBuffer) {
+        const targetAccount = settings.bankAccount || settings.contactPhone || '0812345678';
+        const promptPayPayload = generatePromptPayPayload(targetAccount);
+        pngBuffer = await QRCode.toBuffer(promptPayPayload, {
+          type: 'png',
+          width: 800,
+          margin: 3,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        });
+      }
+
+      const rawAccount = (settings.bankAccount || 'pay').replace(/[^0-9a-zA-Z]/g, '');
+      const filename = `PromptPay_QR_${rawAccount || 'SabaiDee'}.png`;
+
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      if (isDownload) {
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      } else {
+        res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      }
+
+      return res.send(pngBuffer);
+    } catch (err: any) {
+      console.error('[QR] Failed to serve QR image:', err);
+      return res.status(500).send('Error generating QR image');
+    }
+  });
+
+  // Dedicated Mobile QR View & Direct Gallery Save Page (Solves LINE In-App Browser Save Image Issues)
+  app.get('/qr-save', (req, res) => {
+    const db = getDatabase();
+    const settings = db.settings || defaultSettings;
+    const bankName = settings.bankName || 'ธนาคารทั่วไป';
+    const bankAccount = settings.bankAccount || '081-234-5678';
+    const bankAccountName = settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ';
+
+    const html = `<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>บันทึก QR Code เติมเครดิต | สบายดี โฮมมาสซาจ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Kanit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      color: #0f172a;
+    }
+    .card {
+      background: #ffffff;
+      max-width: 400px;
+      width: 100%;
+      border-radius: 28px;
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
+      padding: 24px 20px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ecfdf5;
+      color: #047857;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 14px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+      border: 1px solid #a7f3d0;
+    }
+    h1 {
+      font-size: 19px;
+      font-weight: 900;
+      color: #0f172a;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+    p.sub {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+    .qr-container {
+      background: #ffffff;
+      border: 2px solid #e2e8f0;
+      border-radius: 20px;
+      padding: 12px;
+      margin: 0 auto 14px;
+      width: 250px;
+      height: 250px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.03);
+    }
+    .qr-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      border-radius: 12px;
+      -webkit-touch-callout: default !important;
+      -webkit-user-select: auto !important;
+      user-select: auto !important;
+      cursor: pointer;
+    }
+    .tap-hint {
+      background: #0f172a;
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 12px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+    }
+    .line-guide {
+      background: #ecfdf5;
+      border: 2px solid #6ee7b7;
+      border-radius: 16px;
+      padding: 14px;
+      text-align: left;
+      margin-bottom: 16px;
+    }
+    .line-guide-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #065f46;
+      font-size: 13px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .line-guide-desc {
+      font-size: 12px;
+      color: #064e3b;
+      line-height: 1.5;
+      font-weight: 500;
+    }
+    .bank-info {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 12px 14px;
+      margin-bottom: 16px;
+    }
+    .bank-name {
+      font-size: 13px;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .bank-acc-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .bank-acc-number {
+      font-family: monospace;
+      font-size: 15px;
+      font-weight: 900;
+      color: #0369a1;
+      background: #e0f2fe;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+    .btn-copy {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 5px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #334155;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .btn-copy:active { transform: scale(0.96); }
+    .btn-main {
+      width: 100%;
+      background: linear-gradient(135deg, #0284c7 0%, #0d9488 100%);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 800;
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 14px rgba(2, 132, 199, 0.35);
+      margin-bottom: 10px;
+      text-decoration: none;
+    }
+    .btn-main:active { transform: scale(0.98); }
+    .btn-external {
+      width: 100%;
+      background: #059669;
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 12px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+      margin-bottom: 10px;
+      text-decoration: none;
+    }
+    .btn-external:active { transform: scale(0.98); }
+    .btn-back {
+      background: transparent;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #0f172a;
+      color: #ffffff;
+      padding: 12px 20px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 100;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">
+      <span>●</span> พร้อมเพย์ PromptPay QR
+    </div>
+    <h1>สแกน QR Code เพื่อเติมเครดิต</h1>
+    <p class="sub">${bankAccountName}</p>
+
+    <!-- Clear QR Image Container -->
+    <div class="qr-container">
+      <img id="qr-img" class="qr-img" src="/api/qr-image" alt="QR Code สำหรับเติมเครดิต" title="แตะค้างเพื่อบันทึกรูปภาพ" />
+    </div>
+
+    <!-- Instructions that directly solve LINE issue -->
+    <div class="tap-hint">
+      <span>👆</span> แตะค้างที่รูปภาพ 1 วินาที ➔ "บันทึกรูปภาพ"
+    </div>
+
+    <div class="line-guide">
+      <div class="line-guide-header">
+        <span>💡</span> วิธีบันทึกภาพให้เข้าเครื่อง 100% (สำหรับผู้ใช้ LINE):
+      </div>
+      <div class="line-guide-desc">
+        <strong>• แนะนำ:</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันที 100% ค่ะ<br>
+        <strong>• หรือ:</strong> กดปุ่มสีเขียว <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อดาวน์โหลดตรงเข้าเครื่อง
+      </div>
+    </div>
+
+    <!-- Bank Details and 1-Tap Copy -->
+    <div class="bank-info">
+      <div class="bank-name">${bankName}</div>
+      <div class="bank-acc-row">
+        <span class="bank-acc-number" id="acc-num">${bankAccount}</span>
+        <button type="button" class="btn-copy" onclick="copyAccount()">
+          <span>📋</span> คัดลอก
+        </button>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <button type="button" class="btn-main" onclick="saveQrToGallery()">
+      <span>📥</span> บันทึกรูปภาพลงอัลบั้ม (Save Image)
+    </button>
+
+    <button type="button" class="btn-external" onclick="openInExternal()">
+      <span>🌐</span> เปิดใน Safari / Chrome (เบราว์เซอร์เครื่อง)
+    </button>
+
+    <a href="/" class="btn-back">⬅️ กลับสู่ระบบพนักงาน</a>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+    function showToast(msg) {
+      var t = document.getElementById('toast');
+      t.innerText = msg;
+      t.classList.add('show');
+      setTimeout(function() {
+        t.classList.remove('show');
+      }, 3500);
+    }
+
+    function copyAccount() {
+      var rawAcc = document.getElementById('acc-num').innerText.replace(/[^0-9]/g, '');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(rawAcc).then(function() {
+          showToast('✅ คัดลอกเลขบัญชี ' + rawAcc + ' เรียบร้อยแล้ว!');
+        }).catch(function() {
+          fallbackCopy(rawAcc);
+        });
+      } else {
+        fallbackCopy(rawAcc);
+      }
+    }
+
+    function fallbackCopy(text) {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast('✅ คัดลอกเลขบัญชี ' + text + ' เรียบร้อยแล้ว!');
+      } catch (e) {
+        showToast('เลขบัญชี: ' + text);
+      }
+      document.body.removeChild(ta);
+    }
+
+    function openInExternal() {
+      var currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('openExternalBrowser', '1');
+      window.location.href = currentUrl.toString();
+    }
+
+    async function saveQrToGallery() {
+      var inLine = /Line\//i.test(navigator.userAgent || '');
+      
+      // On mobile outside LINE, try Web Share API which gives direct "Save Image" to Photos
+      if (navigator.share && navigator.canShare && !inLine) {
+        try {
+          var res = await fetch('/api/qr-image');
+          var blob = await res.blob();
+          var file = new File([blob], 'PromptPay_QR_SabaiDee.png', { type: 'image/png' });
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'QR Code เติมเครดิต SabaiDee',
+              text: 'PromptPay QR Code'
+            });
+            showToast('เลือก "บันทึกรูปภาพ" (Save Image) ในเมนูเพื่อเข้าแกลเลอรีค่ะ');
+            return;
+          }
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+
+      // If inside LINE or share not supported:
+      // Show explicit instruction to long press + trigger download
+      if (inLine) {
+        showToast('👉 แตะค้างที่รูปภาพ QR Code 1 วินาที แล้วกด "บันทึกรูปภาพ" (Save Image) ค่ะ');
+      } else {
+        var a = document.createElement('a');
+        a.href = '/api/qr-download';
+        a.download = 'PromptPay_QR_SabaiDee.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast('กำลังดาวน์โหลดรูปภาพ QR Code ลงเครื่องค่ะ');
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(html);
   });
 
   // Dedicated Slip Verification & QR Engine Endpoints

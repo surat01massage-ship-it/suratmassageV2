@@ -252,15 +252,17 @@ export default function StaffPanel({
     return /Line\//i.test(ua) || /Line/i.test(ua);
   };
 
-  // Helper to open current page in external browser (Safari / Chrome) from LINE
-  const handleOpenInExternalBrowser = () => {
+  // Helper to open current page or target URL in external browser (Safari / Chrome) from LINE
+  const handleOpenInExternalBrowser = (targetUrl?: string) => {
     try {
-      const currentUrl = new URL(window.location.href);
+      const urlToOpen = targetUrl || '/qr-save';
+      const currentUrl = new URL(urlToOpen, window.location.origin);
       currentUrl.searchParams.set('openExternalBrowser', '1');
       window.location.href = currentUrl.toString();
     } catch {
-      const sep = window.location.href.includes('?') ? '&' : '?';
-      window.location.href = window.location.href + sep + 'openExternalBrowser=1';
+      const base = targetUrl || '/qr-save';
+      const sep = base.includes('?') ? '&' : '?';
+      window.location.href = base + sep + 'openExternalBrowser=1';
     }
   };
 
@@ -811,130 +813,58 @@ export default function StaffPanel({
 
   // Handler to download/save QR Code to local device (mobile photo gallery / computer / LINE browser)
   const handleDownloadQrCode = async () => {
-    if (!settings.qrCodeImage) {
-      onShowToast("ไม่พบรูปภาพ QR Code ในระบบ", "error");
-      return;
-    }
-
     setIsDownloadingQr(true);
     const rawAccount = (settings.bankAccount || '').replace(/[^0-9a-zA-Z]/g, '') || 'pay';
     const fileName = `PromptPay_QR_Topup_${rawAccount}.png`;
-    const imageUrl = settings.qrCodeImage;
     const inLine = isLineBrowser();
 
     try {
-      let blob: Blob | null = null;
-      let dataUrl: string = imageUrl;
-
-      // 1. Process onto Canvas with Solid White background (Ensures maximum scanning contrast in all bank apps)
-      const canvasResult = await new Promise<{ blob: Blob | null; dataUrl: string }>((resolve) => {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            const naturalW = img.naturalWidth || 600;
-            const naturalH = img.naturalHeight || 600;
-            const size = Math.max(Math.max(naturalW, naturalH), 600);
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              // Solid white background
-              ctx.fillStyle = '#FFFFFF';
-              ctx.fillRect(0, 0, canvas.width, canvas.height);
-              // Centered QR with margin
-              const pad = Math.round(size * 0.04);
-              ctx.drawImage(img, pad, pad, size - (pad * 2), size - (pad * 2));
-              const dUrl = canvas.toDataURL('image/png', 0.95);
-              canvas.toBlob((b) => resolve({ blob: b, dataUrl: dUrl }), 'image/png', 0.95);
-            } else {
-              resolve({ blob: null, dataUrl: imageUrl });
-            }
-          } catch {
-            resolve({ blob: null, dataUrl: imageUrl });
-          }
-        };
-        img.onerror = () => resolve({ blob: null, dataUrl: imageUrl });
-        img.src = imageUrl;
-      });
-
-      blob = canvasResult.blob;
-      if (canvasResult.dataUrl) {
-        dataUrl = canvasResult.dataUrl;
-        setGeneratedQrDataUrl(canvasResult.dataUrl);
-      }
-
-      // Fallback fetch if canvas was blocked by CORS
-      if (!blob && imageUrl.startsWith('data:image/')) {
-        try {
-          const res = await fetch(imageUrl);
-          blob = await res.blob();
-        } catch {
-          // ignore
-        }
-      }
-
-      // 2. Mobile & LINE Web Share API: Triggers native OS Share Sheet ("Save Image" / "บันทึกภาพ" to Photo Gallery)
-      if (blob && navigator.share && navigator.canShare) {
-        try {
-          const file = new File([blob], fileName, { type: 'image/png' });
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: 'QR Code สำหรับเติมเครดิต SabaiDee',
-              text: `QR Code เติมเครดิต ${settings.bankAccountName || ''}`,
-            });
-            setQrDownloadSuccess(true);
-            onShowToast("เปิดเมนูบันทึกรูปแล้ว: เลือก 'บันทึกรูปภาพ' (Save Image) ได้เลยค่ะ", "success");
-            setTimeout(() => setQrDownloadSuccess(false), 4000);
-            return;
-          }
-        } catch (shareErr) {
-          if ((shareErr as Error)?.name === 'AbortError') {
-            return; // User dismissed share dialog
-          }
-          console.warn("Web Share failed, continuing to alternative save methods:", shareErr);
-        }
-      }
-
-      // 3. For LINE in-app browser (where WebView blocks <a download> blob URLs)
+      // 1. For LINE in-app browser:
+      // LINE WebView intercepts normal downloads into private app cache that does not appear in Photos/Gallery.
+      // Open the full QR modal with crystal clear Touch & Hold + Open in Safari/Chrome actions!
       if (inLine) {
         setShowFullQrModal(true);
-        setQrDownloadSuccess(true);
-        onShowToast("เปิดรูปภาพ QR Code แล้ว: แตะค้างที่ภาพ 1 วินาทีเพื่อบันทึกรูปค่ะ", "info");
-        setTimeout(() => setQrDownloadSuccess(false), 4000);
+        onShowToast("เปิดภาพ QR Code แล้ว: แตะค้างที่ภาพ 1 วินาที หรือกดเปิดใน Safari/Chrome เพื่อบันทึกเข้าอัลบั้มรูปค่ะ", "info");
         return;
       }
 
-      // 4. Standard Browser Download via <a download>
-      if (blob) {
-        const blobUrl = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = blobUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
-
-        setQrDownloadSuccess(true);
-        onShowToast("บันทึกภาพ QR Code ลงเครื่องเรียบร้อยแล้ว!", "success");
-        setTimeout(() => setQrDownloadSuccess(false), 4000);
-      } else {
-        const link = document.createElement('a');
-        link.href = dataUrl || imageUrl;
-        link.download = fileName;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        setQrDownloadSuccess(true);
-        onShowToast("ดาวน์โหลด QR Code แล้ว หรือแตะค้างที่ภาพเพื่อบันทึก", "info");
-        setTimeout(() => setQrDownloadSuccess(false), 4000);
+      // 2. Standard Mobile Web Share API outside LINE (e.g. Safari on iOS, Chrome on Android)
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+        try {
+          const res = await fetch('/api/qr-image');
+          if (res.ok) {
+            const blob = await res.blob();
+            const file = new File([blob], fileName, { type: 'image/png' });
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: 'QR Code สำหรับเติมเครดิต SabaiDee',
+                text: `QR Code เติมเครดิต ${settings.bankAccountName || ''}`,
+              });
+              setQrDownloadSuccess(true);
+              onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีค่ะ", "success");
+              setTimeout(() => setQrDownloadSuccess(false), 4000);
+              return;
+            }
+          }
+        } catch (shareErr) {
+          if ((shareErr as Error)?.name === 'AbortError') {
+            return;
+          }
+        }
       }
+
+      // 3. Direct browser file download via same-origin endpoint
+      const link = document.createElement('a');
+      link.href = '/api/qr-download';
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setQrDownloadSuccess(true);
+      onShowToast("ดาวน์โหลดภาพ QR Code เรียบร้อยแล้ว!", "success");
+      setTimeout(() => setQrDownloadSuccess(false), 4000);
     } catch (err) {
       console.error("Error saving QR Code:", err);
       setShowFullQrModal(true);
@@ -1931,45 +1861,49 @@ export default function StaffPanel({
               </span>
             </div>
 
-            {settings.qrCodeImage ? (
-              <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-200 rounded-2xl p-2.5 shadow-sm flex items-center justify-center">
-                <img 
-                  src={generatedQrDataUrl || settings.qrCodeImage} 
-                  className="w-full h-full object-contain rounded-lg select-auto pointer-events-auto" 
-                  alt="QR Code สำหรับเติมเครดิต" 
-                  style={{
-                    WebkitTouchCallout: 'default',
-                    touchAction: 'manipulation',
-                    userSelect: 'auto',
-                    WebkitUserSelect: 'auto'
-                  }}
-                />
-                <button
-                  type="button"
-                  id="btn-zoom-qr-code"
-                  onClick={() => setShowFullQrModal(true)}
-                  title="ดูรูปภาพขนาดเต็ม"
-                  className="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white p-1.5 rounded-lg shadow-sm backdrop-blur-xs transition cursor-pointer"
-                >
-                  <ZoomIn className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <div className="w-48 h-48 bg-white border-2 border-dashed border-slate-200 rounded-2xl mx-auto flex flex-col items-center justify-center p-4 text-slate-400">
-                <QrCode className="w-10 h-10 mb-2 opacity-50" />
-                <span className="text-xs font-semibold">ยังไม่ได้ตั้งค่ารูป QR Code</span>
-              </div>
-            )}
+            <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-300 rounded-2xl p-2.5 shadow-sm flex items-center justify-center select-auto">
+              <img 
+                src="/api/qr-image" 
+                className="w-full h-full object-contain rounded-lg select-auto pointer-events-auto cursor-pointer" 
+                alt="QR Code สำหรับเติมเครดิต" 
+                onClick={() => setShowFullQrModal(true)}
+                style={{
+                  WebkitTouchCallout: 'default',
+                  touchAction: 'manipulation',
+                  userSelect: 'auto',
+                  WebkitUserSelect: 'auto',
+                  pointerEvents: 'auto'
+                }}
+              />
+              <button
+                type="button"
+                id="btn-zoom-qr-code"
+                onClick={() => setShowFullQrModal(true)}
+                title="ดูรูปภาพขนาดเต็ม"
+                className="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-900 text-white p-1.5 rounded-lg shadow-sm backdrop-blur-xs transition cursor-pointer"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500 font-medium text-center">
+              👆 แตะที่ภาพเพื่อดูขนาดใหญ่ หรือแตะค้าง 1 วินาทีเพื่อบันทึกรูป
+            </p>
 
             {/* LINE Browser Note if detected */}
             {isLineBrowser() && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-left text-emerald-800 space-y-1">
-                <span className="text-[11px] font-bold block flex items-center gap-1">
-                  🟢 ใช้งานผ่าน LINE:
-                </span>
-                <p className="text-[10px] text-emerald-700 leading-snug">
-                  กดปุ่มด้านล่าง หรือ <strong>แตะค้างที่รูปภาพ QR Code 1 วินาที</strong> เพื่อเลือก <strong>"บันทึกรูปภาพ"</strong> ลงเครื่องได้เลยค่ะ
-                </p>
+              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 text-left space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-emerald-900 font-black text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  <span>วิธีบันทึกภาพให้เข้าแกลเลอรีในเครื่อง 100% (เมื่อเปิดใน LINE):</span>
+                </div>
+                <div className="text-[11px] text-emerald-950 leading-relaxed font-semibold space-y-1">
+                  <p>
+                    👆 <strong>วิธีที่ 1 (ง่ายสุด):</strong> แตะที่รูป QR ด้านบน แล้ว <strong>"แตะค้างที่รูปภาพ 1 วินาที"</strong> ➔ เลือก <strong>"บันทึกรูปภาพ"</strong> (Save Image) รูปจะเข้าอัลบั้มในโทรศัพท์ทันที 100% ค่ะ
+                  </p>
+                  <p>
+                    🌐 <strong>วิธีที่ 2:</strong> กดปุ่ม <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อให้ระบบเปิดเบราว์เซอร์หลักของเครื่องในการบันทึกรูปเข้าอัลบั้ม
+                  </p>
+                </div>
               </div>
             )}
 
@@ -1979,7 +1913,7 @@ export default function StaffPanel({
                 type="button"
                 id="btn-save-qr-code"
                 onClick={handleDownloadQrCode}
-                disabled={isDownloadingQr || !settings.qrCodeImage}
+                disabled={isDownloadingQr}
                 className={`w-full py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50 ${
                   qrDownloadSuccess
                     ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-600/20"
@@ -1989,12 +1923,12 @@ export default function StaffPanel({
                 {isDownloadingQr ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>กำลังบันทึกภาพ QR Code...</span>
+                    <span>กำลังเปิดรูปภาพ QR Code...</span>
                   </>
                 ) : qrDownloadSuccess ? (
                   <>
                     <CheckCheck className="w-4 h-4" />
-                    <span>บันทึก QR Code ลงเครื่องแล้ว!</span>
+                    <span>บันทึก QR Code แล้ว!</span>
                   </>
                 ) : (
                   <>
@@ -2005,15 +1939,17 @@ export default function StaffPanel({
               </button>
 
               {isLineBrowser() && (
-                <button
-                  type="button"
+                <a
+                  href="/qr-save?openExternalBrowser=1"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   id="btn-line-open-external"
-                  onClick={handleOpenInExternalBrowser}
-                  className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  onClick={() => handleOpenInExternalBrowser('/qr-save')}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer active:scale-95"
                 >
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                  <span>เปิดใน Safari / Chrome (ดาวน์โหลดอัตโนมัติ)</span>
-                </button>
+                  <ExternalLink className="w-4 h-4 text-white" />
+                  <span>เปิดใน Safari / Chrome (บันทึกรูปเข้าแกลเลอรี 100%)</span>
+                </a>
               )}
 
               <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
@@ -3576,14 +3512,14 @@ export default function StaffPanel({
       )}
 
       {/* FULL QR CODE VIEW & SAVE MODAL */}
-      {showFullQrModal && settings.qrCodeImage && (
+      {showFullQrModal && (
         <div 
           id="modal-full-qr-code"
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
           onClick={() => setShowFullQrModal(false)}
         >
           <div 
-            className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl p-5 sm:p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative my-auto animate-in fade-in zoom-in-95 duration-150 select-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -3601,31 +3537,45 @@ export default function StaffPanel({
               <p className="text-[11px] text-slate-500 mt-0.5">{settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ'}</p>
             </div>
 
-            {/* LINE Browser Note */}
+            {/* LINE Browser Note with crystal-clear guide */}
             {isLineBrowser() && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-left space-y-1 shadow-2xs">
-                <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>วิธีบันทึกภาพสำหรับผู้ใช้ LINE:</span>
+              <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 text-left space-y-1.5 shadow-2xs">
+                <div className="flex items-center gap-1.5 text-emerald-900 font-black text-xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                  <span>วิธีบันทึกภาพให้เข้าแกลเลอรีในเครื่อง 100% (สำหรับผู้ใช้ LINE):</span>
                 </div>
-                <p className="text-[11px] text-emerald-800 leading-relaxed font-medium">
-                  👉 <strong>แตะค้างที่รูปภาพ QR ด้านล่าง 1 วินาที</strong> แล้วกด <strong>"บันทึกรูปภาพ" (Save Image)</strong> หรือกดเปิดใน Safari/Chrome ด้านล่างได้เลยค่ะ
-                </p>
+                <div className="text-[11px] text-emerald-950 leading-relaxed font-semibold space-y-1">
+                  <p>
+                    👆 <strong>วิธีที่ 1 (ง่ายสุด):</strong> ใช้นิ้ว <strong>แตะค้างที่รูปภาพ QR Code ด้านล่าง 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ"</strong> (Save Image) รูปจะเข้าอัลบั้มในเครื่องทันที 100% ค่ะ
+                  </p>
+                  <p>
+                    🌐 <strong>วิธีที่ 2:</strong> กดปุ่ม <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อให้ระบบเปิดเบราว์เซอร์เครื่องและบันทึกรูปเข้าอัลบั้ม
+                  </p>
+                </div>
               </div>
             )}
             
-            <div className="bg-white p-3 rounded-2xl border-2 border-slate-200 shadow-inner inline-block w-64 h-64 mx-auto select-none">
-              <img 
-                src={generatedQrDataUrl || settings.qrCodeImage} 
-                alt="QR Code สำหรับเติมเครดิต" 
-                className="w-full h-full object-contain rounded-xl select-auto pointer-events-auto"
-                style={{
-                  WebkitTouchCallout: 'default',
-                  touchAction: 'manipulation',
-                  userSelect: 'auto',
-                  WebkitUserSelect: 'auto'
-                }}
-              />
+            <div className="space-y-2">
+              <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md inline-block w-64 h-64 mx-auto select-auto">
+                <img 
+                  src="/api/qr-image" 
+                  alt="QR Code สำหรับเติมเครดิต" 
+                  className="w-full h-full object-contain rounded-xl select-auto pointer-events-auto cursor-pointer"
+                  style={{
+                    WebkitTouchCallout: 'default',
+                    touchAction: 'manipulation',
+                    userSelect: 'auto',
+                    WebkitUserSelect: 'auto',
+                    pointerEvents: 'auto'
+                  }}
+                />
+              </div>
+              <div>
+                <div className="inline-flex items-center gap-1.5 bg-slate-900 text-white text-[11px] font-bold py-1 px-3 rounded-xl shadow-xs">
+                  <span>👆</span>
+                  <span>แตะค้างที่รูปภาพ 1 วินาที เพื่อเลือก "บันทึกรูปภาพ"</span>
+                </div>
+              </div>
             </div>
 
             {/* Bank account quick copy */}
@@ -3641,50 +3591,43 @@ export default function StaffPanel({
               </button>
             </div>
 
-            <p className="text-[11px] text-slate-500 font-medium">
-              💡 แตะค้างที่ภาพเพื่อบันทึก หรือกดปุ่มบันทึกลงเครื่องด้านล่าง
-            </p>
-
             <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                id="btn-modal-save-qr"
-                onClick={handleDownloadQrCode}
-                disabled={isDownloadingQr}
-                className={`w-full py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer ${
-                  qrDownloadSuccess
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "bg-sky-600 hover:bg-sky-700 text-white"
-                }`}
-              >
-                {isDownloadingQr ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>กำลังบันทึกภาพ...</span>
-                  </>
-                ) : qrDownloadSuccess ? (
-                  <>
-                    <CheckCheck className="w-4 h-4" />
-                    <span>บันทึก QR Code แล้ว!</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>บันทึก QR Code ลงเครื่อง</span>
-                  </>
-                )}
-              </button>
-
-              {isLineBrowser() && (
-                <button
-                  type="button"
-                  id="btn-modal-open-external"
-                  onClick={handleOpenInExternalBrowser}
-                  className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+              {isLineBrowser() ? (
+                <>
+                  <a
+                    href="/qr-save?openExternalBrowser=1"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    id="btn-modal-open-external"
+                    onClick={() => handleOpenInExternalBrowser('/qr-save')}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer active:scale-[0.98]"
+                  >
+                    <ExternalLink className="w-4 h-4 text-white" />
+                    <span>เปิดใน Safari / Chrome (บันทึกรูปเข้าแกลเลอรี 100%)</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={handleDownloadQrCode}
+                    className="w-full py-2.5 px-4 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition border border-sky-200 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>ดาวน์โหลดไฟล์รูปภาพตรง (/api/qr-download)</span>
+                  </button>
+                </>
+              ) : (
+                <a
+                  href="/api/qr-download"
+                  download={`PromptPay_QR_${(settings.bankAccount || '').replace(/[^0-9]/g, '') || 'SabaiDee'}.png`}
+                  onClick={() => {
+                    setQrDownloadSuccess(true);
+                    onShowToast("บันทึกภาพ QR Code ลงเครื่องเรียบร้อยแล้ว!", "success");
+                    setTimeout(() => setQrDownloadSuccess(false), 4000);
+                  }}
+                  className="w-full py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer bg-sky-600 hover:bg-sky-700 text-white block text-center"
                 >
-                  <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                  <span>เปิดใน Safari / Chrome (ดาวน์โหลดอัตโนมัติ)</span>
-                </button>
+                  <Download className="w-4 h-4" />
+                  <span>บันทึก QR Code ลงเครื่อง</span>
+                </a>
               )}
 
               <button
