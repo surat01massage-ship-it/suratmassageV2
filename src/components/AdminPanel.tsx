@@ -46,6 +46,8 @@ export default function AdminPanel({
   const [userForm, setUserForm] = useState({ name: '', phone: '', password: '', role: 'Customer' });
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+  const [showCleanAdminModal, setShowCleanAdminModal] = useState(false);
+  const [isCleaningToAdminOnly, setIsCleaningToAdminOnly] = useState(false);
 
   // Staff Delete states
   const [staffToDelete, setStaffToDelete] = useState<Staff | null>(null);
@@ -392,6 +394,35 @@ export default function AdminPanel({
       onShowToast(e.message || "เกิดข้อผิดพลาดในการลบผู้ใช้งาน", "error");
     } finally {
       setIsDeletingUser(false);
+    }
+  };
+
+  const handleCleanToAdminOnly = async () => {
+    setIsCleaningToAdminOnly(true);
+    try {
+      const res = await fetch('/api/admin/clean-to-admin-only', {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'เกิดข้อผิดพลาดในการล้างข้อมูล');
+
+      // Purge local storage caches immediately
+      try {
+        localStorage.removeItem('sabaidee_persisted_users');
+        localStorage.removeItem('sabaidee_persisted_staff');
+      } catch {}
+
+      onShowToast("ลบผู้ใช้ทุกคนออกเรียบร้อย เหลือเฉพาะแอดมินคนเดียว และบล็อกไม่ให้บัญชีเดิมกลับมาอีกถาวรค่ะ", "success");
+      setShowCleanAdminModal(false);
+      fetchAllUsers();
+      fetchStaffList();
+      fetchBookings();
+      fetchTransactions();
+      fetchRawDatabase();
+    } catch (e: any) {
+      onShowToast(e.message || "เกิดข้อผิดพลาดในการลบผู้ใช้งาน", "error");
+    } finally {
+      setIsCleaningToAdminOnly(false);
     }
   };
 
@@ -904,7 +935,16 @@ export default function AdminPanel({
               <h3 className="text-base font-black text-slate-800">จัดการผู้ใช้งานในระบบทั้งหมด</h3>
               <p className="text-xs text-slate-500 font-medium">รวมบัญชีลูกค้า, พนักงานนวด และแอดมิน (บันทึกข้อมูลและประวัติต่างๆ เป็นปัจจุบันถาวร)</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCleanAdminModal(true)}
+                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="ลบผู้ใช้ทุกคนออกทั้งหมด และเหลือไว้เฉพาะบัญชีแอดมินคนเดียว"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>ลบผู้ใช้ทุกคน (เหลือแค่แอดมินคนเดียว)</span>
+              </button>
               <button
                 onClick={() => {
                   setEditingUserId(null);
@@ -2729,6 +2769,71 @@ export default function AdminPanel({
             }
           }}
         />
+      )}
+
+      {/* 9.9 CONFIRM CLEAN TO ADMIN ONLY MODAL */}
+      {showCleanAdminModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 text-slate-800 space-y-5 shadow-2xl relative text-left">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800">ลบผู้ใช้ทุกคน (เหลือแค่แอดมิน)</h3>
+                  <p className="text-[11px] text-slate-400">รีเซ็ตผู้ใช้ทั้งหมด เหลือเฉพาะแอดมินคนเดียว</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCleanAdminModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl p-4 text-xs space-y-2">
+              <p className="font-black text-rose-800 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>คำเตือนสำคัญ: ลบผู้ใช้ทั้งหมดและบล็อกถาวร</span>
+              </p>
+              <ul className="text-[11px] text-rose-700 space-y-1 list-disc list-inside">
+                <li>จะลบบัญชีผู้ใช้ทั่วไป (Customer) และพนักงานนวด (Staff) ทั้งหมด</li>
+                <li><strong>เหลือเฉพาะบัญชีแอดมินหลัก (สมชาย ยิ่งดี) เพียงคนเดียว</strong></li>
+                <li>ระบบจะบล็อกรหัสผู้ใช้และข้อมูลที่ลบ ไม่ให้กู้คืนหรือกลับมาอีกถาวร</li>
+                <li>ล้างแคชในเบราว์เซอร์ทั้งหมดเพื่อป้องกันข้อมูลเก่าย้อนกลับมา</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                disabled={isCleaningToAdminOnly}
+                onClick={() => setShowCleanAdminModal(false)}
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-xl transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={isCleaningToAdminOnly}
+                onClick={handleCleanToAdminOnly}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs py-3 rounded-xl shadow-md transition-colors cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isCleaningToAdminOnly ? (
+                  <span>กำลังลบผู้ใช้...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>ยืนยันลบเหลือแอดมิน</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 10. CONFIRM DELETE USER MODAL */}

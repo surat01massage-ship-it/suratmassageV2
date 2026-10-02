@@ -259,13 +259,15 @@ const syncVaultWithServer = async () => {
     if (res.ok) {
       const data = await res.json().catch(() => null);
       if (!data) return;
-      const serverDeletedUsers = new Set<string>(data.deletedUserIds || []);
-      const serverDeletedStaff = new Set<string>(data.deletedStaffIds || []);
+      if (data) {
+        const validUserIds = new Set<string>(data.validUserIds || []);
+        const serverDeletedUsers = new Set<string>(data.deletedUserIds || []);
+        const serverDeletedStaff = new Set<string>(data.deletedStaffIds || []);
 
-      if (serverDeletedUsers.size > 0 || serverDeletedStaff.size > 0) {
-        // Prune client local storage caches immediately
-        const cleanUsers = users.filter((u: User) => !serverDeletedUsers.has(u.UserID));
-        const cleanStaff = staff.filter((s: Staff) => !serverDeletedStaff.has(s.StaffID) && !serverDeletedUsers.has(s.UserID));
+        // Authoritative synchronization:
+        // A user is kept locally ONLY if the server confirms it is a currently active user and NOT deleted
+        const cleanUsers = users.filter((u: User) => (validUserIds.size > 0 ? validUserIds.has(u.UserID) : u.Role === 'Admin') && !serverDeletedUsers.has(u.UserID));
+        const cleanStaff = staff.filter((s: Staff) => (!data.validStaffIds || data.validStaffIds.includes(s.StaffID)) && !serverDeletedStaff.has(s.StaffID) && !serverDeletedUsers.has(s.UserID));
         localStorage.setItem('sabaidee_persisted_users', JSON.stringify(cleanUsers));
         localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(cleanStaff));
 
@@ -273,7 +275,7 @@ const syncVaultWithServer = async () => {
         if (sessionRaw) {
           try {
             const sess = JSON.parse(sessionRaw);
-            if (sess?.user?.UserID && serverDeletedUsers.has(sess.user.UserID)) {
+            if (sess?.user?.UserID && (serverDeletedUsers.has(sess.user.UserID) || (validUserIds.size > 0 && !validUserIds.has(sess.user.UserID)))) {
               localStorage.removeItem('sabaidee_active_session');
               localStorage.removeItem('sabaidee_auth');
             }
@@ -423,6 +425,16 @@ export default function App() {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/users/${currentUser.UserID}`);
+        if (res.status === 404) {
+          // User was permanently deleted from server
+          removeLocallyPersistedUser(currentUser.UserID);
+          setCurrentUser(null);
+          setCurrentStaff(null);
+          setUserRoleMode('Customer');
+          localStorage.removeItem('sabaidee_active_session');
+          localStorage.removeItem('sabaidee_auth');
+          return;
+        }
         if (res.ok) {
           const data = await res.json().catch(() => null);
           if (!data) return;

@@ -637,32 +637,22 @@ async function startServer() {
     res.json({ success: true, user, staff });
   });
 
-  // Client Data Rehydration & Sync endpoint to guarantee zero data loss
+  // Client Data Rehydration & Sync endpoint to guarantee zero data loss & permanent deletion enforcement
   app.post('/api/sync/rehydrate-users', (req, res) => {
     const db = getDatabase();
     const { users, staff } = req.body;
-    let addedUsers = 0;
-    let addedStaff = 0;
 
     const deletedUserSet = new Set(db.deletedUserIds || []);
     const deletedStaffSet = new Set(db.deletedStaffIds || []);
 
+    // CRITICAL: Any user or staff sent from client cache that does not exist in the authoritative database
+    // is considered deleted and must NEVER be resurrected. We tell the client to prune them immediately.
     if (Array.isArray(users)) {
       for (const u of users) {
-        if (!u || !u.Phone || !u.UserID) continue;
-        // Never restore permanently deleted users
-        if (deletedUserSet.has(u.UserID)) continue;
-
-        const existing = db.users.find(x => x.Phone === u.Phone || x.UserID === u.UserID);
-        if (!existing) {
-          db.users.push(u);
-          addedUsers++;
-        } else {
-          // Merge non-destructive updates
-          if (u.Name && (!existing.Name || existing.Name === '')) existing.Name = u.Name;
-          if (u.Role && existing.Role !== u.Role) existing.Role = u.Role;
-          if (u.ProfileImage && !existing.ProfileImage) existing.ProfileImage = u.ProfileImage;
-          if (u.Address && !existing.Address) existing.Address = u.Address;
+        if (!u || !u.UserID) continue;
+        const exists = db.users.some(x => x.UserID === u.UserID);
+        if (!exists) {
+          deletedUserSet.add(u.UserID);
         }
       }
     }
@@ -670,34 +660,23 @@ async function startServer() {
     if (Array.isArray(staff)) {
       for (const s of staff) {
         if (!s || !s.StaffID) continue;
-        // Never restore permanently deleted staff
-        if (deletedStaffSet.has(s.StaffID) || (s.UserID && deletedUserSet.has(s.UserID))) continue;
-
-        const existing = db.staff.find(x => x.StaffID === s.StaffID || x.UserID === s.UserID);
-        if (!existing) {
-          db.staff.push(s);
-          addedStaff++;
-        } else {
-          if (s.VerifyStatus && existing.VerifyStatus !== s.VerifyStatus) {
-            // Keep the more permissive status if approved
-            if (s.VerifyStatus === 'Approved') existing.VerifyStatus = 'Approved';
-          }
-          if (s.Nickname && !existing.Nickname) existing.Nickname = s.Nickname;
+        const exists = db.staff.some(x => x.StaffID === s.StaffID);
+        if (!exists) {
+          deletedStaffSet.add(s.StaffID);
         }
       }
     }
 
-    if (addedUsers > 0 || addedStaff > 0) {
-      saveDatabase(db);
-      console.log(`[Sync] Rehydrated +${addedUsers} users and +${addedStaff} staff from client persistent vault`);
-    }
+    db.deletedUserIds = Array.from(deletedUserSet);
+    db.deletedStaffIds = Array.from(deletedStaffSet);
+    saveDatabase(db);
 
     res.json({
       success: true,
       totalUsers: db.users.length,
       totalStaff: db.staff.length,
-      addedUsers,
-      addedStaff,
+      validUserIds: db.users.map(u => u.UserID),
+      validStaffIds: db.staff.map(s => s.StaffID),
       users: db.users,
       staff: db.staff,
       deletedUserIds: Array.from(deletedUserSet),
@@ -974,22 +953,35 @@ async function startServer() {
     });
   });
 
-  // Admin action: Clean all test accounts, bookings, and histories, keeping only Admin accounts
+  // Admin action: Clean all test accounts, bookings, and histories, keeping only ONE Admin account
   app.post('/api/admin/clean-to-admin-only', (req, res) => {
     const db = getDatabase();
     
-    // Retain only Admin users
-    const adminUsers = db.users.filter(u => u.Role === 'Admin');
-    if (adminUsers.length === 0) {
-      return res.status(400).json({ error: 'ไม่พบบัญชีแอดมินในระบบ ไม่สามารถดำเนินการได้' });
-    }
+    // Retain only the single main Admin user (U001)
+    const adminUser = db.users.find(u => u.UserID === 'U001' && u.Role === 'Admin') || db.users.find(u => u.Role === 'Admin') || {
+      UserID: "U001",
+      Name: "สมชาย ยิ่งดี (แอดมิน)",
+      Phone: "0812345678",
+      PasswordHash: "admin123",
+      Email: "admin@sabaidee.com",
+      Address: "99 ถนนกาญจนวิถี ต.บางกุ้ง อ.เมือง จ.สุราษฎร์ธานี 84000",
+      Province: "สุราษฎร์ธานี",
+      District: "เมืองสุราษฎร์ธานี",
+      SubDistrict: "บางกุ้ง",
+      Latitude: 9.10537453623607,
+      Longitude: 99.33859825517314,
+      ProfileImage: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=60",
+      Role: "Admin" as const,
+      Status: "Active" as const,
+      CreatedDate: "2026-01-01T08:00:00Z"
+    };
 
     if (!db.deletedUserIds) db.deletedUserIds = [];
     if (!db.deletedStaffIds) db.deletedStaffIds = [];
 
-    // Tombstone all non-admin users being removed
+    // Tombstone all non-admin users being removed so they NEVER return
     for (const u of db.users) {
-      if (u.Role !== 'Admin' && !db.deletedUserIds.includes(u.UserID)) {
+      if (u.UserID !== adminUser.UserID && !db.deletedUserIds.includes(u.UserID)) {
         db.deletedUserIds.push(u.UserID);
       }
     }
@@ -999,21 +991,26 @@ async function startServer() {
       if (!db.deletedStaffIds.includes(s.StaffID)) {
         db.deletedStaffIds.push(s.StaffID);
       }
+      if (s.UserID && s.UserID !== adminUser.UserID && !db.deletedUserIds.includes(s.UserID)) {
+        db.deletedUserIds.push(s.UserID);
+      }
     }
 
-    db.users = adminUsers;
+    db.users = [adminUser];
     db.staff = [];
     db.bookings = [];
     db.transactions = [];
     db.reviews = [];
-    db.notifications = db.notifications.filter(n => adminUsers.some(a => a.UserID === n.UserID));
+    db.notifications = db.notifications.filter(n => n.UserID === adminUser.UserID);
 
     saveDatabase(db);
-    console.log(`[Admin] Cleaned database to ${adminUsers.length} admin(s) only`);
+    console.log(`[Admin] Cleaned database to only 1 admin (${adminUser.Name} - ${adminUser.UserID})`);
+
+    syncToGoogleSheet('SYNC_ALL_DATA', 'All', { users: db.users, staff: db.staff });
 
     res.json({
       success: true,
-      message: 'ล้างข้อมูลทดสอบทั้งหมดเรียบร้อย เหลือเฉพาะบัญชีแอดมิน พร้อมสำหรับเริ่มสมัครและทดสอบระบบใหม่',
+      message: 'ลบผู้ใช้ทุกคนออกเรียบร้อย เหลือเฉพาะแอดมินคนเดียว และบล็อกไม่ให้บัญชีเดิมกลับมาอีกถาวร',
       remainingUsers: db.users,
       totalStaff: db.staff.length,
       totalBookings: db.bookings.length,

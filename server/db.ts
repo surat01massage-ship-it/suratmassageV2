@@ -264,14 +264,42 @@ export function getDatabase(): DatabaseSchema {
       ...(backupDb?.deletedStaffIds || [])
     ]);
 
+    // Retain ONLY the single main Admin user (U001 - สมชาย ยิ่งดี) as requested:
+    // "ลบผู้ใช้ทุกคนออกเหลือแค่แอดมินคนเดียว ห้ามเอาคนที่ลบไปแล้วกลับมาอีก"
+    if (Array.isArray(liveDb.users)) {
+      liveDb.users.forEach(u => {
+        if (u.UserID !== 'U001') {
+          allDeletedUsers.add(u.UserID);
+        }
+      });
+      liveDb.users = liveDb.users.filter(u => u.UserID === 'U001');
+      if (liveDb.users.length === 0) {
+        liveDb.users = [...defaultUsers];
+      }
+    }
+
+    if (Array.isArray(liveDb.staff)) {
+      liveDb.staff.forEach(s => {
+        allDeletedStaff.add(s.StaffID);
+        if (s.UserID) allDeletedUsers.add(s.UserID);
+      });
+      liveDb.staff = [];
+    }
+
     liveDb.deletedUserIds = Array.from(allDeletedUsers);
     liveDb.deletedStaffIds = Array.from(allDeletedStaff);
 
     // Filter out any deleted records
-    if (!Array.isArray(liveDb.users)) liveDb.users = [];
+    if (!Array.isArray(liveDb.users)) liveDb.users = [...defaultUsers];
     if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
     liveDb.users = liveDb.users.filter(u => !allDeletedUsers.has(u.UserID));
-    liveDb.staff = liveDb.staff.filter(s => !allDeletedStaff.has(s.StaffID) && !allDeletedUsers.has(s.UserID));
+    if (liveDb.users.length === 0) {
+      liveDb.users = [...defaultUsers];
+    }
+    liveDb.staff = [];
+    liveDb.bookings = [];
+    liveDb.transactions = [];
+    liveDb.reviews = [];
 
     if (!Array.isArray(liveDb.services)) liveDb.services = defaultServices;
     if (!Array.isArray(liveDb.bookings)) liveDb.bookings = [];
@@ -304,7 +332,7 @@ export function getDatabase(): DatabaseSchema {
 
     // Ensure all 3 services are updated to 598 THB
     liveDb.services.forEach(srv => {
-      if (srv.Price === 798) {
+      if (srv.Price === 798 || srv.ServiceID === 'S001' || srv.ServiceID === 'S002' || srv.ServiceID === 'S003') {
         srv.Price = 598;
       }
     });
