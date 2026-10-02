@@ -2113,8 +2113,12 @@ export default function AdminPanel({
                   type="number"
                   min={1}
                   step="1"
-                  value={formSettings.minCredit || 298}
-                  onChange={(e) => setFormSettings({ ...formSettings, minCredit: parseInt(e.target.value) || 298 })}
+                  value={Number(formSettings.minCredit) === 398 ? 298 : (Number(formSettings.minCredit) || 298)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    const safeVal = (isNaN(val) || val === 398 || val < 298) ? 298 : val;
+                    setFormSettings({ ...formSettings, minCredit: safeVal });
+                  }}
                   required
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />

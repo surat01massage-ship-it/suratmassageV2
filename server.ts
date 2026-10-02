@@ -1155,6 +1155,14 @@ async function startServer() {
   app.get('/api/settings', (req, res) => {
     const db = getDatabase();
     const settings = { ...db.settings };
+    const numMin = Number(settings.minCredit);
+    if (!numMin || isNaN(numMin) || numMin === 398 || numMin < 298) {
+      settings.minCredit = 298;
+      db.settings.minCredit = 298;
+      saveDatabase(db);
+    } else {
+      settings.minCredit = numMin;
+    }
     if (!settings.lineChannelAccessToken) {
       settings.lineChannelAccessToken = (process.env.LINE_CHANNEL_ACCESS_TOKEN || 'b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=').trim();
     }
@@ -1172,9 +1180,12 @@ async function startServer() {
     if (newAdminId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
       newAdminId = 'Cf544171f0f9753863ade1ddd1acd67a7';
     }
+    const incomingMinCredit = Number(req.body?.minCredit);
+    const finalMinCredit = (!incomingMinCredit || isNaN(incomingMinCredit) || incomingMinCredit === 398 || incomingMinCredit < 298) ? 298 : incomingMinCredit;
     db.settings = {
       ...db.settings,
       ...req.body,
+      minCredit: finalMinCredit,
       lineAdminUserId: newAdminId,
       isCustomized: isCustom,
       updatedAt: req.body?.updatedAt || new Date().toISOString()
@@ -1250,7 +1261,8 @@ async function startServer() {
       }
 
       // When this job is completed: if credit is exhausted (<= 0) or below minCredit, turn off availability now!
-      const minCredit = Math.max(db.settings?.minCredit ?? 298, 298);
+      const rawMin = Number(db.settings?.minCredit);
+      const minCredit = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
       const otherActiveBookings = db.bookings.some(b => 
         b.StaffID === currentStaff.StaffID && 
         b.BookingID !== booking.BookingID && 
@@ -1597,8 +1609,10 @@ async function startServer() {
         return res.status(403).json({ error: errorMsg, verifyStatus: db.staff[index].VerifyStatus });
       }
 
-      const minCredit = Math.max(db.settings?.minCredit || 298, 298);
-      if (db.staff[index].Credit < minCredit) {
+      const rawMin = Number(db.settings?.minCredit);
+      const minCredit = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
+      const staffCredit = Number(db.staff[index].Credit || 0);
+      if (staffCredit < minCredit) {
         return res.status(400).json({ error: `เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCredit} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ` });
       }
     }
@@ -1810,7 +1824,7 @@ async function startServer() {
         return (
           s.Available === 'ON' &&
           s.VerifyStatus === 'Approved' &&
-          s.Credit >= (settings.minCredit || 298) &&
+          s.Credit >= ((!Number(settings.minCredit) || Number(settings.minCredit) === 398 || Number(settings.minCredit) < 298) ? 298 : Number(settings.minCredit)) &&
           dist <= maxDist &&
           offersService
         );
@@ -2099,8 +2113,10 @@ async function startServer() {
       }
 
       // Double-check credit requirements (พนักงานต้องมีเครดิตเพียงพอต่อการรับงาน)
-      const requiredCredit = service.CreditRequired || Math.max(db.settings?.minCredit ?? 298, 298);
-      if (staff.Credit < requiredCredit) {
+      const rawMin = Number(db.settings?.minCredit);
+      const defaultMin = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
+      const requiredCredit = Number(service.CreditRequired) || defaultMin;
+      if (Number(staff.Credit || 0) < requiredCredit) {
         return res.status(400).json({ error: `เครดิตของคุณ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำที่บริการนี้กำหนดไว้ (${requiredCredit} CR) กรุณาเติมเครดิตก่อนรับงาน` });
       }
 
@@ -2982,19 +2998,19 @@ async function startServer() {
     async function saveQrToGallery() {
       var inLine = /Line\//i.test(navigator.userAgent || '');
       
-      // On mobile outside LINE, try Web Share API which gives direct "Save Image" to Photos
-      if (navigator.share && navigator.canShare && !inLine) {
+      // 1. Try Web Share API which gives direct native "Save Image" to Photos on iOS & Android
+      if (navigator.share) {
         try {
           var res = await fetch('/api/qr-image');
           var blob = await res.blob();
           var file = new File([blob], 'PromptPay_QR_SabaiDee.png', { type: 'image/png' });
-          if (navigator.canShare({ files: [file] })) {
+          if (!navigator.canShare || navigator.canShare({ files: [file] })) {
             await navigator.share({
               files: [file],
               title: 'QR Code เติมเครดิต SabaiDee',
               text: 'PromptPay QR Code'
             });
-            showToast('เลือก "บันทึกรูปภาพ" (Save Image) ในเมนูเพื่อเข้าแกลเลอรีค่ะ');
+            showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีค่ะ');
             return;
           }
         } catch (e) {
@@ -3002,18 +3018,33 @@ async function startServer() {
         }
       }
 
-      // If inside LINE or share not supported:
-      // Show explicit instruction to long press + trigger download
-      if (inLine) {
-        showToast('👉 แตะค้างที่รูปภาพ QR Code 1 วินาที แล้วกด "บันทึกรูปภาพ" (Save Image) ค่ะ');
-      } else {
+      // 2. Direct browser download via Blob URL & anchor click
+      try {
+        var resImg = await fetch('/api/qr-image');
+        var imgBlob = await resImg.blob();
+        var blobUrl = URL.createObjectURL(imgBlob);
         var a = document.createElement('a');
-        a.href = '/api/qr-download';
+        a.href = blobUrl;
         a.download = 'PromptPay_QR_SabaiDee.png';
         document.body.appendChild(a);
         a.click();
-        document.body.removeChild(a);
-        showToast('กำลังดาวน์โหลดรูปภาพ QR Code ลงเครื่องค่ะ');
+        setTimeout(function() {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(blobUrl);
+        }, 1500);
+      } catch (err) {
+        var aLink = document.createElement('a');
+        aLink.href = '/api/qr-download';
+        aLink.download = 'PromptPay_QR_SabaiDee.png';
+        document.body.appendChild(aLink);
+        aLink.click();
+        setTimeout(function() { document.body.removeChild(aLink); }, 1000);
+      }
+
+      if (inLine) {
+        showToast('📥 ส่งคำสั่งดาวน์โหลดแล้ว! หากรูปไม่เข้าอัลบั้ม ให้แตะค้างที่รูป QR 1 วินาที ➔ "บันทึกรูปภาพ"');
+      } else {
+        showToast('✅ กำลังดาวน์โหลดรูปภาพ QR Code ลงเครื่องค่ะ');
       }
     }
   </script>

@@ -89,6 +89,12 @@ interface StaffPanelProps {
   onUpdateUser?: (updatedUser: User) => void;
 }
 
+// Helper to ensure minimum credit requirement is never erroneously 398 and defaults cleanly to 298
+const normalizeMinCredit = (val: any): number => {
+  const n = Number(val);
+  return (!n || isNaN(n) || n === 398 || n < 298) ? 298 : n;
+};
+
 export default function StaffPanel({
   currentUser,
   currentStaff,
@@ -509,8 +515,9 @@ export default function StaffPanel({
 
     const nextStatus = staff.Available === 'ON' ? 'OFF' : 'ON';
 
-    const minCreditReq = Math.max(settings?.minCredit || 298, 298);
-    if (nextStatus === 'ON' && staff.Credit < minCreditReq) {
+    const minCreditReq = effectiveMinCredit;
+    const staffCredit = Number(staff.Credit || 0);
+    if (nextStatus === 'ON' && staffCredit < minCreditReq) {
       onShowToast(`❌ เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCreditReq} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ`, "error");
       return;
     }
@@ -712,7 +719,7 @@ export default function StaffPanel({
         const isLastJob = otherActiveJobs.length === 0;
 
         const serviceCreditReq = previousOngoing.CreditRequired ?? 298;
-        const minCredit = Math.max(settings?.minCredit || 298, 298);
+        const minCredit = effectiveMinCredit;
         const finalStaff = data.staff || (staff ? {
           ...staff,
           Credit: Math.max(0, staff.Credit - serviceCreditReq),
@@ -819,23 +826,14 @@ export default function StaffPanel({
     const inLine = isLineBrowser();
 
     try {
-      // 1. For LINE in-app browser:
-      // LINE WebView intercepts normal downloads into private app cache that does not appear in Photos/Gallery.
-      // Open the full QR modal with crystal clear Touch & Hold + Open in Safari/Chrome actions!
-      if (inLine) {
-        setShowFullQrModal(true);
-        onShowToast("เปิดภาพ QR Code แล้ว: แตะค้างที่ภาพ 1 วินาที หรือกดเปิดใน Safari/Chrome เพื่อบันทึกเข้าอัลบั้มรูปค่ะ", "info");
-        return;
-      }
-
-      // 2. Standard Mobile Web Share API outside LINE (e.g. Safari on iOS, Chrome on Android)
-      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+      // 1. Standard Mobile Web Share API (gives direct native "Save Image" to Photos on supported devices)
+      if (typeof navigator !== 'undefined' && navigator.share) {
         try {
           const res = await fetch('/api/qr-image');
           if (res.ok) {
             const blob = await res.blob();
             const file = new File([blob], fileName, { type: 'image/png' });
-            if (navigator.canShare({ files: [file] })) {
+            if (!navigator.canShare || navigator.canShare({ files: [file] })) {
               await navigator.share({
                 files: [file],
                 title: 'QR Code สำหรับเติมเครดิต SabaiDee',
@@ -851,19 +849,44 @@ export default function StaffPanel({
           if ((shareErr as Error)?.name === 'AbortError') {
             return;
           }
+          console.warn("Share attempt notice:", shareErr);
         }
       }
 
-      // 3. Direct browser file download via same-origin endpoint
-      const link = document.createElement('a');
-      link.href = '/api/qr-download';
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // 2. Direct browser file download via Blob URL & anchor click
+      try {
+        const res = await fetch('/api/qr-image');
+        if (res.ok) {
+          const blob = await res.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = blobUrl;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            document.body.removeChild(link);
+            URL.revokeObjectURL(blobUrl);
+          }, 1500);
+        } else {
+          throw new Error('Fetch failed');
+        }
+      } catch {
+        const link = document.createElement('a');
+        link.href = '/api/qr-download';
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 1000);
+      }
 
       setQrDownloadSuccess(true);
-      onShowToast("ดาวน์โหลดภาพ QR Code เรียบร้อยแล้ว!", "success");
+      if (inLine) {
+        setShowFullQrModal(true);
+        onShowToast("📥 ส่งคำสั่งบันทึกรูปภาพแล้ว! หากเปิดใน LINE แนะนำแตะค้างที่รูป 1 วินาที หรือกดเปิดใน Safari/Chrome เพื่อบันทึกเข้าอัลบั้ม 100% ค่ะ", "success");
+      } else {
+        onShowToast("ดาวน์โหลดภาพ QR Code เรียบร้อยแล้ว!", "success");
+      }
       setTimeout(() => setQrDownloadSuccess(false), 4000);
     } catch (err) {
       console.error("Error saving QR Code:", err);
@@ -1108,6 +1131,8 @@ export default function StaffPanel({
   const thisMonthEarnings = completedJobs
     .filter(b => b.BookingDate.startsWith(currentMonthPrefix))
     .reduce((sum, b) => sum + (b.NetIncome || b.TotalPrice), 0);
+
+  const effectiveMinCredit = normalizeMinCredit(settings?.minCredit);
 
   return (
     <div className="max-w-lg mx-auto space-y-6 pb-12" id="staff-view-root">
@@ -1434,6 +1459,69 @@ export default function StaffPanel({
       {activeTab === 'dashboard' && (
         <div className="space-y-6">
           
+          {/* แผงเครดิตและรายได้ในหน้าแรก (ให้มีปกติเหมือนเดิม แต่ตอนรับงาน/มีงานกำลังปฏิบัติอยู่ไม่ต้องมีมาแสดง) */}
+          {(!ongoingBooking && !incomingBooking && !bookings.some(b => b.Status === 'Accepted' || b.Status === 'Working')) && (
+            <div className="grid grid-cols-2 gap-3 text-left animate-fade-in" id="staff-credit-earnings-panel">
+              {/* Card 1: กระเป๋าเครดิต */}
+              <div className="bg-gradient-to-br from-sky-500 via-sky-600 to-blue-700 rounded-3xl p-4 sm:p-5 text-white shadow-md flex flex-col justify-between space-y-3 border border-sky-400/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-sky-100 uppercase tracking-wider flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5" />
+                    กระเป๋าเครดิต
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('credit')}
+                    className="text-[9px] bg-white/20 hover:bg-white/30 active:scale-95 text-white font-extrabold px-2.5 py-0.5 rounded-full transition cursor-pointer"
+                  >
+                    + เติมเงิน
+                  </button>
+                </div>
+                <div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight">{staff.Credit.toFixed(0)}</span>
+                    <span className="text-[11px] text-sky-100 font-semibold">CR</span>
+                  </div>
+                  <div className="text-[10px] text-sky-100 mt-1 flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${staff.Credit >= effectiveMinCredit ? 'bg-emerald-300 shadow-xs' : 'bg-rose-300 animate-pulse'}`} />
+                    <span className="truncate font-medium">
+                      {staff.Credit >= effectiveMinCredit 
+                        ? `พร้อมรับงาน (ขั้นต่ำ ${effectiveMinCredit} CR)` 
+                        : `เครดิตต่ำ (ต้องมี ${effectiveMinCredit} CR)`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: รายได้วันนี้ & สะสม */}
+              <div className="bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 rounded-3xl p-4 sm:p-5 text-white shadow-md flex flex-col justify-between space-y-3 border border-emerald-400/30">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-emerald-100 uppercase tracking-wider flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    รายได้ของฉัน
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('history')}
+                    className="text-[9px] bg-white/20 hover:bg-white/30 active:scale-95 text-white font-extrabold px-2.5 py-0.5 rounded-full transition cursor-pointer"
+                  >
+                    ประวัติ
+                  </button>
+                </div>
+                <div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight">฿{todayEarnings.toLocaleString()}</span>
+                    <span className="text-[11px] text-emerald-100 font-semibold">บาท</span>
+                  </div>
+                  <div className="text-[10px] text-emerald-100 mt-1 flex items-center justify-between font-medium">
+                    <span>สะสม: <strong>฿{(staff.TotalIncome || 0).toLocaleString()}</strong></span>
+                    <span className="opacity-95 font-bold">({staff.TotalJobs || 0} งาน)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* URGENT INCOMING JOB IN-PAGE CARD (สไลด์รับงานตรงบนแผงควบคุมได้ทันที) */}
           {incomingBooking && (
             <div className="bg-gradient-to-r from-sky-500 via-sky-600 to-emerald-500 rounded-3xl p-5 text-white shadow-xl space-y-3 animate-pulse border-2 border-white/40">
@@ -1829,11 +1917,11 @@ export default function StaffPanel({
           <div className="flex items-center justify-between">
             <h3 className="text-base font-black text-slate-800">แจ้งประวัติโอนเงิน / เติมเครดิต</h3>
             <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full ${
-              staff.Credit >= Math.max(settings?.minCredit || 298, 298)
+              staff.Credit >= effectiveMinCredit
                 ? 'bg-emerald-100 text-emerald-800'
                 : 'bg-amber-100 text-amber-800'
             }`}>
-              {staff.Credit >= Math.max(settings?.minCredit || 298, 298) ? 'เครดิตพร้อมรับงาน' : 'เครดิตต่ำ'}
+              {staff.Credit >= effectiveMinCredit ? 'เครดิตพร้อมรับงาน' : 'เครดิตต่ำ'}
             </span>
           </div>
 
@@ -1848,7 +1936,7 @@ export default function StaffPanel({
             </div>
             <div className="text-right">
               <span className="text-[10px] text-sky-100 block">เกณฑ์ขั้นต่ำเปิดรับงาน</span>
-              <span className="text-sm font-black">{Math.max(settings?.minCredit || 298, 298)} เครดิต</span>
+              <span className="text-sm font-black">{effectiveMinCredit} เครดิต</span>
             </div>
           </div>
           
@@ -1939,17 +2027,15 @@ export default function StaffPanel({
               </button>
 
               {isLineBrowser() && (
-                <a
-                  href="/qr-save?openExternalBrowser=1"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
                   id="btn-line-open-external"
                   onClick={() => handleOpenInExternalBrowser('/qr-save')}
-                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer active:scale-95"
+                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4 text-white" />
-                  <span>เปิดใน Safari / Chrome (บันทึกรูปเข้าแกลเลอรี 100%)</span>
-                </a>
+                  <span>เปิดใน Safari / Chrome (บันทึกรูปเข้าอัลบั้ม 100%)</span>
+                </button>
               )}
 
               <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
@@ -3594,40 +3680,33 @@ export default function StaffPanel({
             <div className="space-y-2 pt-1">
               {isLineBrowser() ? (
                 <>
-                  <a
-                    href="/qr-save?openExternalBrowser=1"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
                     id="btn-modal-open-external"
                     onClick={() => handleOpenInExternalBrowser('/qr-save')}
-                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer active:scale-[0.98]"
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-white" />
-                    <span>เปิดใน Safari / Chrome (บันทึกรูปเข้าแกลเลอรี 100%)</span>
-                  </a>
+                    <span>🌐 เปิดใน Safari / Chrome (บันทึกรูปเข้าอัลบั้ม 100%)</span>
+                  </button>
                   <button
                     type="button"
                     onClick={handleDownloadQrCode}
-                    className="w-full py-2.5 px-4 bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition border border-sky-200 cursor-pointer"
+                    className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>ดาวน์โหลดไฟล์รูปภาพตรง (/api/qr-download)</span>
+                    <Download className="w-4 h-4" />
+                    <span>📥 ดาวน์โหลดไฟล์ภาพ / แชร์ลงเครื่อง (Save/Share)</span>
                   </button>
                 </>
               ) : (
-                <a
-                  href="/api/qr-download"
-                  download={`PromptPay_QR_${(settings.bankAccount || '').replace(/[^0-9]/g, '') || 'SabaiDee'}.png`}
-                  onClick={() => {
-                    setQrDownloadSuccess(true);
-                    onShowToast("บันทึกภาพ QR Code ลงเครื่องเรียบร้อยแล้ว!", "success");
-                    setTimeout(() => setQrDownloadSuccess(false), 4000);
-                  }}
+                <button
+                  type="button"
+                  onClick={handleDownloadQrCode}
                   className="w-full py-3 px-4 rounded-xl font-black text-xs flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer bg-sky-600 hover:bg-sky-700 text-white block text-center"
                 >
                   <Download className="w-4 h-4" />
-                  <span>บันทึก QR Code ลงเครื่อง</span>
-                </a>
+                  <span>📥 บันทึก QR Code ลงเครื่อง</span>
+                </button>
               )}
 
               <button

@@ -283,6 +283,21 @@ export function getDatabase(): DatabaseSchema {
     } else {
       liveDb.settings = { ...defaultSettings, ...liveDb.settings };
     }
+    const numMin = Number(liveDb.settings.minCredit);
+    if (!numMin || isNaN(numMin) || numMin === 398 || numMin < 298) {
+      liveDb.settings.minCredit = 298;
+    } else {
+      liveDb.settings.minCredit = numMin;
+    }
+
+    liveDb.staff.forEach(s => {
+      const numCredit = Number(s.Credit);
+      if (isNaN(numCredit) || s.Credit === undefined || s.Credit === null) {
+        s.Credit = 298;
+      } else {
+        s.Credit = numCredit;
+      }
+    });
 
     inMemoryDB = liveDb;
     saveDatabase(liveDb);

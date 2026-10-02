@@ -96,8 +96,11 @@ const getPersistedSettings = (): AppSettings => {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && parsed.companyName) {
           const merged = { ...defaultAppSettings, ...parsed };
-          if (!merged.minCredit || merged.minCredit < 298) {
+          const rawMin = Number(merged.minCredit);
+          if (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) {
             merged.minCredit = 298;
+          } else {
+            merged.minCredit = rawMin;
           }
           // Prevent bouncing back to old test group
           if (!merged.lineAdminUserId || merged.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
@@ -486,6 +489,17 @@ export default function App() {
                 localStorage.setItem('sabaidee_app_settings', JSON.stringify(localSettings));
               }
 
+              // Always sanitize minCredit in localSettings immediately before anything else
+              const localMin = Number(localSettings.minCredit);
+              if (!localMin || isNaN(localMin) || localMin === 398 || localMin < 298) {
+                localSettings.minCredit = 298;
+              } else {
+                localSettings.minCredit = localMin;
+              }
+              try {
+                localStorage.setItem('sabaidee_app_settings', JSON.stringify(localSettings));
+              } catch {}
+
               // If local settings were customized by admin and server returned uncustomized or older defaults
               if (localSettings.isCustomized && !serverData.isCustomized) {
                 console.log("Restoring customized settings from localStorage to server...");
@@ -506,8 +520,11 @@ export default function App() {
             }
           }
 
-          if (!serverData.minCredit || serverData.minCredit < 298) {
+          const serverMin = Number(serverData.minCredit);
+          if (!serverMin || isNaN(serverMin) || serverMin === 398 || serverMin < 298) {
             serverData.minCredit = 298;
+          } else {
+            serverData.minCredit = serverMin;
           }
           if (serverData.lineAdminUserId === 'Cda36ab1f3de2811e584a5b62d652a97d') {
             serverData.lineAdminUserId = 'Cf544171f0f9753863ade1ddd1acd67a7';
@@ -527,9 +544,16 @@ export default function App() {
   };
 
   const handlePersistSettings = (newSettings: AppSettings) => {
-    setSettings(newSettings);
+    const sanitized = { ...newSettings };
+    const num = Number(sanitized.minCredit);
+    if (!num || isNaN(num) || num === 398 || num < 298) {
+      sanitized.minCredit = 298;
+    } else {
+      sanitized.minCredit = num;
+    }
+    setSettings(sanitized);
     try {
-      localStorage.setItem('sabaidee_app_settings', JSON.stringify(newSettings));
+      localStorage.setItem('sabaidee_app_settings', JSON.stringify(sanitized));
     } catch (e) {
       console.warn("Failed saving settings to localStorage:", e);
     }

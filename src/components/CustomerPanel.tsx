@@ -528,7 +528,8 @@ export default function CustomerPanel({
 
   // Find eligible online staff within search radius (configured by admin), sorted by distance
   const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
-  const minCreditRequirement = Math.max(settings.minCredit || 298, 298);
+  const rawMinReq = Number(settings.minCredit);
+  const minCreditRequirement = (!rawMinReq || isNaN(rawMinReq) || rawMinReq === 398 || rawMinReq < 298) ? 298 : rawMinReq;
   const activeOnlineStaff = allStaff
     .filter((s) => s.Available === 'ON' && s.VerifyStatus === 'Approved' && (s.Credit ?? 0) >= minCreditRequirement)
     .map((s) => {
