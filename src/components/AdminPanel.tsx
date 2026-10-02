@@ -71,7 +71,7 @@ export default function AdminPanel({
   const [serviceFormCredit, setServiceFormCredit] = useState<number | string>(50);
 
   // Settings customizer states
-  const [formSettings, setFormSettings] = useState<AppSettings>({ ...settings });
+  const [formSettings, setFormSettings] = useState<any>({ ...settings });
   const [isTestingLine, setIsTestingLine] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(settings.updatedAt || null);
@@ -416,7 +416,7 @@ export default function AdminPanel({
       setShowCleanAdminModal(false);
       fetchAllUsers();
       fetchStaffList();
-      fetchBookings();
+      fetchDashboardStats();
       fetchTransactions();
       fetchRawDatabase();
     } catch (e: any) {
@@ -612,8 +612,20 @@ export default function AdminPanel({
     e.preventDefault();
     setIsSavingSettings(true);
     const now = new Date().toISOString();
+
+    const sanitizedTiers = (formSettings.travelFeeTiers || []).map(t => ({
+      minKm: typeof t.minKm === 'string' ? (parseFloat(t.minKm) || 0) : (t.minKm || 0),
+      maxKm: typeof t.maxKm === 'string' ? (parseFloat(t.maxKm) || 0) : (t.maxKm || 0),
+      fee: typeof t.fee === 'string' ? (parseFloat(t.fee) || 0) : (t.fee || 0),
+    }));
+
     const updatedPayload: AppSettings = {
       ...formSettings,
+      travelFeePerKm: typeof formSettings.travelFeePerKm === 'string' ? (parseFloat(formSettings.travelFeePerKm) || 0) : (formSettings.travelFeePerKm || 0),
+      commissionRate: typeof formSettings.commissionRate === 'string' ? (parseFloat(formSettings.commissionRate) || 0) : (formSettings.commissionRate || 0),
+      minCredit: typeof formSettings.minCredit === 'string' ? (parseInt(formSettings.minCredit) || 298) : (formSettings.minCredit || 298),
+      searchRadius: typeof formSettings.searchRadius === 'string' ? (parseFloat(formSettings.searchRadius) || 15) : (formSettings.searchRadius || 15),
+      travelFeeTiers: sanitizedTiers,
       isCustomized: true,
       updatedAt: now
     };
@@ -2149,10 +2161,16 @@ export default function AdminPanel({
                 <input
                   type="number"
                   step="0.01"
-                  value={formSettings.travelFeePerKm}
-                  onChange={(e) => setFormSettings({ ...formSettings, travelFeePerKm: parseFloat(e.target.value) || 0 })}
+                  value={formSettings.travelFeePerKm === undefined || formSettings.travelFeePerKm === null ? '' : formSettings.travelFeePerKm}
+                  onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
+                    setFormSettings({ ...formSettings, travelFeePerKm: cleanVal });
+                  }}
                   required
-                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
+                  placeholder="0"
+                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />
               </div>
 
@@ -2161,10 +2179,16 @@ export default function AdminPanel({
                 <input
                   type="number"
                   step="0.01"
-                  value={formSettings.commissionRate}
-                  onChange={(e) => setFormSettings({ ...formSettings, commissionRate: parseFloat(e.target.value) || 0 })}
+                  value={formSettings.commissionRate === undefined || formSettings.commissionRate === null ? '' : formSettings.commissionRate}
+                  onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
+                    setFormSettings({ ...formSettings, commissionRate: cleanVal });
+                  }}
                   required
-                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
+                  placeholder="0"
+                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />
               </div>
 
@@ -2174,13 +2198,15 @@ export default function AdminPanel({
                   type="number"
                   min={1}
                   step="1"
-                  value={Number(formSettings.minCredit) === 398 ? 298 : (Number(formSettings.minCredit) || 298)}
+                  value={formSettings.minCredit === undefined || formSettings.minCredit === null ? '' : (Number(formSettings.minCredit) === 398 ? 298 : formSettings.minCredit)}
+                  onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                   onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    const safeVal = (isNaN(val) || val === 398 || val < 298) ? 298 : val;
-                    setFormSettings({ ...formSettings, minCredit: safeVal });
+                    const val = e.target.value;
+                    const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
+                    setFormSettings({ ...formSettings, minCredit: cleanVal });
                   }}
                   required
+                  placeholder="298"
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />
               </div>
@@ -2216,10 +2242,15 @@ export default function AdminPanel({
                       min={1}
                       max={500}
                       step="1"
-                      value={formSettings.searchRadius}
-                      onChange={(e) => setFormSettings({ ...formSettings, searchRadius: parseFloat(e.target.value) || 15 })}
+                      value={formSettings.searchRadius === undefined || formSettings.searchRadius === null ? '' : formSettings.searchRadius}
+                      onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
+                        setFormSettings({ ...formSettings, searchRadius: cleanVal });
+                      }}
                       required
-                      className="w-full text-sm font-black border border-slate-300 rounded-xl pl-4 pr-12 py-2.5 bg-white text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none shadow-xs"
+                      className="w-full text-sm font-black border border-slate-300 rounded-xl pl-4 pr-12 py-2.5 bg-white text-slate-800 focus:ring-2 focus:ring-sky-500 focus:outline-none shadow-xs font-mono"
                       placeholder="เช่น 15, 20, 25, 30, 50"
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 pointer-events-none">
@@ -2251,7 +2282,7 @@ export default function AdminPanel({
                 </div>
 
                 {/* Dynamic guidance based on radius */}
-                {formSettings.searchRadius > 15 ? (
+                {Number(formSettings.searchRadius) > 15 ? (
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2 text-emerald-800">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <p className="text-[11px] leading-relaxed">
@@ -2273,9 +2304,9 @@ export default function AdminPanel({
                   type="button"
                   onClick={() => setFormSettings({
                     ...formSettings,
-                    travelFeeTiers: [...(formSettings.travelFeeTiers || []), { minKm: 0, maxKm: 0, fee: 0 }]
+                    travelFeeTiers: [...(formSettings.travelFeeTiers || []), { minKm: '', maxKm: '', fee: '' }]
                   })}
-                  className="flex items-center gap-1 text-[10px] bg-sky-50 text-sky-600 hover:bg-sky-100 px-2 py-1 rounded font-bold transition-colors"
+                  className="flex items-center gap-1 text-[10px] bg-sky-50 text-sky-600 hover:bg-sky-100 px-2 py-1 rounded font-bold transition-colors cursor-pointer"
                 >
                   <Plus className="w-3 h-3" /> เพิ่มช่วงระยะ
                 </button>
@@ -2289,39 +2320,48 @@ export default function AdminPanel({
                       <input
                         type="number"
                         step="0.01"
-                        value={tier.minKm}
+                        value={tier.minKm === undefined || tier.minKm === null ? '' : tier.minKm}
+                        onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                         onChange={(e) => {
+                          const val = e.target.value;
+                          const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
                           const newTiers = [...formSettings.travelFeeTiers];
-                          newTiers[index].minKm = parseFloat(e.target.value) || 0;
+                          newTiers[index] = { ...newTiers[index], minKm: cleanVal };
                           setFormSettings({ ...formSettings, travelFeeTiers: newTiers });
                         }}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-md px-2 py-1.5 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                        placeholder="กม."
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-md px-2 py-1.5 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
+                        placeholder="0"
                       />
                       <span className="text-[10px] font-semibold text-slate-500 whitespace-nowrap">ถึง</span>
                       <input
                         type="number"
                         step="0.01"
-                        value={tier.maxKm}
+                        value={tier.maxKm === undefined || tier.maxKm === null ? '' : tier.maxKm}
+                        onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                         onChange={(e) => {
+                          const val = e.target.value;
+                          const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
                           const newTiers = [...formSettings.travelFeeTiers];
-                          newTiers[index].maxKm = parseFloat(e.target.value) || 0;
+                          newTiers[index] = { ...newTiers[index], maxKm: cleanVal };
                           setFormSettings({ ...formSettings, travelFeeTiers: newTiers });
                         }}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-md px-2 py-1.5 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-md px-2 py-1.5 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
                         placeholder="กม."
                       />
                       <span className="text-[10px] font-semibold text-slate-500 whitespace-nowrap">กม. ราคา</span>
                       <input
                         type="number"
                         step="0.01"
-                        value={tier.fee}
+                        value={tier.fee === undefined || tier.fee === null ? '' : tier.fee}
+                        onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                         onChange={(e) => {
+                          const val = e.target.value;
+                          const cleanVal = val === '' ? '' : (val.length > 1 && val.startsWith('0') && !val.startsWith('0.') ? val.replace(/^0+/, '') : val);
                           const newTiers = [...formSettings.travelFeeTiers];
-                          newTiers[index].fee = parseFloat(e.target.value) || 0;
+                          newTiers[index] = { ...newTiers[index], fee: cleanVal };
                           setFormSettings({ ...formSettings, travelFeeTiers: newTiers });
                         }}
-                        className="w-full text-xs font-semibold border border-slate-200 rounded-md px-2 py-1.5 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                        className="w-full text-xs font-semibold border border-slate-200 rounded-md px-2 py-1.5 bg-slate-50 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
                         placeholder="บาท"
                       />
                     </div>
@@ -2331,7 +2371,7 @@ export default function AdminPanel({
                         const newTiers = formSettings.travelFeeTiers.filter((_, i) => i !== index);
                         setFormSettings({ ...formSettings, travelFeeTiers: newTiers });
                       }}
-                      className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                      className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

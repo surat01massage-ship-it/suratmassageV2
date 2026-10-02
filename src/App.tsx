@@ -1785,7 +1785,13 @@ export default function App() {
                 onLogout={handleLogout}
                 onShowToast={showToast}
                 onPlayNotificationSound={playJobAlert}
-                onUpdateStaffData={(updatedStaff) => setCurrentStaff(updatedStaff)}
+                onUpdateStaffData={(updatedStaff) => {
+                  setCurrentStaff(updatedStaff);
+                  if (updatedStaff) {
+                    persistStaffLocally(updatedStaff);
+                    saveActiveSession(currentUser, updatedStaff, userRoleMode);
+                  }
+                }}
                 onUpdateUser={(updatedUser) => setCurrentUser(updatedUser)}
               />
             )}

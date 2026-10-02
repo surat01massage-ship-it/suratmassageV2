@@ -2117,7 +2117,7 @@ async function startServer() {
         return res.status(400).json({ error: `เครดิตของคุณ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำที่บริการนี้กำหนดไว้ (${requiredCredit} CR) กรุณาเติมเครดิตก่อนรับงาน` });
       }
 
-      // Accept Job (ตัดเครดิตหลังจบงาน ไม่ตัดตอนกดรับงาน)
+      // Accept Job (เครดิตจะถูกหักเมื่อพนักงานกดปุ่ม "เข้าใจแล้ว")
       booking.StaffID = staffId;
       booking.Status = 'Accepted';
       booking.AcceptedDate = new Date().toISOString();
@@ -2137,6 +2137,80 @@ async function startServer() {
         db.notifications.push(notif);
         syncToGoogleSheet('INSERT', 'Notification', notif);
       }
+    } 
+    else if (action === 'understood' || action === 'confirm_understood') {
+      const currentStaff = db.staff.find(s => s.StaffID === (staffId || booking.StaffID));
+      if (!currentStaff) return res.status(404).json({ error: 'ไม่พบข้อมูลพนักงาน' });
+
+      const rawMin = Number(db.settings?.minCredit);
+      const defaultMin = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
+      const creditRequired = Number(service?.CreditRequired) || defaultMin;
+
+      const hasDeducted = db.transactions.some(t => 
+        t.StaffID === currentStaff.StaffID && 
+        t.Type === 'Deduct' && 
+        t.AdminRemark?.includes(booking.BookingID)
+      );
+
+      if (!hasDeducted && creditRequired > 0) {
+        const beforeCredit = Number(currentStaff.Credit) || 0;
+        const afterCredit = Math.max(0, beforeCredit - creditRequired);
+        currentStaff.Credit = afterCredit;
+
+        const tx: CreditTransaction = {
+          TransactionID: generateId('TX'),
+          StaffID: currentStaff.StaffID,
+          Amount: creditRequired,
+          BeforeCredit: beforeCredit,
+          AfterCredit: afterCredit,
+          Type: 'Deduct',
+          SlipImage: '',
+          Status: 'Approved',
+          AdminRemark: `ตัดเครดิตค่าธรรมเนียมรับงาน (กดยืนยันเข้าใจแล้ว) Booking #${booking.BookingID}`,
+          CreatedDate: new Date().toISOString()
+        };
+        db.transactions.push(tx);
+        syncToGoogleSheet('INSERT', 'CreditTransaction', tx);
+
+        booking.CreditDeducted = true;
+        booking.DeductedAmount = creditRequired;
+
+        const notif: Notification = {
+          NotificationID: generateId('N'),
+          UserID: currentStaff.UserID,
+          Title: "💳 หักเครดิตค่าธรรมเนียมรับงานแล้ว",
+          Detail: `ระบบได้ทำการหักเครดิต -${creditRequired} CR สำหรับงานจอง #${booking.BookingID} (กดเข้าใจแล้ว) เครดิตคงเหลือ: ${currentStaff.Credit} CR`,
+          ReadStatus: 'Unread',
+          CreatedDate: new Date().toISOString()
+        };
+        db.notifications.push(notif);
+        syncToGoogleSheet('INSERT', 'Notification', notif);
+
+        sendLineNotification(`💳 พนักงานกดยืนยันรับงาน (เข้าใจแล้ว)!\nรหัสการจอง: #${booking.BookingID}\nพนักงาน: พี่${currentStaff.Nickname}\nหักเครดิต: -${creditRequired} CR\nเครดิตคงเหลือ: ${currentStaff.Credit} CR`);
+        syncToGoogleSheet('UPDATE', 'Staff', currentStaff);
+        syncToGoogleSheet('UPDATE', 'Booking', booking);
+        saveDatabase(db);
+
+        return res.json({
+          success: true,
+          message: `หักเครดิตค่าธรรมเนียมรับงาน -${creditRequired} CR เรียบร้อยแล้ว (คงเหลือ ${currentStaff.Credit} CR)`,
+          creditDeducted: creditRequired,
+          beforeCredit,
+          remainingCredit: currentStaff.Credit,
+          staff: currentStaff,
+          booking,
+          transaction: tx
+        });
+      }
+
+      return res.json({
+        success: true,
+        alreadyDeducted: true,
+        message: 'เครดิตสำหรับงานนี้ถูกหักไปเรียบร้อยแล้วค่ะ',
+        remainingCredit: currentStaff.Credit,
+        staff: currentStaff,
+        booking
+      });
     } 
     else if (action === 'start_travel') {
       const currentStaff = db.staff.find(s => s.StaffID === booking.StaffID);
@@ -2289,6 +2363,113 @@ async function startServer() {
     syncToGoogleSheet('UPDATE', 'Booking', booking);
     const updatedStaff = db.staff.find(s => s.StaffID === (booking.StaffID || staffId));
     res.json({ success: true, booking, staff: updatedStaff || null });
+  });
+
+  // Dedicated endpoint: Deduct staff credit when clicking "เข้าใจแล้ว" on accepted job modal
+  app.post(['/api/bookings/:id/confirm-understood', '/api/bookings/:id/deduct-credit'], async (req, res) => {
+    const db = getDatabase();
+    const { id } = req.params;
+    const { staffId } = req.body;
+
+    const booking = db.bookings.find(b => String(b.BookingID).trim() === String(id).trim());
+    if (!booking) {
+      return res.status(404).json({ error: 'ไม่พบงานจองนี้ในระบบ' });
+    }
+
+    const targetStaffId = staffId || booking.StaffID;
+    const staff = db.staff.find(s => s.StaffID === targetStaffId || (booking.StaffID && s.StaffID === booking.StaffID));
+    if (!staff) {
+      return res.status(404).json({ error: 'ไม่พบข้อมูลพนักงาน' });
+    }
+
+    const service = db.services.find(s => s.ServiceID === booking.ServiceID);
+    const rawMin = Number(db.settings?.minCredit);
+    const defaultMin = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
+    const creditRequired = Number(service?.CreditRequired) || defaultMin;
+
+    // Check if credit has already been deducted for this booking
+    const alreadyDeducted = Boolean(booking.CreditDeducted) || db.transactions.some(t => 
+      t.StaffID === staff.StaffID && 
+      t.Type === 'Deduct' && 
+      t.AdminRemark?.includes(booking.BookingID)
+    );
+
+    if (alreadyDeducted) {
+      return res.json({
+        success: true,
+        alreadyDeducted: true,
+        message: 'เครดิตสำหรับงานนี้ถูกหักไปเรียบร้อยแล้วค่ะ',
+        creditDeducted: creditRequired,
+        remainingCredit: staff.Credit,
+        staff,
+        booking
+      });
+    }
+
+    // Deduct staff credit
+    const beforeCredit = Number(staff.Credit) || 0;
+    const afterCredit = Math.max(0, beforeCredit - creditRequired);
+    staff.Credit = afterCredit;
+
+    const tx: CreditTransaction = {
+      TransactionID: generateId('TX'),
+      StaffID: staff.StaffID,
+      Amount: creditRequired,
+      BeforeCredit: beforeCredit,
+      AfterCredit: afterCredit,
+      Type: 'Deduct',
+      SlipImage: '',
+      Status: 'Approved',
+      AdminRemark: `ตัดเครดิตค่าธรรมเนียมรับงาน (กดยืนยันเข้าใจแล้ว) Booking #${booking.BookingID}`,
+      CreatedDate: new Date().toISOString()
+    };
+    db.transactions.push(tx);
+    syncToGoogleSheet('INSERT', 'CreditTransaction', tx);
+
+    booking.CreditDeducted = true;
+    booking.DeductedAmount = creditRequired;
+    booking.CreditDeductedDate = new Date().toISOString();
+
+    // Check min credit: If after deduction, credit < minCredit and no other active bookings, turn off availability
+    const otherActiveBookings = db.bookings.some(b => 
+      b.StaffID === staff.StaffID && 
+      b.BookingID !== booking.BookingID && 
+      (b.Status === 'Accepted' || b.Status === 'Working')
+    );
+
+    if (!otherActiveBookings && (staff.Credit <= 0 || staff.Credit < defaultMin)) {
+      staff.Available = 'OFF';
+      console.log(`[StaffAvailability] Auto-turned off staff ${staff.Nickname} (${staff.StaffID}) after deducting credit for job #${booking.BookingID} (Remaining: ${staff.Credit} < ${defaultMin})`);
+    }
+
+    // Notify staff
+    const notif: Notification = {
+      NotificationID: generateId('N'),
+      UserID: staff.UserID,
+      Title: "💳 หักเครดิตค่าธรรมเนียมรับงานแล้ว",
+      Detail: `ระบบได้ทำการหักเครดิต -${creditRequired} CR สำหรับงานจอง #${booking.BookingID} (กดปุ่มเข้าใจแล้ว) เครดิตคงเหลือ: ${staff.Credit} CR`,
+      ReadStatus: 'Unread',
+      CreatedDate: new Date().toISOString()
+    };
+    db.notifications.push(notif);
+    syncToGoogleSheet('INSERT', 'Notification', notif);
+
+    sendLineNotification(`💳 พนักงานกดยืนยันรับงาน (เข้าใจแล้ว)!\nรหัสการจอง: #${booking.BookingID}\nพนักงาน: พี่${staff.Nickname}\nหักเครดิต: -${creditRequired} CR\nเครดิตคงเหลือ: ${staff.Credit} CR`);
+
+    syncToGoogleSheet('UPDATE', 'Staff', staff);
+    syncToGoogleSheet('UPDATE', 'Booking', booking);
+    saveDatabase(db);
+
+    res.json({
+      success: true,
+      message: `หักเครดิตค่าธรรมเนียมรับงาน -${creditRequired} CR เรียบร้อยแล้ว (คงเหลือ ${staff.Credit} CR)`,
+      creditDeducted: creditRequired,
+      beforeCredit,
+      remainingCredit: staff.Credit,
+      staff,
+      booking,
+      transaction: tx
+    });
   });
 
   // 6. Credit Transaction & Topup APIs

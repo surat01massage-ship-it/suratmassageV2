@@ -122,6 +122,7 @@ export default function StaffPanel({
   const [incomingBooking, setIncomingBooking] = useState<any | null>(null);
   const [ongoingBooking, setOngoingBooking] = useState<any | null>(null);
   const [acceptedJobModal, setAcceptedJobModal] = useState<any | null>(null);
+  const [isDeductingUnderstood, setIsDeductingUnderstood] = useState(false);
 
   const [currentTimestamp, setCurrentTimestamp] = useState<number>(Date.now());
   const ongoingBookingRef = useRef<any | null>(ongoingBooking);
@@ -676,7 +677,7 @@ export default function StaffPanel({
           Available: 'ON' // Always stay online while performing accepted work
         });
       } else {
-        // Local optimistic fallback (ตัดเครดิตหลังจบงาน ไม่ตัดตอนรับงาน)
+        // เครดิตจะถูกหักเมื่อพนักงานกดปุ่ม "เข้าใจแล้ว" ในหน้าต่างแจ้งเตือนงาน
         onUpdateStaffData({
           ...staff,
           Available: 'ON',
@@ -686,6 +687,75 @@ export default function StaffPanel({
       fetchStaffData();
     } catch (e: any) {
       onShowToast(e.message, "error");
+    }
+  };
+
+  // Deduct staff credit when pressing "เข้าใจแล้ว" on accepted job modal
+  const handleConfirmUnderstood = async (modalData: any) => {
+    if (!modalData) {
+      setAcceptedJobModal(null);
+      return;
+    }
+    const bookingId = modalData.BookingID;
+    setIsDeductingUnderstood(true);
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/confirm-understood`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: staff?.StaffID })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.alreadyDeducted) {
+          onShowToast("เข้าใจแล้ว: เข้าสู่หน้าควบคุมงานเรียบร้อยค่ะ", "info");
+        } else {
+          onShowToast(`💳 หักเครดิตรับงาน -${data.creditDeducted || 298} CR เรียบร้อยแล้วค่ะ (เครดิตคงเหลือ ${data.remainingCredit} CR)`, "success");
+        }
+        const finalCredit = data.remainingCredit !== undefined ? data.remainingCredit : (data.staff?.Credit ?? (staff ? staff.Credit - (data.creditDeducted || 298) : 0));
+        if (data.staff) {
+          onUpdateStaffData({
+            ...data.staff,
+            Credit: finalCredit
+          });
+        } else if (staff) {
+          onUpdateStaffData({
+            ...staff,
+            Credit: finalCredit
+          });
+        }
+        setOngoingBooking(prev => prev ? { ...prev, CreditDeducted: true } : prev);
+        setBookings(prev => prev.map(b => b.BookingID === bookingId ? { ...b, CreditDeducted: true } : b));
+      } else {
+        // Fallback local credit deduction if server returned an error or offline
+        if (staff) {
+          const reqCr = Number(modalData.CreditRequired || 298);
+          const newCredit = Math.max(0, (staff.Credit || 0) - reqCr);
+          onUpdateStaffData({
+            ...staff,
+            Credit: newCredit
+          });
+          setOngoingBooking(prev => prev ? { ...prev, CreditDeducted: true } : prev);
+          setBookings(prev => prev.map(b => b.BookingID === bookingId ? { ...b, CreditDeducted: true } : b));
+          onShowToast(`💳 หักเครดิตรับงาน -${reqCr} CR เรียบร้อยแล้วค่ะ`, "success");
+        }
+      }
+    } catch (e: any) {
+      console.warn("Deduct credit on understood error:", e);
+      if (staff) {
+        const reqCr = Number(modalData.CreditRequired || 298);
+        const newCredit = Math.max(0, (staff.Credit || 0) - reqCr);
+        onUpdateStaffData({
+          ...staff,
+          Credit: newCredit
+        });
+        setOngoingBooking(prev => prev ? { ...prev, CreditDeducted: true } : prev);
+        setBookings(prev => prev.map(b => b.BookingID === bookingId ? { ...b, CreditDeducted: true } : b));
+      }
+      onShowToast("ยืนยันรับงานเรียบร้อยแล้วค่ะ", "success");
+    } finally {
+      setIsDeductingUnderstood(false);
+      setAcceptedJobModal(null);
+      fetchStaffData();
     }
   };
 
@@ -743,12 +813,10 @@ export default function StaffPanel({
         );
         const isLastJob = otherActiveJobs.length === 0;
 
-        const serviceCreditReq = previousOngoing.CreditRequired ?? 298;
         const minCredit = effectiveMinCredit;
         const finalStaff = data.staff || (staff ? {
           ...staff,
-          Credit: Math.max(0, staff.Credit - serviceCreditReq),
-          TotalIncome: staff.TotalIncome + (previousOngoing.NetIncome || previousOngoing.TotalPrice),
+          TotalIncome: (staff.TotalIncome || 0) + (previousOngoing.NetIncome || previousOngoing.TotalPrice),
           TotalJobs: Math.max(1, (staff.TotalJobs || 0) + 1)
         } : null);
 
@@ -766,15 +834,15 @@ export default function StaffPanel({
         if (otherActiveJobs.length > 0) {
           // Move to next active job
           setOngoingBooking(otherActiveJobs[0]);
-          onShowToast(`💆 บันทึกจบงานนี้สำเร็จ! ตัดเครดิตค่าธรรมเนียม -${serviceCreditReq} CR กำลังนำคุณไปยังงานถัดไปค่ะ`, "success");
+          onShowToast(`💆 บันทึกจบงานนี้สำเร็จ! กำลังนำคุณไปยังงานถัดไปค่ะ`, "success");
         } else {
           // Last job finished!
           setOngoingBooking(null);
 
           if (shouldTurnOff) {
-            onShowToast(`💆 จบงานสำเร็จ! ตัดเครดิตค่าธรรมเนียม -${serviceCreditReq} CR เนื่องจากเครดิตคงเหลือ (${finalStaff?.Credit?.toFixed(0) || 0} CR) หมดหรือต่ำกว่าเกณฑ์ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่ค่ะ`, "info");
+            onShowToast(`💆 จบงานสำเร็จ! เนื่องจากเครดิตคงเหลือ (${finalStaff?.Credit?.toFixed(0) || 0} CR) ต่ำกว่าเกณฑ์ (${minCredit} CR) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตก่อนเปิดรับงานใหม่ค่ะ`, "info");
           } else {
-            onShowToast(`💆 จบงานบริการเสร็จสมบูรณ์เรียบร้อยแล้ว! ตัดเครดิตค่าธรรมเนียม -${serviceCreditReq} CR และโอนรายได้เข้าประวัติแล้วค่ะ`, "success");
+            onShowToast(`💆 จบงานบริการเสร็จสมบูรณ์เรียบร้อยแล้ว! โอนรายได้เข้าประวัติเรียบร้อยแล้วค่ะ`, "success");
           }
         }
       }
@@ -3358,6 +3426,15 @@ export default function StaffPanel({
                   </div>
                 </div>
 
+                <div className="flex justify-between items-center bg-black/20 rounded-xl px-3 py-1.5 text-[11px]">
+                  <span className="text-amber-200 font-bold flex items-center gap-1">
+                    <span>💳 หักเครดิตรับงาน:</span>
+                  </span>
+                  <span className="font-black text-amber-300 font-mono">
+                    -{Number(acceptedJobModal.CreditRequired || 298)} CR (หักเมื่อกดเข้าใจแล้ว)
+                  </span>
+                </div>
+
                 {acceptedJobModal.NetIncome !== undefined && (
                   <div className="flex justify-between items-center bg-white/10 rounded-xl px-3 py-1.5 text-[11px]">
                     <span className="text-emerald-100 font-medium">รายได้สุทธิที่คุณได้รับ (หักเครดิตแล้ว):</span>
@@ -3409,29 +3486,25 @@ export default function StaffPanel({
               </div>
             </div>
 
-            {/* Sticky Actions Footer */}
-            <div className="p-3.5 sm:p-4 bg-white/98 backdrop-blur-xs border-t border-slate-200 shrink-0 space-y-2 rounded-b-3xl">
-              <a
-                href={getGoogleMapsDirectionsUrl(
-                  staff?.CurrentLatitude,
-                  staff?.CurrentLongitude,
-                  acceptedJobModal.CustomerLatitude,
-                  acceptedJobModal.CustomerLongitude
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setAcceptedJobModal(null)}
-                className="w-full bg-sky-600 hover:bg-sky-700 text-white font-extrabold text-xs sm:text-sm py-3.5 rounded-2xl shadow-md transition-colors cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation"
-              >
-                <Compass className="w-4 h-4" />
-                <span>เปิดแผนที่นำทาง Google Maps</span>
-              </a>
+            {/* Sticky Actions Footer - บังคับกดแค่ปุ่มเข้าใจแล้ว เพื่อหักเครดิตพนักงาน */}
+            <div className="p-3.5 sm:p-4 bg-white/98 backdrop-blur-xs border-t border-slate-200 shrink-0 rounded-b-3xl">
               <button
                 type="button"
-                onClick={() => setAcceptedJobModal(null)}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-2xl transition-colors cursor-pointer text-center touch-manipulation"
+                disabled={isDeductingUnderstood}
+                onClick={() => handleConfirmUnderstood(acceptedJobModal)}
+                className="w-full bg-slate-900 hover:bg-slate-800 active:scale-[0.99] text-white font-extrabold text-sm sm:text-base py-4 rounded-2xl transition-all cursor-pointer text-center touch-manipulation shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                เข้าใจแล้ว (ไปที่หน้าควบคุมงาน)
+                {isDeductingUnderstood ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <span>กำลังหักเครดิตและเข้าสู่หน้างาน...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    <span>เข้าใจแล้ว (ไปที่หน้าควบคุมงาน)</span>
+                  </>
+                )}
               </button>
             </div>
 

@@ -87,6 +87,9 @@ export interface Booking {
   CompletedDate?: string;
   AutoCompleted?: boolean;
   CancellationReason?: string;
+  CreditDeducted?: boolean;
+  DeductedAmount?: number;
+  CreditDeductedDate?: string;
 }
 
 export interface CreditTransaction {
