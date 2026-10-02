@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, Briefcase, Calendar, DollarSign, Settings, Eye, Edit, Trash2, 
   Check, X, Plus, ShieldCheck, Database, FileCode, Copy, Download, RefreshCw, BarChart2, ChevronRight,
   MapPin, Compass, AlertTriangle, ShieldAlert, CheckCircle2, RotateCcw, Navigation,
-  Bot, Sparkles, Cpu, Zap, Upload, FileCheck, FileBadge, Home, ZoomIn, FileText, Clock
+  Bot, Sparkles, Cpu, Zap, Upload, FileCheck, FileBadge, Home, ZoomIn, FileText, Clock,
+  QrCode, ExternalLink, Link as LinkIcon, Image as ImageIcon
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
 import { googleAppsScriptFiles } from '../data/googleAppsScript';
@@ -72,6 +73,26 @@ export default function AdminPanel({
   const [isTestingLine, setIsTestingLine] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(settings.updatedAt || null);
+  const qrFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleUploadQrFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      onShowToast("ขนาดไฟล์รูปภาพเกิน 5MB กรุณาเลือกรูปขนาดเล็กลงค่ะ", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setFormSettings(prev => ({ ...prev, qrCodeImage: dataUrl }));
+        onShowToast("อัปโหลดรูปภาพ QR Code สำเร็จแล้ว! อย่าลืมกด 'บันทึกการตั้งค่า'", "success");
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   // Keep formSettings in sync whenever settings are refreshed or restored
   useEffect(() => {
@@ -2315,24 +2336,102 @@ export default function AdminPanel({
                   placeholder="เช่น บจก. สบายดี มาสสาจ"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ลิงก์รูปภาพ QR Code</label>
-                <input
-                  type="text"
-                  value={formSettings.qrCodeImage || ''}
-                  onChange={(e) => setFormSettings({ ...formSettings, qrCodeImage: e.target.value })}
-                  className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none"
-                  placeholder="https://..."
-                />
-                {formSettings.qrCodeImage && (
-                  <div className="mt-2 p-2 bg-white border border-slate-200 rounded-xl flex items-center gap-3">
-                    <img src={formSettings.qrCodeImage} alt="QR Preview" className="w-14 h-14 object-contain rounded-lg border border-slate-100 bg-slate-50 shrink-0" />
-                    <div className="text-[11px] text-slate-500 leading-tight">
-                      <span className="font-bold text-slate-700 block mb-0.5">ตัวอย่างภาพ QR Code สำหรับพนักงาน</span>
-                      <span>พนักงานจะเห็นปุ่ม <strong className="text-sky-600">"บันทึก QR Code ลงเครื่อง"</strong> เพื่อโอนเงินในแอปธนาคาร</span>
-                    </div>
+              <div className="space-y-2 md:col-span-2 bg-slate-50/80 p-4 rounded-2xl border border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="text-[11px] font-black text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <QrCode className="w-3.5 h-3.5 text-sky-600" />
+                    ตั้งค่า QR Code (รูปภาพ หรือ ลิงก์ปลายทาง)
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <input 
+                      type="file" 
+                      ref={qrFileInputRef} 
+                      accept="image/*" 
+                      className="hidden" 
+                      onChange={handleUploadQrFile} 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => qrFileInputRef.current?.click()}
+                      className="px-2.5 py-1.5 bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>อัปโหลดรูป QR จากเครื่อง</span>
+                    </button>
+                    {formSettings.qrCodeImage && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFormSettings({ ...formSettings, qrCodeImage: '' });
+                          onShowToast("ล้างค่า QR แล้ว (ระบบจะใช้ PromptPay อัตโนมัติ)", "info");
+                        }}
+                        className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 border border-slate-200 text-[10px] font-semibold rounded-lg transition shadow-2xs cursor-pointer"
+                        title="ลบแล้วใช้ PromptPay อัตโนมัติ"
+                      >
+                        ล้างค่า (ใช้ PromptPay)
+                      </button>
+                    )}
                   </div>
-                )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={formSettings.qrCodeImage || ''}
+                      onChange={(e) => setFormSettings({ ...formSettings, qrCodeImage: e.target.value })}
+                      className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 pr-24 bg-white focus:outline-none focus:border-sky-500 shadow-2xs"
+                      placeholder="วางลิงก์ เช่น https://line.me/... หรือ ลิงก์รูปภาพ https://..."
+                    />
+                    {formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('http') && (
+                      <a
+                        href={formSettings.qrCodeImage}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="absolute right-2 top-2.5 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold rounded-lg flex items-center gap-1 transition"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>เปิดดูลิงก์</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Helpful guidance notes */}
+                <div className="bg-sky-50/70 border border-sky-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1">
+                  <div className="font-bold text-sky-900 flex items-center gap-1">
+                    <span>💡</span> คำแนะนำการตั้งค่า QR Code:
+                  </div>
+                  <ul className="list-disc list-inside space-y-1 text-[10.5px] text-slate-600 pl-1 leading-relaxed">
+                    <li><strong>หากใส่ลิงก์เว็บไซต์หรือลิงก์ LINE (เช่น https://line.me/...):</strong> ระบบจะสร้าง QR Code คุณภาพสูงให้อัตโนมัติจากลิงก์นี้ เมื่อสแกนจะเปิดลิงก์ที่คุณตั้งไว้ทันที</li>
+                    <li><strong>หากอัปโหลดไฟล์รูปภาพหรือใส่ลิงก์รูปภาพ:</strong> ระบบจะใช้รูปภาพ QR Code นั้นตรงๆ ให้พนักงานเซฟลงเครื่อง</li>
+                    <li><strong>หากเว้นว่างไว้:</strong> ระบบจะสร้าง QR Code พร้อมเพย์ PromptPay อัตโนมัติจากเลขที่บัญชี <code className="text-sky-700 font-bold">{formSettings.bankAccount || 'ที่ระบุ'}</code></li>
+                  </ul>
+                </div>
+
+                {/* Live Preview Box */}
+                <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row items-center gap-3 shadow-2xs">
+                  <div className="w-24 h-24 bg-slate-50 border border-slate-200 rounded-xl p-1.5 flex items-center justify-center shrink-0 overflow-hidden">
+                    <img 
+                      src={formSettings.qrCodeImage ? (formSettings.qrCodeImage.startsWith('data:image/') ? formSettings.qrCodeImage : `/api/qr-image?url=${encodeURIComponent(formSettings.qrCodeImage)}`) : '/api/qr-image'} 
+                      alt="QR Preview" 
+                      className="w-full h-full object-contain rounded-lg" 
+                    />
+                  </div>
+                  <div className="text-[11px] text-slate-500 leading-normal space-y-1 text-center sm:text-left">
+                    <div className="flex items-center gap-1.5 justify-center sm:justify-start">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span className="font-black text-slate-800">
+                        {formSettings.qrCodeImage 
+                          ? (formSettings.qrCodeImage.startsWith('data:image/') ? "ภาพ QR Code ที่อัปโหลดจากเครื่อง" : "QR Code จากลิงก์ที่คุณตั้งไว้") 
+                          : "QR Code พร้อมเพย์ PromptPay (สร้างอัตโนมัติ)"}
+                      </span>
+                    </div>
+                    <p className="text-slate-600">
+                      พนักงานจะเห็น QR Code รูปนี้บนหน้าเติมเครดิต และสามารถกด <strong className="text-sky-600">"บันทึก QR Code ลงเครื่อง"</strong> หรือเปิดใน Safari/Chrome เพื่อบันทึกรูปเข้าอัลบั้ม 100% ค่ะ
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 

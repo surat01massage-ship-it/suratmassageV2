@@ -82,7 +82,7 @@ const defaultAppSettings: AppSettings = {
   bankName: "ธนาคารกสิกรไทย",
   bankAccount: "123-4-56789-0",
   bankAccountName: "บจก. สบายดี มาสสาจ",
-  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg",
+  qrCodeImage: "",
   lineChannelAccessToken: "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=",
   lineAdminUserId: "Cf544171f0f9753863ade1ddd1acd67a7",
   enableLineAdminNotify: true
@@ -96,6 +96,9 @@ const getPersistedSettings = (): AppSettings => {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && parsed.companyName) {
           const merged = { ...defaultAppSettings, ...parsed };
+          if (merged.qrCodeImage && merged.qrCodeImage.includes('wikipedia.org')) {
+            merged.qrCodeImage = '';
+          }
           const rawMin = Number(merged.minCredit);
           if (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) {
             merged.minCredit = 298;
@@ -489,7 +492,10 @@ export default function App() {
                 localStorage.setItem('sabaidee_app_settings', JSON.stringify(localSettings));
               }
 
-              // Always sanitize minCredit in localSettings immediately before anything else
+              // Always sanitize minCredit & qrCodeImage in localSettings immediately before anything else
+              if (localSettings.qrCodeImage && localSettings.qrCodeImage.includes('wikipedia.org')) {
+                localSettings.qrCodeImage = '';
+              }
               const localMin = Number(localSettings.minCredit);
               if (!localMin || isNaN(localMin) || localMin === 398 || localMin < 298) {
                 localSettings.minCredit = 298;
@@ -520,6 +526,9 @@ export default function App() {
             }
           }
 
+          if (serverData.qrCodeImage && serverData.qrCodeImage.includes('wikipedia.org')) {
+            serverData.qrCodeImage = '';
+          }
           const serverMin = Number(serverData.minCredit);
           if (!serverMin || isNaN(serverMin) || serverMin === 398 || serverMin < 298) {
             serverData.minCredit = 298;

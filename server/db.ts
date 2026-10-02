@@ -54,7 +54,7 @@ export const defaultSettings: AppSettings = {
   bankName: "ธนาคารกสิกรไทย",
   bankAccount: "123-4-56789-0",
   bankAccountName: "บจก. สบายดี มาสสาจ",
-  qrCodeImage: "https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg",
+  qrCodeImage: "",
   lineChannelAccessToken: "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=",
   lineAdminUserId: "Cf544171f0f9753863ade1ddd1acd67a7",
   enableLineAdminNotify: true,
@@ -67,7 +67,7 @@ const defaultServices: Service[] = [
     ServiceName: "นวดผ่อนคลาย (Relaxing Massage)",
     Detail: "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
     Duration: 120,
-    Price: 798,
+    Price: 598,
     CreditRequired: 298,
     Active: 'ON',
     SortOrder: 1
@@ -77,7 +77,7 @@ const defaultServices: Service[] = [
     ServiceName: "นวดแก้อาการ (Therapeutic Massage)",
     Detail: "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
     Duration: 120,
-    Price: 798,
+    Price: 598,
     CreditRequired: 298,
     Active: 'ON',
     SortOrder: 2
@@ -87,7 +87,7 @@ const defaultServices: Service[] = [
     ServiceName: "นวดแผนไทย (Thai Massage)",
     Detail: "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
     Duration: 120,
-    Price: 798,
+    Price: 598,
     CreditRequired: 298,
     Active: 'ON',
     SortOrder: 3
@@ -289,6 +289,9 @@ export function getDatabase(): DatabaseSchema {
     } else {
       liveDb.settings.minCredit = numMin;
     }
+    if (liveDb.settings.qrCodeImage && liveDb.settings.qrCodeImage.includes('wikipedia.org')) {
+      liveDb.settings.qrCodeImage = '';
+    }
 
     liveDb.staff.forEach(s => {
       const numCredit = Number(s.Credit);
@@ -296,6 +299,13 @@ export function getDatabase(): DatabaseSchema {
         s.Credit = 298;
       } else {
         s.Credit = numCredit;
+      }
+    });
+
+    // Ensure all 3 services are updated to 598 THB
+    liveDb.services.forEach(srv => {
+      if (srv.Price === 798) {
+        srv.Price = 598;
       }
     });
 

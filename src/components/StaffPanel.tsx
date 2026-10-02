@@ -251,6 +251,31 @@ export default function StaffPanel({
   const [showFullQrModal, setShowFullQrModal] = useState<boolean>(false);
   const [generatedQrDataUrl, setGeneratedQrDataUrl] = useState<string>('');
 
+  // Fetch QR image into base64 Data URL so mobile LINE browser can save image via native long-press 100%
+  useEffect(() => {
+    let isMounted = true;
+    const loadQrData = async () => {
+      try {
+        const qrParam = settings.qrCodeImage ? `?url=${encodeURIComponent(settings.qrCodeImage)}` : '';
+        const res = await fetch(`/api/qr-image${qrParam}`);
+        if (res.ok && isMounted) {
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (isMounted && typeof reader.result === 'string') {
+              setGeneratedQrDataUrl(reader.result);
+            }
+          };
+          reader.readAsDataURL(blob);
+        }
+      } catch (e) {
+        console.warn("Could not preload QR data URI:", e);
+      }
+    };
+    loadQrData();
+    return () => { isMounted = false; };
+  }, [settings.qrCodeImage, settings.bankAccount]);
+
   // Helper to detect LINE in-app browser (iOS / Android)
   const isLineBrowser = () => {
     if (typeof navigator === 'undefined') return false;
@@ -822,22 +847,23 @@ export default function StaffPanel({
   const handleDownloadQrCode = async () => {
     setIsDownloadingQr(true);
     const rawAccount = (settings.bankAccount || '').replace(/[^0-9a-zA-Z]/g, '') || 'pay';
-    const fileName = `PromptPay_QR_Topup_${rawAccount}.png`;
+    const fileName = `QR_Code_${rawAccount}.png`;
     const inLine = isLineBrowser();
+    const qrParam = settings.qrCodeImage ? `?url=${encodeURIComponent(settings.qrCodeImage)}` : '';
 
     try {
-      // 1. Standard Mobile Web Share API (gives direct native "Save Image" to Photos on supported devices)
+      // 1. Mobile Web Share API (gives direct native "Save Image" to Photos on supported devices)
       if (typeof navigator !== 'undefined' && navigator.share) {
         try {
-          const res = await fetch('/api/qr-image');
+          const res = await fetch(`/api/qr-image${qrParam}`);
           if (res.ok) {
             const blob = await res.blob();
             const file = new File([blob], fileName, { type: 'image/png' });
             if (!navigator.canShare || navigator.canShare({ files: [file] })) {
               await navigator.share({
                 files: [file],
-                title: 'QR Code สำหรับเติมเครดิต SabaiDee',
-                text: `QR Code เติมเครดิต ${settings.bankAccountName || ''}`,
+                title: 'QR Code SabaiDee',
+                text: `QR Code ${settings.bankAccountName || ''}`,
               });
               setQrDownloadSuccess(true);
               onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีค่ะ", "success");
@@ -855,7 +881,7 @@ export default function StaffPanel({
 
       // 2. Direct browser file download via Blob URL & anchor click
       try {
-        const res = await fetch('/api/qr-image');
+        const res = await fetch(`/api/qr-image${qrParam}`);
         if (res.ok) {
           const blob = await res.blob();
           const blobUrl = URL.createObjectURL(blob);
@@ -873,7 +899,7 @@ export default function StaffPanel({
         }
       } catch {
         const link = document.createElement('a');
-        link.href = '/api/qr-download';
+        link.href = `/api/qr-download${qrParam}`;
         link.download = fileName;
         document.body.appendChild(link);
         link.click();
@@ -883,7 +909,7 @@ export default function StaffPanel({
       setQrDownloadSuccess(true);
       if (inLine) {
         setShowFullQrModal(true);
-        onShowToast("📥 ส่งคำสั่งบันทึกรูปภาพแล้ว! หากเปิดใน LINE แนะนำแตะค้างที่รูป 1 วินาที หรือกดเปิดใน Safari/Chrome เพื่อบันทึกเข้าอัลบั้ม 100% ค่ะ", "success");
+        onShowToast("👆 สำหรับแอป LINE: กรุณาแตะค้างที่รูปภาพ 1 วินาที ➔ เลือก 'บันทึกรูปภาพ' (Save Image) รูปจะเข้าอัลบั้ม 100% ค่ะ หรือกดปุ่มเปิดใน Safari/Chrome", "info");
       } else {
         onShowToast("ดาวน์โหลดภาพ QR Code เรียบร้อยแล้ว!", "success");
       }
@@ -1951,7 +1977,7 @@ export default function StaffPanel({
 
             <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-300 rounded-2xl p-2.5 shadow-sm flex items-center justify-center select-auto">
               <img 
-                src="/api/qr-image" 
+                src={generatedQrDataUrl || (settings.qrCodeImage ? `/api/qr-image?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image")} 
                 className="w-full h-full object-contain rounded-lg select-auto pointer-events-auto cursor-pointer" 
                 alt="QR Code สำหรับเติมเครดิต" 
                 onClick={() => setShowFullQrModal(true)}
@@ -2030,7 +2056,7 @@ export default function StaffPanel({
                 <button
                   type="button"
                   id="btn-line-open-external"
-                  onClick={() => handleOpenInExternalBrowser('/qr-save')}
+                  onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save')}
                   className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4 text-white" />
@@ -3644,7 +3670,7 @@ export default function StaffPanel({
             <div className="space-y-2">
               <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md inline-block w-64 h-64 mx-auto select-auto">
                 <img 
-                  src="/api/qr-image" 
+                  src={generatedQrDataUrl || (settings.qrCodeImage ? `/api/qr-image?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image")} 
                   alt="QR Code สำหรับเติมเครดิต" 
                   className="w-full h-full object-contain rounded-xl select-auto pointer-events-auto cursor-pointer"
                   style={{
@@ -3683,7 +3709,7 @@ export default function StaffPanel({
                   <button
                     type="button"
                     id="btn-modal-open-external"
-                    onClick={() => handleOpenInExternalBrowser('/qr-save')}
+                    onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save')}
                     className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-white" />

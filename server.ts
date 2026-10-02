@@ -2596,7 +2596,7 @@ async function startServer() {
     res.json({ success: true, transaction: newTx, autoApproved, newCredit: staff.Credit });
   });
 
-  // High-Resolution PromptPay QR Code Image & Direct Device Download API
+  // High-Resolution QR Code Image & Direct Device Download API (Handles image URLs, custom links, PromptPay, and LINE browser)
   app.get(['/api/qr-image', '/api/qr-download'], async (req, res) => {
     const db = getDatabase();
     const settings = db.settings || defaultSettings;
@@ -2604,49 +2604,106 @@ async function startServer() {
 
     try {
       let pngBuffer: Buffer | null = null;
-      const qrImage = settings.qrCodeImage || '';
+      let contentType = 'image/png';
 
-      if (qrImage.startsWith('data:image/')) {
-        const commaIdx = qrImage.indexOf(',');
-        if (commaIdx !== -1) {
-          const base64Data = qrImage.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
-          pngBuffer = Buffer.from(base64Data, 'base64');
-        }
-      } else if (qrImage.startsWith('http://') || qrImage.startsWith('https://')) {
-        // If not an SVG, try to fetch the remote image
-        if (!qrImage.toLowerCase().endsWith('.svg')) {
+      // 1. Determine target: URL from query param (override), or settings.qrCodeImage
+      const rawTarget = String(req.query.url || req.query.link || settings.qrCodeImage || '').trim();
+      // Filter out dummy Wikipedia placeholders
+      const qrTarget = rawTarget.toLowerCase().includes('wikipedia.org') ? '' : rawTarget;
+
+      if (qrTarget) {
+        if (qrTarget.startsWith('data:image/')) {
+          // A. Base64 Data URL
+          const commaIdx = qrTarget.indexOf(',');
+          if (commaIdx !== -1) {
+            const mimeMatch = qrTarget.slice(0, commaIdx).match(/data:([^;]+)/);
+            if (mimeMatch) contentType = mimeMatch[1];
+            const base64Data = qrTarget.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
+            pngBuffer = Buffer.from(base64Data, 'base64');
+          }
+        } else if (qrTarget.startsWith('http://') || qrTarget.startsWith('https://')) {
+          // B. Remote URL: Could be a direct image URL, Google Drive image, or a web link (LINE OA, booking, payment)
+          let fetchUrl = qrTarget;
+          const driveMatch = qrTarget.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+          if (driveMatch) {
+            fetchUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+          }
+
+          let fetchedImageBuffer: Buffer | null = null;
           try {
-            const fetchRes = await fetch(qrImage);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const fetchRes = await fetch(fetchUrl, {
+              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
             if (fetchRes.ok) {
-              const arrayBuf = await fetchRes.arrayBuffer();
-              pngBuffer = Buffer.from(arrayBuf);
+              const resType = (fetchRes.headers.get('content-type') || '').toLowerCase();
+              if (resType.startsWith('image/') && !resType.includes('svg')) {
+                const arrayBuf = await fetchRes.arrayBuffer();
+                fetchedImageBuffer = Buffer.from(arrayBuf);
+                contentType = resType;
+              }
             }
           } catch (e) {
-            console.warn('[QR] Could not fetch remote QR image, generating fallback PromptPay QR:', e);
+            console.warn('[QR] Remote fetch notice:', e);
           }
+
+          if (fetchedImageBuffer && fetchedImageBuffer.length > 100) {
+            pngBuffer = fetchedImageBuffer;
+          } else {
+            // It's a web link (e.g. LINE link https://line.me/..., website, payment URL)
+            // Generate a crisp, high-resolution QR code encoding THIS EXACT LINK!
+            console.log('[QR] Generating high-resolution QR code for custom link:', qrTarget);
+            pngBuffer = await QRCode.toBuffer(qrTarget, {
+              type: 'png',
+              width: 900,
+              margin: 3,
+              errorCorrectionLevel: 'H',
+              color: {
+                dark: '#000000',
+                light: '#ffffff'
+              }
+            });
+            contentType = 'image/png';
+          }
+        } else if (qrTarget.length > 3) {
+          // C. Text / custom payload
+          pngBuffer = await QRCode.toBuffer(qrTarget, {
+            type: 'png',
+            width: 900,
+            margin: 3,
+            errorCorrectionLevel: 'H',
+            color: { dark: '#000000', light: '#ffffff' }
+          });
+          contentType = 'image/png';
         }
       }
 
-      // If no valid buffer (e.g. SVG or empty), generate crisp high-res PromptPay PNG QR code
+      // If no valid buffer (e.g. empty or default), generate crisp high-res PromptPay PNG QR code
       if (!pngBuffer) {
         const targetAccount = settings.bankAccount || settings.contactPhone || '0812345678';
         const promptPayPayload = generatePromptPayPayload(targetAccount);
         pngBuffer = await QRCode.toBuffer(promptPayPayload, {
           type: 'png',
-          width: 800,
+          width: 900,
           margin: 3,
+          errorCorrectionLevel: 'H',
           color: {
             dark: '#000000',
             light: '#ffffff'
           }
         });
+        contentType = 'image/png';
       }
 
-      const rawAccount = (settings.bankAccount || 'pay').replace(/[^0-9a-zA-Z]/g, '');
-      const filename = `PromptPay_QR_${rawAccount || 'SabaiDee'}.png`;
+      const rawAccount = (settings.bankAccount || 'SabaiDee').replace(/[^0-9a-zA-Z]/g, '');
+      const filename = `QR_Code_${rawAccount || 'SabaiDee'}.png`;
 
-      res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
       if (isDownload) {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       } else {
@@ -2667,13 +2724,14 @@ async function startServer() {
     const bankName = settings.bankName || 'ธนาคารทั่วไป';
     const bankAccount = settings.bankAccount || '081-234-5678';
     const bankAccountName = settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ';
+    const hasCustomQr = !!(settings.qrCodeImage && !settings.qrCodeImage.includes('wikipedia.org'));
 
     const html = `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>บันทึก QR Code เติมเครดิต | สบายดี โฮมมาสซาจ</title>
+  <title>บันทึก QR Code | สบายดี โฮมมาสซาจ</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -2692,7 +2750,7 @@ async function startServer() {
     }
     .card {
       background: #ffffff;
-      max-width: 400px;
+      max-width: 420px;
       width: 100%;
       border-radius: 28px;
       box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05);
@@ -2726,26 +2784,34 @@ async function startServer() {
       font-weight: 500;
     }
     .qr-container {
+      position: relative;
       background: #ffffff;
-      border: 2px solid #e2e8f0;
-      border-radius: 20px;
+      border: 3px solid #0284c7;
+      border-radius: 24px;
       padding: 12px;
       margin: 0 auto 14px;
-      width: 250px;
-      height: 250px;
+      width: 260px;
+      height: 260px;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.03);
+      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.2);
+      transition: all 0.3s ease;
+    }
+    .qr-container.highlight {
+      border-color: #059669;
+      box-shadow: 0 0 0 6px rgba(5, 150, 105, 0.3), 0 10px 30px rgba(5, 150, 105, 0.4);
+      transform: scale(1.02);
     }
     .qr-img {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      border-radius: 12px;
+      border-radius: 14px;
       -webkit-touch-callout: default !important;
       -webkit-user-select: auto !important;
       user-select: auto !important;
+      pointer-events: auto !important;
       cursor: pointer;
     }
     .tap-hint {
@@ -2753,18 +2819,23 @@ async function startServer() {
       color: #ffffff;
       font-size: 12px;
       font-weight: 700;
-      padding: 8px 12px;
+      padding: 8px 14px;
       border-radius: 12px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       display: inline-flex;
       align-items: center;
       gap: 6px;
       box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.9; transform: scale(1.03); }
     }
     .line-guide {
       background: #ecfdf5;
       border: 2px solid #6ee7b7;
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 14px;
       text-align: left;
       margin-bottom: 16px;
@@ -2781,7 +2852,7 @@ async function startServer() {
     .line-guide-desc {
       font-size: 12px;
       color: #064e3b;
-      line-height: 1.5;
+      line-height: 1.6;
       font-weight: 500;
     }
     .bank-info {
@@ -2879,18 +2950,21 @@ async function startServer() {
       position: fixed;
       bottom: 24px;
       left: 50%;
-      transform: translateX(-50%) translateY(100px);
+      transform: translateX(-50%) translateY(120px);
       background: #0f172a;
       color: #ffffff;
-      padding: 12px 20px;
+      padding: 12px 22px;
       border-radius: 999px;
       font-size: 13px;
       font-weight: 600;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
       transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       z-index: 100;
       white-space: nowrap;
       pointer-events: none;
+      max-width: 90vw;
+      text-overflow: ellipsis;
+      overflow: hidden;
     }
     #toast.show {
       transform: translateX(-50%) translateY(0);
@@ -2900,19 +2974,19 @@ async function startServer() {
 <body>
   <div class="card">
     <div class="badge">
-      <span>●</span> พร้อมเพย์ PromptPay QR
+      <span>●</span> ${hasCustomQr ? 'คิวอาร์โค้ด QR Code' : 'พร้อมเพย์ PromptPay QR'}
     </div>
-    <h1>สแกน QR Code เพื่อเติมเครดิต</h1>
+    <h1>${hasCustomQr ? 'สแกน QR Code เพื่อดำเนินการ' : 'สแกน QR Code เพื่อเติมเครดิต'}</h1>
     <p class="sub">${bankAccountName}</p>
 
     <!-- Clear QR Image Container -->
-    <div class="qr-container">
-      <img id="qr-img" class="qr-img" src="/api/qr-image" alt="QR Code สำหรับเติมเครดิต" title="แตะค้างเพื่อบันทึกรูปภาพ" />
+    <div class="qr-container" id="qr-box">
+      <img id="qr-img" class="qr-img" src="/api/qr-image" alt="QR Code" title="แตะค้างเพื่อบันทึกรูปภาพ" />
     </div>
 
     <!-- Instructions that directly solve LINE issue -->
-    <div class="tap-hint">
-      <span>👆</span> แตะค้างที่รูปภาพ 1 วินาที ➔ "บันทึกรูปภาพ"
+    <div class="tap-hint" id="tap-instruction">
+      <span>👆</span> แตะค้างที่รูปภาพ QR 1 วินาที ➔ "บันทึกรูปภาพ"
     </div>
 
     <div class="line-guide">
@@ -2920,8 +2994,8 @@ async function startServer() {
         <span>💡</span> วิธีบันทึกภาพให้เข้าเครื่อง 100% (สำหรับผู้ใช้ LINE):
       </div>
       <div class="line-guide-desc">
-        <strong>• แนะนำ:</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันที 100% ค่ะ<br>
-        <strong>• หรือ:</strong> กดปุ่มสีเขียว <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อดาวน์โหลดตรงเข้าเครื่อง
+        <strong>• วิธีที่ 1 (ง่ายสุด):</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันที 100% ค่ะ<br>
+        <strong>• วิธีที่ 2:</strong> กดปุ่มสีเขียว <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อดาวน์โหลดตรงเข้าเครื่องอัตโนมัติ
       </div>
     </div>
 
@@ -2945,7 +3019,7 @@ async function startServer() {
       <span>🌐</span> เปิดใน Safari / Chrome (เบราว์เซอร์เครื่อง)
     </button>
 
-    <a href="/" class="btn-back">⬅️ กลับสู่ระบบพนักงาน</a>
+    <a href="/" class="btn-back">⬅️ กลับสู่ระบบ</a>
   </div>
 
   <div id="toast"></div>
@@ -2957,7 +3031,16 @@ async function startServer() {
       t.classList.add('show');
       setTimeout(function() {
         t.classList.remove('show');
-      }, 3500);
+      }, 4000);
+    }
+
+    function highlightQr() {
+      var box = document.getElementById('qr-box');
+      if (box) {
+        box.classList.add('highlight');
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setTimeout(function() { box.classList.remove('highlight'); }, 3000);
+      }
     }
 
     function copyAccount() {
@@ -2998,17 +3081,17 @@ async function startServer() {
     async function saveQrToGallery() {
       var inLine = /Line\//i.test(navigator.userAgent || '');
       
-      // 1. Try Web Share API which gives direct native "Save Image" to Photos on iOS & Android
+      // 1. Try native Web Share API (gives direct native "Save Image" to Photos on iOS & Android)
       if (navigator.share) {
         try {
           var res = await fetch('/api/qr-image');
           var blob = await res.blob();
-          var file = new File([blob], 'PromptPay_QR_SabaiDee.png', { type: 'image/png' });
+          var file = new File([blob], 'QR_Code_SabaiDee.png', { type: 'image/png' });
           if (!navigator.canShare || navigator.canShare({ files: [file] })) {
             await navigator.share({
               files: [file],
-              title: 'QR Code เติมเครดิต SabaiDee',
-              text: 'PromptPay QR Code'
+              title: 'QR Code SabaiDee',
+              text: 'QR Code'
             });
             showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีค่ะ');
             return;
@@ -3018,31 +3101,19 @@ async function startServer() {
         }
       }
 
-      // 2. Direct browser download via Blob URL & anchor click
+      // 2. Direct browser download trigger
       try {
-        var resImg = await fetch('/api/qr-image');
-        var imgBlob = await resImg.blob();
-        var blobUrl = URL.createObjectURL(imgBlob);
-        var a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = 'PromptPay_QR_SabaiDee.png';
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(function() {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(blobUrl);
-        }, 1500);
-      } catch (err) {
         var aLink = document.createElement('a');
         aLink.href = '/api/qr-download';
-        aLink.download = 'PromptPay_QR_SabaiDee.png';
+        aLink.download = 'QR_Code_SabaiDee.png';
         document.body.appendChild(aLink);
         aLink.click();
         setTimeout(function() { document.body.removeChild(aLink); }, 1000);
-      }
+      } catch (err) {}
 
       if (inLine) {
-        showToast('📥 ส่งคำสั่งดาวน์โหลดแล้ว! หากรูปไม่เข้าอัลบั้ม ให้แตะค้างที่รูป QR 1 วินาที ➔ "บันทึกรูปภาพ"');
+        highlightQr();
+        showToast('👆 สำหรับ LINE: ให้แตะค้างที่รูปภาพ QR 1 วินาที ➔ "บันทึกรูปภาพ" รูปจะเข้าอัลบั้ม 100% ค่ะ');
       } else {
         showToast('✅ กำลังดาวน์โหลดรูปภาพ QR Code ลงเครื่องค่ะ');
       }
