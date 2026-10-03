@@ -264,20 +264,47 @@ const syncVaultWithServer = async () => {
         const serverDeletedUsers = new Set<string>(data.deletedUserIds || []);
         const serverDeletedStaff = new Set<string>(data.deletedStaffIds || []);
 
-        // Authoritative synchronization:
-        // A user is kept locally ONLY if the server confirms it is a currently active user and NOT deleted
-        const cleanUsers = users.filter((u: User) => (validUserIds.size > 0 ? validUserIds.has(u.UserID) : u.Role === 'Admin') && !serverDeletedUsers.has(u.UserID));
-        const cleanStaff = staff.filter((s: Staff) => (!data.validStaffIds || data.validStaffIds.includes(s.StaffID)) && !serverDeletedStaff.has(s.StaffID) && !serverDeletedUsers.has(s.UserID));
+        // Authoritative two-way synchronization:
+        // Merge server users with local persisted users so user accounts are always up-to-date and never wiped
+        const combinedUsersMap = new Map<string, User>();
+        if (Array.isArray(data.users)) {
+          data.users.forEach((u: User) => {
+            if (u && u.UserID && !serverDeletedUsers.has(u.UserID)) combinedUsersMap.set(u.UserID, u);
+          });
+        }
+        users.forEach((u: User) => {
+          if (u && u.UserID && !serverDeletedUsers.has(u.UserID) && !combinedUsersMap.has(u.UserID)) {
+            combinedUsersMap.set(u.UserID, u);
+          }
+        });
+        const cleanUsers = Array.from(combinedUsersMap.values());
         localStorage.setItem('sabaidee_persisted_users', JSON.stringify(cleanUsers));
+
+        const combinedStaffMap = new Map<string, Staff>();
+        if (Array.isArray(data.staff)) {
+          data.staff.forEach((s: Staff) => {
+            if (s && s.StaffID && !serverDeletedStaff.has(s.StaffID)) combinedStaffMap.set(s.StaffID, s);
+          });
+        }
+        staff.forEach((s: Staff) => {
+          if (s && s.StaffID && !serverDeletedStaff.has(s.StaffID) && !combinedStaffMap.has(s.StaffID)) {
+            combinedStaffMap.set(s.StaffID, s);
+          }
+        });
+        const cleanStaff = Array.from(combinedStaffMap.values());
         localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(cleanStaff));
 
         const sessionRaw = localStorage.getItem('sabaidee_active_session');
         if (sessionRaw) {
           try {
             const sess = JSON.parse(sessionRaw);
-            if (sess?.user?.UserID && (serverDeletedUsers.has(sess.user.UserID) || (validUserIds.size > 0 && !validUserIds.has(sess.user.UserID)))) {
+            if (sess?.user?.UserID && serverDeletedUsers.has(sess.user.UserID)) {
               localStorage.removeItem('sabaidee_active_session');
               localStorage.removeItem('sabaidee_auth');
+            } else if (sess?.user?.UserID && combinedUsersMap.has(sess.user.UserID)) {
+              const latestUser = combinedUsersMap.get(sess.user.UserID)!;
+              const latestStaff = sess.staff?.StaffID && combinedStaffMap.has(sess.staff.StaffID) ? combinedStaffMap.get(sess.staff.StaffID)! : sess.staff;
+              saveActiveSession(latestUser, latestStaff || null, sess.role || latestUser.Role);
             }
           } catch {}
         }

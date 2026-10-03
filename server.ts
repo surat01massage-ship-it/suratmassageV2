@@ -637,39 +637,62 @@ async function startServer() {
     res.json({ success: true, user, staff });
   });
 
-  // Client Data Rehydration & Sync endpoint to guarantee zero data loss & permanent deletion enforcement
+  // Client Data Rehydration & Sync endpoint: Ensures zero user data loss across GitHub updates and server redeployments
   app.post('/api/sync/rehydrate-users', (req, res) => {
     const db = getDatabase();
     const { users, staff } = req.body;
 
     const deletedUserSet = new Set(db.deletedUserIds || []);
     const deletedStaffSet = new Set(db.deletedStaffIds || []);
+    let dbModified = false;
 
-    // CRITICAL: Any user or staff sent from client cache that does not exist in the authoritative database
-    // is considered deleted and must NEVER be resurrected. We tell the client to prune them immediately.
+    // 1. Rehydrate & restore users from client if missing on server
     if (Array.isArray(users)) {
       for (const u of users) {
-        if (!u || !u.UserID) continue;
-        const exists = db.users.some(x => x.UserID === u.UserID);
-        if (!exists) {
-          deletedUserSet.add(u.UserID);
+        if (!u || !u.UserID || !u.Phone) continue;
+        if (deletedUserSet.has(u.UserID)) continue; // Skip if explicitly deleted by admin
+
+        const existingIdx = db.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
+        if (existingIdx === -1) {
+          // User exists on client but not on server (e.g. after fresh git deploy) -> Rehydrate back into database!
+          db.users.push(u);
+          dbModified = true;
+          console.log(`[Sync] Rehydrated user from client: ${u.Name} (${u.UserID} - ${u.Phone})`);
+        } else {
+          // Merge any client-updated profile details
+          db.users[existingIdx] = { ...u, ...db.users[existingIdx] };
         }
       }
     }
 
+    // 2. Rehydrate & restore staff from client if missing on server
     if (Array.isArray(staff)) {
       for (const s of staff) {
         if (!s || !s.StaffID) continue;
-        const exists = db.staff.some(x => x.StaffID === s.StaffID);
-        if (!exists) {
-          deletedStaffSet.add(s.StaffID);
+        if (deletedStaffSet.has(s.StaffID) || (s.UserID && deletedUserSet.has(s.UserID))) continue;
+
+        const existingIdx = db.staff.findIndex(x => x.StaffID === s.StaffID || (s.UserID && x.UserID === s.UserID));
+        if (existingIdx === -1) {
+          // Staff exists on client but not on server -> Rehydrate back into database!
+          db.staff.push(s);
+          dbModified = true;
+          console.log(`[Sync] Rehydrated staff from client: ${s.Nickname} (${s.StaffID})`);
+        } else {
+          // Keep highest credit and newest info
+          const currentCredit = Number(db.staff[existingIdx].Credit) || 0;
+          const incomingCredit = Number(s.Credit) || 0;
+          db.staff[existingIdx] = {
+            ...s,
+            ...db.staff[existingIdx],
+            Credit: Math.max(currentCredit, incomingCredit)
+          };
         }
       }
     }
 
-    db.deletedUserIds = Array.from(deletedUserSet);
-    db.deletedStaffIds = Array.from(deletedStaffSet);
-    saveDatabase(db);
+    if (dbModified) {
+      saveDatabase(db);
+    }
 
     res.json({
       success: true,
@@ -679,8 +702,8 @@ async function startServer() {
       validStaffIds: db.staff.map(s => s.StaffID),
       users: db.users,
       staff: db.staff,
-      deletedUserIds: Array.from(deletedUserSet),
-      deletedStaffIds: Array.from(deletedStaffSet)
+      deletedUserIds: db.deletedUserIds || [],
+      deletedStaffIds: db.deletedStaffIds || []
     });
   });
 
@@ -2775,10 +2798,10 @@ async function startServer() {
   });
 
   // High-Resolution QR Code Image & Direct Device Download API (Handles image URLs, custom links, PromptPay, and LINE browser)
-  app.get(['/api/qr-image', '/api/qr-download'], async (req, res) => {
+  app.get(['/api/qr-image', '/api/qr-image.png', '/api/qr-download', '/api/qr-download.png'], async (req, res) => {
     const db = getDatabase();
     const settings = db.settings || defaultSettings;
-    const isDownload = req.path === '/api/qr-download' || req.query.download === '1';
+    const isDownload = req.path.includes('download') || req.query.download === '1';
 
     try {
       let pngBuffer: Buffer | null = null;
@@ -2881,6 +2904,7 @@ async function startServer() {
       const filename = `QR_Code_${rawAccount || 'SabaiDee'}.png`;
 
       res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', String(pngBuffer.length));
       res.setHeader('Cache-Control', 'public, max-age=3600');
       if (isDownload) {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -2902,7 +2926,11 @@ async function startServer() {
     const bankName = settings.bankName || 'ธนาคารทั่วไป';
     const bankAccount = settings.bankAccount || '081-234-5678';
     const bankAccountName = settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ';
-    const hasCustomQr = !!(settings.qrCodeImage && !settings.qrCodeImage.includes('wikipedia.org'));
+    const rawTarget = String(req.query.url || req.query.link || settings.qrCodeImage || '').trim();
+    const hasCustomQr = !!(rawTarget && !rawTarget.toLowerCase().includes('wikipedia.org'));
+    const qrParam = rawTarget ? `?url=${encodeURIComponent(rawTarget)}` : '';
+    const qrImgSrc = `/api/qr-image.png${qrParam}`;
+    const qrDownloadSrc = `/api/qr-download.png?download=1${rawTarget ? `&url=${encodeURIComponent(rawTarget)}` : ''}`;
 
     const html = `<!DOCTYPE html>
 <html lang="th">
@@ -3159,7 +3187,7 @@ async function startServer() {
 
     <!-- Clear QR Image Container -->
     <div class="qr-container" id="qr-box">
-      <img id="qr-img" class="qr-img" src="/api/qr-image" alt="QR Code" title="แตะค้างเพื่อบันทึกรูปภาพ" />
+      <img id="qr-img" class="qr-img" src="${qrImgSrc}" alt="QR Code" title="แตะค้างเพื่อบันทึกรูปภาพ" />
     </div>
 
     <!-- Instructions that directly solve LINE issue -->
@@ -3167,13 +3195,13 @@ async function startServer() {
       <span>👆</span> แตะค้างที่รูปภาพ QR 1 วินาที ➔ "บันทึกรูปภาพ"
     </div>
 
-    <div class="line-guide">
+    <div class="line-guide" id="line-guide-box">
       <div class="line-guide-header">
         <span>💡</span> วิธีบันทึกภาพให้เข้าเครื่อง 100% (สำหรับผู้ใช้ LINE):
       </div>
       <div class="line-guide-desc">
-        <strong>• วิธีที่ 1 (ง่ายสุด):</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันที 100% ค่ะ<br>
-        <strong>• วิธีที่ 2:</strong> กดปุ่มสีเขียว <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อดาวน์โหลดตรงเข้าเครื่องอัตโนมัติ
+        <strong>• สำหรับ Android:</strong> กดปุ่มสีเขียว <strong>"เปิดใน Chrome (ดาวน์โหลดอัตโนมัติ)"</strong> หรือกดปุ่ม <strong>"บันทึกรูปภาพลงอัลบั้ม"</strong> ด้านล่าง รูปจะถูกดาวน์โหลดลงเครื่องทันที 100% ค่ะ<br>
+        <strong>• สำหรับ iPhone:</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> ➔ เลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันทีค่ะ
       </div>
     </div>
 
@@ -3189,13 +3217,13 @@ async function startServer() {
     </div>
 
     <!-- Action Buttons -->
-    <button type="button" class="btn-main" onclick="saveQrToGallery()">
+    <a href="${qrDownloadSrc}&openExternalBrowser=1" class="btn-main" id="btn-save-action" onclick="saveQrToGallery(event)">
       <span>📥</span> บันทึกรูปภาพลงอัลบั้ม (Save Image)
-    </button>
+    </a>
 
-    <button type="button" class="btn-external" onclick="openInExternal()">
-      <span>🌐</span> เปิดใน Safari / Chrome (เบราว์เซอร์เครื่อง)
-    </button>
+    <a href="${qrDownloadSrc}&openExternalBrowser=1" class="btn-external" id="btn-external-action" onclick="openInExternal(event)">
+      <span>🌐</span> เปิดใน Chrome / Safari (ดาวน์โหลดอัตโนมัติ)
+    </a>
 
     <a href="/" class="btn-back">⬅️ กลับสู่ระบบ</a>
   </div>
@@ -3250,52 +3278,84 @@ async function startServer() {
       document.body.removeChild(ta);
     }
 
-    function openInExternal() {
-      var currentUrl = new URL(window.location.href);
-      currentUrl.searchParams.set('openExternalBrowser', '1');
-      window.location.href = currentUrl.toString();
+    function openInExternal(e) {
+      var inLine = /Line\//i.test(navigator.userAgent || '');
+      if (inLine) {
+        // In LINE (both Android & iOS), openExternalBrowser=1 instructs LINE to open in device default browser (Chrome/Safari)
+        var targetUrl = new URL('${qrDownloadSrc}', window.location.origin);
+        targetUrl.searchParams.set('openExternalBrowser', '1');
+        targetUrl.searchParams.set('download', '1');
+        window.location.href = targetUrl.toString();
+        showToast('กำลังเปิดเบราว์เซอร์เพื่อดาวน์โหลด QR Code ค่ะ...');
+        return;
+      }
+      triggerDirectDownload();
     }
 
-    async function saveQrToGallery() {
+    async function saveQrToGallery(e) {
       var inLine = /Line\//i.test(navigator.userAgent || '');
+      var isAndroid = /Android/i.test(navigator.userAgent || '');
+      var isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
       
-      // 1. Try native Web Share API (gives direct native "Save Image" to Photos on iOS & Android)
-      if (navigator.share) {
+      // On Android inside LINE: WebViews block blob downloads, so open external Chrome download via openExternalBrowser=1
+      if (inLine && isAndroid) {
+        showToast('กำลังดาวน์โหลดรูปภาพ QR Code ผ่าน Chrome ค่ะ...');
+        openInExternal(e);
+        return;
+      }
+
+      // On iOS: Try native Web Share API (gives direct native "Save Image" to Photos on iPhone)
+      if (isIos && navigator.share) {
         try {
-          var res = await fetch('/api/qr-image');
-          var blob = await res.blob();
-          var file = new File([blob], 'QR_Code_SabaiDee.png', { type: 'image/png' });
-          if (!navigator.canShare || navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: 'QR Code SabaiDee',
-              text: 'QR Code'
-            });
-            showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีค่ะ');
-            return;
+          var res = await fetch('${qrImgSrc}');
+          if (res.ok) {
+            var blob = await res.blob();
+            var file = new File([blob], 'QR_Code_SabaiDee.png', { type: 'image/png' });
+            if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+              if (e) e.preventDefault();
+              await navigator.share({
+                files: [file],
+                title: 'QR Code SabaiDee',
+                text: 'QR Code สำหรับเติมเครดิต'
+              });
+              showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีค่ะ');
+              return;
+            }
           }
-        } catch (e) {
-          if (e.name === 'AbortError') return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
         }
       }
 
-      // 2. Direct browser download trigger
+      // Direct browser download trigger
+      if (e) e.preventDefault();
+      triggerDirectDownload();
+    }
+
+    function triggerDirectDownload() {
       try {
         var aLink = document.createElement('a');
-        aLink.href = '/api/qr-download';
+        aLink.href = '${qrDownloadSrc}';
         aLink.download = 'QR_Code_SabaiDee.png';
         document.body.appendChild(aLink);
         aLink.click();
-        setTimeout(function() { document.body.removeChild(aLink); }, 1000);
-      } catch (err) {}
-
-      if (inLine) {
-        highlightQr();
-        showToast('👆 สำหรับ LINE: ให้แตะค้างที่รูปภาพ QR 1 วินาที ➔ "บันทึกรูปภาพ" รูปจะเข้าอัลบั้ม 100% ค่ะ');
-      } else {
-        showToast('✅ กำลังดาวน์โหลดรูปภาพ QR Code ลงเครื่องค่ะ');
+        setTimeout(function() {
+          if (document.body.contains(aLink)) document.body.removeChild(aLink);
+        }, 1000);
+        showToast('✅ บันทึกรูปภาพ QR Code ลงเครื่องเรียบร้อยแล้วค่ะ');
+      } catch (err) {
+        window.location.href = '${qrDownloadSrc}';
       }
     }
+
+    // Auto-trigger direct download if opened in external browser with download=1
+    window.addEventListener('DOMContentLoaded', function() {
+      var urlParams = new URLSearchParams(window.location.search);
+      var inLine = /Line\//i.test(navigator.userAgent || '');
+      if (urlParams.get('download') === '1' && !inLine) {
+        setTimeout(triggerDirectDownload, 500);
+      }
+    });
   </script>
 </body>
 </html>`;

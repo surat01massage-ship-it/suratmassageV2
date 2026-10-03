@@ -250,32 +250,6 @@ export default function StaffPanel({
   const [qrDownloadSuccess, setQrDownloadSuccess] = useState<boolean>(false);
   const [copiedAccount, setCopiedAccount] = useState<boolean>(false);
   const [showFullQrModal, setShowFullQrModal] = useState<boolean>(false);
-  const [generatedQrDataUrl, setGeneratedQrDataUrl] = useState<string>('');
-
-  // Fetch QR image into base64 Data URL so mobile LINE browser can save image via native long-press 100%
-  useEffect(() => {
-    let isMounted = true;
-    const loadQrData = async () => {
-      try {
-        const qrParam = settings.qrCodeImage ? `?url=${encodeURIComponent(settings.qrCodeImage)}` : '';
-        const res = await fetch(`/api/qr-image${qrParam}`);
-        if (res.ok && isMounted) {
-          const blob = await res.blob();
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (isMounted && typeof reader.result === 'string') {
-              setGeneratedQrDataUrl(reader.result);
-            }
-          };
-          reader.readAsDataURL(blob);
-        }
-      } catch (e) {
-        console.warn("Could not preload QR data URI:", e);
-      }
-    };
-    loadQrData();
-    return () => { isMounted = false; };
-  }, [settings.qrCodeImage, settings.bankAccount]);
 
   // Helper to detect LINE in-app browser (iOS / Android)
   const isLineBrowser = () => {
@@ -284,17 +258,41 @@ export default function StaffPanel({
     return /Line\//i.test(ua) || /Line/i.test(ua);
   };
 
-  // Helper to open current page or target URL in external browser (Safari / Chrome) from LINE
+  // Helper to detect Android device
+  const isAndroidDevice = () => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || navigator.vendor || '';
+    return /Android/i.test(ua);
+  };
+
+  // Helper to detect iOS device
+  const isIosDevice = () => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || navigator.vendor || '';
+    return /iPhone|iPad|iPod/i.test(ua);
+  };
+
+  // Helper to open target URL in external default browser (Chrome / Safari) from LINE
   const handleOpenInExternalBrowser = (targetUrl?: string) => {
     try {
-      const urlToOpen = targetUrl || '/qr-save';
-      const currentUrl = new URL(urlToOpen, window.location.origin);
-      currentUrl.searchParams.set('openExternalBrowser', '1');
-      window.location.href = currentUrl.toString();
+      const inLine = isLineBrowser();
+      const defaultTarget = settings.qrCodeImage ? `/qr-save?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save?download=1';
+      const rawTarget = targetUrl || defaultTarget;
+      const fullUrl = new URL(rawTarget, window.location.origin);
+
+      if (inLine) {
+        // Both Android & iOS in LINE natively recognize openExternalBrowser=1
+        // LINE intercepts this parameter and opens the default browser (Chrome on Android, Safari on iOS)
+        fullUrl.searchParams.set('openExternalBrowser', '1');
+        window.location.href = fullUrl.toString();
+        return;
+      }
+
+      window.location.href = fullUrl.toString();
     } catch {
-      const base = targetUrl || '/qr-save';
-      const sep = base.includes('?') ? '&' : '?';
-      window.location.href = base + sep + 'openExternalBrowser=1';
+      const fallback = targetUrl || '/qr-save?download=1';
+      const sep = fallback.includes('?') ? '&' : '?';
+      window.location.href = fallback + sep + 'openExternalBrowser=1';
     }
   };
 
@@ -917,13 +915,27 @@ export default function StaffPanel({
     const rawAccount = (settings.bankAccount || '').replace(/[^0-9a-zA-Z]/g, '') || 'pay';
     const fileName = `QR_Code_${rawAccount}.png`;
     const inLine = isLineBrowser();
+    const isAnd = isAndroidDevice();
+    const isIos = isIosDevice();
     const qrParam = settings.qrCodeImage ? `?url=${encodeURIComponent(settings.qrCodeImage)}` : '';
 
     try {
-      // 1. Mobile Web Share API (gives direct native "Save Image" to Photos on supported devices)
-      if (typeof navigator !== 'undefined' && navigator.share) {
+      // 1. Android inside LINE:
+      // LINE Android WebView blocks blob downloads and lacks "Save Image" in native share sheet.
+      // Therefore, open Chrome directly using LINE's openExternalBrowser=1 to auto-download!
+      if (inLine && isAnd) {
+        handleOpenInExternalBrowser(settings.qrCodeImage ? `/api/qr-download.png?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/api/qr-download.png?download=1');
+        setQrDownloadSuccess(true);
+        setShowFullQrModal(true);
+        onShowToast("ระบบกำลังเปิด Chrome เพื่อดาวน์โหลด QR Code ลงเครื่องค่ะ หรือแตะค้างที่รูปภาพเพื่อบันทึก", "success");
+        setTimeout(() => setQrDownloadSuccess(false), 4000);
+        return;
+      }
+
+      // 2. Mobile Web Share API on iOS (iOS share sheet natively has "Save Image" to Photos)
+      if (isIos && typeof navigator !== 'undefined' && navigator.share) {
         try {
-          const res = await fetch(`/api/qr-image${qrParam}`);
+          const res = await fetch(`/api/qr-image.png${qrParam}`);
           if (res.ok) {
             const blob = await res.blob();
             const file = new File([blob], fileName, { type: 'image/png' });
@@ -947,9 +959,9 @@ export default function StaffPanel({
         }
       }
 
-      // 2. Direct browser file download via Blob URL & anchor click
+      // 3. Direct browser file download via Blob URL & anchor click (for Chrome/Safari outside LINE)
       try {
-        const res = await fetch(`/api/qr-image${qrParam}`);
+        const res = await fetch(`/api/qr-image.png${qrParam}`);
         if (res.ok) {
           const blob = await res.blob();
           const blobUrl = URL.createObjectURL(blob);
@@ -967,7 +979,7 @@ export default function StaffPanel({
         }
       } catch {
         const link = document.createElement('a');
-        link.href = `/api/qr-download${qrParam}`;
+        link.href = `/api/qr-download.png${qrParam ? qrParam + '&' : '?'}download=1`;
         link.download = fileName;
         document.body.appendChild(link);
         link.click();
@@ -977,7 +989,11 @@ export default function StaffPanel({
       setQrDownloadSuccess(true);
       if (inLine) {
         setShowFullQrModal(true);
-        onShowToast("👆 สำหรับแอป LINE: กรุณาแตะค้างที่รูปภาพ 1 วินาที ➔ เลือก 'บันทึกรูปภาพ' (Save Image) รูปจะเข้าอัลบั้ม 100% ค่ะ หรือกดปุ่มเปิดใน Safari/Chrome", "info");
+        if (isAnd) {
+          onShowToast("สำหรับ Android ใน LINE: กดปุ่ม 'ดาวน์โหลดผ่าน Chrome' เพื่อบันทึกรูปเข้าอัลบั้ม 100% ค่ะ", "info");
+        } else {
+          onShowToast("👆 สำหรับ iPhone: แตะค้างที่รูปภาพ 1 วินาที ➔ เลือก 'บันทึกรูปภาพ' (Save Image) ค่ะ", "info");
+        }
       } else {
         onShowToast("ดาวน์โหลดภาพ QR Code เรียบร้อยแล้ว!", "success");
       }
@@ -985,7 +1001,7 @@ export default function StaffPanel({
     } catch (err) {
       console.error("Error saving QR Code:", err);
       setShowFullQrModal(true);
-      onShowToast("แตะค้างที่ภาพ QR Code เพื่อบันทึกรูปภาพค่ะ", "info");
+      onShowToast("แตะค้างที่ภาพ QR Code หรือเปิดในเบราว์เซอร์เพื่อบันทึกรูปภาพค่ะ", "info");
     } finally {
       setIsDownloadingQr(false);
     }
@@ -2045,7 +2061,7 @@ export default function StaffPanel({
 
             <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-300 rounded-2xl p-2.5 shadow-sm flex items-center justify-center select-auto">
               <img 
-                src={generatedQrDataUrl || (settings.qrCodeImage ? `/api/qr-image?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image")} 
+                src={settings.qrCodeImage ? `/api/qr-image.png?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image.png"} 
                 className="w-full h-full object-contain rounded-lg select-auto pointer-events-auto cursor-pointer" 
                 alt="QR Code สำหรับเติมเครดิต" 
                 onClick={() => setShowFullQrModal(true)}
@@ -2076,15 +2092,32 @@ export default function StaffPanel({
               <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 text-left space-y-1.5 shadow-2xs">
                 <div className="flex items-center gap-1.5 text-emerald-900 font-black text-xs">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                  <span>วิธีบันทึกภาพให้เข้าแกลเลอรีในเครื่อง 100% (เมื่อเปิดใน LINE):</span>
+                  <span>
+                    {isAndroidDevice() 
+                      ? 'วิธีบันทึกภาพสำหรับมือถือ Android (เมื่อเปิดใน LINE):' 
+                      : 'วิธีบันทึกภาพสำหรับ iPhone (เมื่อเปิดใน LINE):'}
+                  </span>
                 </div>
                 <div className="text-[11px] text-emerald-950 leading-relaxed font-semibold space-y-1">
-                  <p>
-                    👆 <strong>วิธีที่ 1 (ง่ายสุด):</strong> แตะที่รูป QR ด้านบน แล้ว <strong>"แตะค้างที่รูปภาพ 1 วินาที"</strong> ➔ เลือก <strong>"บันทึกรูปภาพ"</strong> (Save Image) รูปจะเข้าอัลบั้มในโทรศัพท์ทันที 100% ค่ะ
-                  </p>
-                  <p>
-                    🌐 <strong>วิธีที่ 2:</strong> กดปุ่ม <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อให้ระบบเปิดเบราว์เซอร์หลักของเครื่องในการบันทึกรูปเข้าอัลบั้ม
-                  </p>
+                  {isAndroidDevice() ? (
+                    <>
+                      <p>
+                        🤖 <strong>วิธีที่ 1 (แนะนำสำหรับ Android):</strong> กดปุ่มสีเขียว <strong>"ดาวน์โหลด QR Code ผ่าน Chrome"</strong> ด้านล่าง รูปจะถูกบันทึกเข้าอัลบั้ม/ดาวน์โหลดในเครื่องทันที 100% ค่ะ
+                      </p>
+                      <p>
+                        👆 <strong>วิธีที่ 2:</strong> แตะที่รูป QR ด้านบน เพื่อดูขนาดเต็ม แล้วแตะค้างที่รูปภาพเพื่อเลือกบันทึกรูป
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        👆 <strong>วิธีที่ 1 (ง่ายสุด):</strong> แตะที่รูป QR ด้านบน แล้ว <strong>"แตะค้างที่รูปภาพ 1 วินาที"</strong> ➔ เลือก <strong>"บันทึกรูปภาพ"</strong> (Save Image) รูปจะเข้าอัลบั้มในโทรศัพท์ทันที 100% ค่ะ
+                      </p>
+                      <p>
+                        🌐 <strong>วิธีที่ 2:</strong> กดปุ่ม <strong>"เปิดใน Safari"</strong> ด้านล่างเพื่อให้ระบบเปิดเบราว์เซอร์เครื่องในการบันทึกรูปเข้าอัลบั้ม
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -2124,11 +2157,15 @@ export default function StaffPanel({
                 <button
                   type="button"
                   id="btn-line-open-external"
-                  onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save')}
+                  onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save?download=1')}
                   className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4 text-white" />
-                  <span>เปิดใน Safari / Chrome (บันทึกรูปเข้าอัลบั้ม 100%)</span>
+                  <span>
+                    {isAndroidDevice() 
+                      ? '📥 ดาวน์โหลด QR Code ผ่าน Chrome (เข้าอัลบั้ม 100%)' 
+                      : '🌐 เปิดใน Safari / Chrome (บันทึกรูปเข้าอัลบั้ม 100%)'}
+                  </span>
                 </button>
               )}
 
@@ -3727,15 +3764,32 @@ export default function StaffPanel({
               <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-3 text-left space-y-1.5 shadow-2xs">
                 <div className="flex items-center gap-1.5 text-emerald-900 font-black text-xs">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                  <span>วิธีบันทึกภาพให้เข้าแกลเลอรีในเครื่อง 100% (สำหรับผู้ใช้ LINE):</span>
+                  <span>
+                    {isAndroidDevice() 
+                      ? 'คำแนะนำสำหรับ Android เมื่อเปิดใน LINE:' 
+                      : 'วิธีบันทึกภาพสำหรับ iPhone (เมื่อเปิดใน LINE):'}
+                  </span>
                 </div>
                 <div className="text-[11px] text-emerald-950 leading-relaxed font-semibold space-y-1">
-                  <p>
-                    👆 <strong>วิธีที่ 1 (ง่ายสุด):</strong> ใช้นิ้ว <strong>แตะค้างที่รูปภาพ QR Code ด้านล่าง 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ"</strong> (Save Image) รูปจะเข้าอัลบั้มในเครื่องทันที 100% ค่ะ
-                  </p>
-                  <p>
-                    🌐 <strong>วิธีที่ 2:</strong> กดปุ่ม <strong>"เปิดใน Safari / Chrome"</strong> ด้านล่างเพื่อให้ระบบเปิดเบราว์เซอร์เครื่องและบันทึกรูปเข้าอัลบั้ม
-                  </p>
+                  {isAndroidDevice() ? (
+                    <>
+                      <p>
+                        📥 <strong>วิธีที่ 1 (แนะนำสำหรับ Android):</strong> กดปุ่มสีเขียว <strong>"ดาวน์โหลด QR Code ผ่าน Chrome"</strong> ด้านล่าง รูปจะถูกดาวน์โหลดและบันทึกเข้าอัลบั้มรูปภาพในเครื่องทันที 100% ค่ะ
+                      </p>
+                      <p>
+                        👆 <strong>วิธีที่ 2:</strong> ใช้นิ้วแตะค้างที่รูปภาพ QR Code ด้านล่าง 1 วินาที เพื่อเลือกบันทึกรูป
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p>
+                        👆 <strong>วิธีที่ 1 (ง่ายสุด):</strong> ใช้นิ้ว <strong>แตะค้างที่รูปภาพ QR Code ด้านล่าง 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ"</strong> (Save Image) รูปจะเข้าอัลบั้มในเครื่องทันที 100% ค่ะ
+                      </p>
+                      <p>
+                        🌐 <strong>วิธีที่ 2:</strong> กดปุ่ม <strong>"เปิดใน Safari"</strong> ด้านล่างเพื่อให้ระบบเปิดเบราว์เซอร์เครื่องและบันทึกรูปเข้าอัลบั้ม
+                      </p>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -3743,7 +3797,7 @@ export default function StaffPanel({
             <div className="space-y-2">
               <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md inline-block w-64 h-64 mx-auto select-auto">
                 <img 
-                  src={generatedQrDataUrl || (settings.qrCodeImage ? `/api/qr-image?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image")} 
+                  src={settings.qrCodeImage ? `/api/qr-image.png?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image.png"} 
                   alt="QR Code สำหรับเติมเครดิต" 
                   className="w-full h-full object-contain rounded-xl select-auto pointer-events-auto cursor-pointer"
                   style={{
@@ -3782,11 +3836,15 @@ export default function StaffPanel({
                   <button
                     type="button"
                     id="btn-modal-open-external"
-                    onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save')}
+                    onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save?download=1')}
                     className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-white" />
-                    <span>🌐 เปิดใน Safari / Chrome (บันทึกรูปเข้าอัลบั้ม 100%)</span>
+                    <span>
+                      {isAndroidDevice() 
+                        ? '📥 ดาวน์โหลด QR Code ผ่าน Chrome (เข้าอัลบั้ม 100%)' 
+                        : '🌐 เปิดใน Safari / Chrome (บันทึกรูปเข้าอัลบั้ม 100%)'}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -3794,7 +3852,7 @@ export default function StaffPanel({
                     className="w-full py-2.5 px-4 bg-sky-600 hover:bg-sky-700 active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-sm cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
-                    <span>📥 ดาวน์โหลดไฟล์ภาพ / แชร์ลงเครื่อง (Save/Share)</span>
+                    <span>📥 บันทึกรูปภาพ QR Code ลงเครื่อง (Save Image)</span>
                   </button>
                 </>
               ) : (

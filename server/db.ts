@@ -244,121 +244,107 @@ export function getDatabase(): DatabaseSchema {
   const persistentDb = tryReadFile(DB_PERSISTENT_PATH);
   const backupDb = tryReadFile(DB_BAK_PATH);
 
-  // If primaryDb is present and valid, it is the canonical database (authoritative source of truth)
-  // We only use backups if primaryDb is missing or corrupt
-  const sourceDb = primaryDb || persistentDb || backupDb;
-  if (sourceDb && Array.isArray(sourceDb.users) && sourceDb.users.length > 0) {
-    let liveDb: DatabaseSchema = { ...sourceDb };
-
-    // Collect all deleted tombstones across files so deleted records are never resurrected
-    const allDeletedUsers = new Set<string>([
-      'U002', 'U005', 'U759249', 'U347114',
-      ...(primaryDb?.deletedUserIds || []),
-      ...(persistentDb?.deletedUserIds || []),
-      ...(backupDb?.deletedUserIds || [])
-    ]);
-    const allDeletedStaff = new Set<string>([
-      'SFT001', 'SFT956678', 'SFT738787',
-      ...(primaryDb?.deletedStaffIds || []),
-      ...(persistentDb?.deletedStaffIds || []),
-      ...(backupDb?.deletedStaffIds || [])
-    ]);
-
-    // Retain ONLY the single main Admin user (U001 - สมชาย ยิ่งดี) as requested:
-    // "ลบผู้ใช้ทุกคนออกเหลือแค่แอดมินคนเดียว ห้ามเอาคนที่ลบไปแล้วกลับมาอีก"
-    if (Array.isArray(liveDb.users)) {
-      liveDb.users.forEach(u => {
-        if (u.UserID !== 'U001') {
-          allDeletedUsers.add(u.UserID);
-        }
-      });
-      liveDb.users = liveDb.users.filter(u => u.UserID === 'U001');
-      if (liveDb.users.length === 0) {
-        liveDb.users = [...defaultUsers];
-      }
-    }
-
-    if (Array.isArray(liveDb.staff)) {
-      liveDb.staff.forEach(s => {
-        allDeletedStaff.add(s.StaffID);
-        if (s.UserID) allDeletedUsers.add(s.UserID);
-      });
-      liveDb.staff = [];
-    }
-
-    liveDb.deletedUserIds = Array.from(allDeletedUsers);
-    liveDb.deletedStaffIds = Array.from(allDeletedStaff);
-
-    // Filter out any deleted records
-    if (!Array.isArray(liveDb.users)) liveDb.users = [...defaultUsers];
-    if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
-    liveDb.users = liveDb.users.filter(u => !allDeletedUsers.has(u.UserID));
-    if (liveDb.users.length === 0) {
-      liveDb.users = [...defaultUsers];
-    }
-    liveDb.staff = [];
-    liveDb.bookings = [];
-    liveDb.transactions = [];
-    liveDb.reviews = [];
-
-    if (!Array.isArray(liveDb.services)) liveDb.services = defaultServices;
-    if (!Array.isArray(liveDb.bookings)) liveDb.bookings = [];
-    if (!Array.isArray(liveDb.transactions)) liveDb.transactions = [];
-    if (!Array.isArray(liveDb.reviews)) liveDb.reviews = [];
-    if (!Array.isArray(liveDb.notifications)) liveDb.notifications = [];
-    if (!liveDb.settings) {
-      liveDb.settings = defaultSettings;
-    } else {
-      liveDb.settings = { ...defaultSettings, ...liveDb.settings };
-    }
-    const numMin = Number(liveDb.settings.minCredit);
-    if (!numMin || isNaN(numMin) || numMin === 398 || numMin < 298) {
-      liveDb.settings.minCredit = 298;
-    } else {
-      liveDb.settings.minCredit = numMin;
-    }
-    if (liveDb.settings.qrCodeImage && liveDb.settings.qrCodeImage.includes('wikipedia.org')) {
-      liveDb.settings.qrCodeImage = '';
-    }
-
-    liveDb.staff.forEach(s => {
-      const numCredit = Number(s.Credit);
-      if (isNaN(numCredit) || s.Credit === undefined || s.Credit === null) {
-        s.Credit = 298;
-      } else {
-        s.Credit = numCredit;
-      }
-    });
-
-    // Ensure all 3 services are updated to 598 THB
-    liveDb.services.forEach(srv => {
-      if (srv.Price === 798 || srv.ServiceID === 'S001' || srv.ServiceID === 'S002' || srv.ServiceID === 'S003') {
-        srv.Price = 598;
-      }
-    });
-
-    inMemoryDB = liveDb;
-    saveDatabase(liveDb);
-    return liveDb;
+  // If both primaryDb and persistentDb/backupDb exist, merge them to guarantee no records are lost across git updates!
+  let liveDb: DatabaseSchema;
+  if (primaryDb && persistentDb) {
+    // Persistent backup retains historical runtime users even if primaryDb was replaced by git pull
+    liveDb = mergeDatabases(persistentDb, primaryDb);
+  } else if (primaryDb && backupDb) {
+    liveDb = mergeDatabases(backupDb, primaryDb);
+  } else if (primaryDb) {
+    liveDb = { ...primaryDb };
+  } else if (persistentDb) {
+    liveDb = { ...persistentDb };
+  } else if (backupDb) {
+    liveDb = { ...backupDb };
+  } else {
+    // Only if no database file exists at all (brand new deployment)
+    liveDb = {
+      users: [...defaultUsers],
+      staff: [],
+      services: [...defaultServices],
+      bookings: [],
+      transactions: [],
+      reviews: [],
+      notifications: [],
+      settings: { ...defaultSettings },
+      deletedUserIds: [],
+      deletedStaffIds: []
+    };
   }
 
-  // 2. Only if no database exists anywhere (first-time launch), initialize with defaults
-  const initialDB: DatabaseSchema = {
-    users: defaultUsers,
-    staff: defaultStaff,
-    services: defaultServices,
-    bookings: defaultBookings,
-    transactions: defaultTransactions,
-    reviews: defaultReviews,
-    notifications: defaultNotifications,
-    settings: defaultSettings,
-    deletedUserIds: ['U002', 'U005', 'U759249', 'U347114'],
-    deletedStaffIds: ['SFT001', 'SFT956678', 'SFT738787']
-  };
+  // Collect tombstones from records explicitly marked as deleted by admin
+  const allDeletedUsers = new Set<string>([
+    ...(primaryDb?.deletedUserIds || []),
+    ...(persistentDb?.deletedUserIds || []),
+    ...(backupDb?.deletedUserIds || []),
+    ...(liveDb.deletedUserIds || [])
+  ]);
+  const allDeletedStaff = new Set<string>([
+    ...(primaryDb?.deletedStaffIds || []),
+    ...(persistentDb?.deletedStaffIds || []),
+    ...(backupDb?.deletedStaffIds || []),
+    ...(liveDb.deletedStaffIds || [])
+  ]);
 
-  inMemoryDB = initialDB;
-  saveDatabase(initialDB);
-  return initialDB;
+  liveDb.deletedUserIds = Array.from(allDeletedUsers);
+  liveDb.deletedStaffIds = Array.from(allDeletedStaff);
+
+  // Filter out any explicitly deleted records
+  if (!Array.isArray(liveDb.users)) liveDb.users = [...defaultUsers];
+  if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
+  liveDb.users = liveDb.users.filter(u => !allDeletedUsers.has(u.UserID));
+
+  // Ensure default Admin exists if not already present, but never delete existing users
+  const hasAdmin = liveDb.users.some(u => u.Role === 'Admin');
+  if (!hasAdmin) {
+    liveDb.users.unshift(defaultUsers[0]);
+  }
+
+  // Preserve all staff, bookings, transactions, reviews, notifications
+  if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
+  liveDb.staff = liveDb.staff.filter(s => !allDeletedStaff.has(s.StaffID) && (!s.UserID || !allDeletedUsers.has(s.UserID)));
+  if (!Array.isArray(liveDb.bookings)) liveDb.bookings = [];
+  if (!Array.isArray(liveDb.transactions)) liveDb.transactions = [];
+  if (!Array.isArray(liveDb.reviews)) liveDb.reviews = [];
+  if (!Array.isArray(liveDb.notifications)) liveDb.notifications = [];
+  if (!Array.isArray(liveDb.services)) liveDb.services = defaultServices;
+
+  if (!liveDb.settings) {
+    liveDb.settings = defaultSettings;
+  } else {
+    liveDb.settings = { ...defaultSettings, ...liveDb.settings };
+  }
+
+  const numMin = Number(liveDb.settings.minCredit);
+  if (!numMin || isNaN(numMin) || numMin === 398 || numMin < 298) {
+    liveDb.settings.minCredit = 298;
+  } else {
+    liveDb.settings.minCredit = numMin;
+  }
+  if (liveDb.settings.qrCodeImage && liveDb.settings.qrCodeImage.includes('wikipedia.org')) {
+    liveDb.settings.qrCodeImage = '';
+  }
+
+  liveDb.staff.forEach(s => {
+    const numCredit = Number(s.Credit);
+    if (isNaN(numCredit) || s.Credit === undefined || s.Credit === null) {
+      s.Credit = 298;
+    } else {
+      s.Credit = numCredit;
+    }
+  });
+
+  // Ensure all 3 services are updated to 598 THB
+  liveDb.services.forEach(srv => {
+    if (srv.Price === 798 || srv.ServiceID === 'S001' || srv.ServiceID === 'S002' || srv.ServiceID === 'S003') {
+      srv.Price = 598;
+    }
+  });
+
+  inMemoryDB = liveDb;
+  saveDatabase(liveDb);
+  return liveDb;
 }
 
 export function saveDatabase(db: DatabaseSchema): void {
