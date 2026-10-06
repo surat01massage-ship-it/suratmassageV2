@@ -269,11 +269,11 @@ const syncVaultWithServer = async () => {
         const combinedUsersMap = new Map<string, User>();
         if (Array.isArray(data.users)) {
           data.users.forEach((u: User) => {
-            if (u && u.UserID && !serverDeletedUsers.has(u.UserID)) combinedUsersMap.set(u.UserID, u);
+            if (u && u.UserID) combinedUsersMap.set(u.UserID, u);
           });
         }
         users.forEach((u: User) => {
-          if (u && u.UserID && !serverDeletedUsers.has(u.UserID) && !combinedUsersMap.has(u.UserID)) {
+          if (u && u.UserID && !combinedUsersMap.has(u.UserID)) {
             combinedUsersMap.set(u.UserID, u);
           }
         });
@@ -283,11 +283,11 @@ const syncVaultWithServer = async () => {
         const combinedStaffMap = new Map<string, Staff>();
         if (Array.isArray(data.staff)) {
           data.staff.forEach((s: Staff) => {
-            if (s && s.StaffID && !serverDeletedStaff.has(s.StaffID)) combinedStaffMap.set(s.StaffID, s);
+            if (s && s.StaffID) combinedStaffMap.set(s.StaffID, s);
           });
         }
         staff.forEach((s: Staff) => {
-          if (s && s.StaffID && !serverDeletedStaff.has(s.StaffID) && !combinedStaffMap.has(s.StaffID)) {
+          if (s && s.StaffID && !combinedStaffMap.has(s.StaffID)) {
             combinedStaffMap.set(s.StaffID, s);
           }
         });

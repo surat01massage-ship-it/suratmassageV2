@@ -1,11 +1,16 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings } from '../src/types';
 
 const DB_PATH = path.join(process.cwd(), 'server', 'db.json');
 const DB_BAK_PATH = path.join(process.cwd(), 'server', 'db.json.bak');
 const DB_PERSISTENT_PATH = path.join(process.cwd(), 'server', 'db_persistent_backup.json');
 const DB_TMP_PATH = path.join(process.cwd(), 'server', 'db.json.tmp');
+
+// External vaults outside of repository tree to guarantee zero user data loss across git pulls, git pushes, or GitHub updates
+const EXTERNAL_VAULT_PATH = path.join(os.homedir(), '.sabaidee_permanent_vault.json');
+const TMP_VAULT_PATH = '/tmp/sabaidee_permanent_vault.json';
 
 // In-memory cache to prevent race conditions and frequent disk read locks
 let inMemoryDB: DatabaseSchema | null = null;
@@ -239,71 +244,58 @@ export function getDatabase(): DatabaseSchema {
     return inMemoryDB;
   }
 
-  // 1. Try reading the saved database from primary or persistent backup
+  // 1. Read databases from all persistent layers (repo files + external OS vaults)
   const primaryDb = tryReadFile(DB_PATH);
   const persistentDb = tryReadFile(DB_PERSISTENT_PATH);
   const backupDb = tryReadFile(DB_BAK_PATH);
+  const externalVaultDb = tryReadFile(EXTERNAL_VAULT_PATH);
+  const tmpVaultDb = tryReadFile(TMP_VAULT_PATH);
 
-  // If both primaryDb and persistentDb/backupDb exist, merge them to guarantee no records are lost across git updates!
-  let liveDb: DatabaseSchema;
-  if (primaryDb && persistentDb) {
-    // Persistent backup retains historical runtime users even if primaryDb was replaced by git pull
-    liveDb = mergeDatabases(persistentDb, primaryDb);
-  } else if (primaryDb && backupDb) {
-    liveDb = mergeDatabases(backupDb, primaryDb);
-  } else if (primaryDb) {
-    liveDb = { ...primaryDb };
-  } else if (persistentDb) {
-    liveDb = { ...persistentDb };
-  } else if (backupDb) {
-    liveDb = { ...backupDb };
-  } else {
-    // Only if no database file exists at all (brand new deployment)
-    liveDb = {
-      users: [...defaultUsers],
-      staff: [],
-      services: [...defaultServices],
-      bookings: [],
-      transactions: [],
-      reviews: [],
-      notifications: [],
-      settings: { ...defaultSettings },
-      deletedUserIds: [],
-      deletedStaffIds: []
-    };
+  // 2. Start with an empty base or default
+  let liveDb: DatabaseSchema = {
+    users: [...defaultUsers],
+    staff: [],
+    services: [...defaultServices],
+    bookings: [],
+    transactions: [],
+    reviews: [],
+    notifications: [],
+    settings: { ...defaultSettings },
+    deletedUserIds: [],
+    deletedStaffIds: []
+  };
+
+  // 3. Sequentially merge all database sources to guarantee ZERO user data loss across git pushes, git pulls, or GitHub deployments!
+  const sources = [primaryDb, backupDb, persistentDb, externalVaultDb, tmpVaultDb].filter(Boolean) as DatabaseSchema[];
+
+  if (sources.length > 0) {
+    // Start with the source having the most users as base
+    sources.sort((a, b) => ((b.users?.length || 0) + (b.staff?.length || 0)) - ((a.users?.length || 0) + (a.staff?.length || 0)));
+    liveDb = { ...sources[0] };
+
+    // Merge in all other sources
+    for (let i = 1; i < sources.length; i++) {
+      liveDb = mergeDatabases(liveDb, sources[i]);
+    }
+    // Also merge primaryDb changes if any
+    if (primaryDb && primaryDb !== sources[0]) {
+      liveDb = mergeDatabases(liveDb, primaryDb);
+    }
   }
 
-  // Collect tombstones from records explicitly marked as deleted by admin
-  const allDeletedUsers = new Set<string>([
-    ...(primaryDb?.deletedUserIds || []),
-    ...(persistentDb?.deletedUserIds || []),
-    ...(backupDb?.deletedUserIds || []),
-    ...(liveDb.deletedUserIds || [])
-  ]);
-  const allDeletedStaff = new Set<string>([
-    ...(primaryDb?.deletedStaffIds || []),
-    ...(persistentDb?.deletedStaffIds || []),
-    ...(backupDb?.deletedStaffIds || []),
-    ...(liveDb.deletedStaffIds || [])
-  ]);
-
-  liveDb.deletedUserIds = Array.from(allDeletedUsers);
-  liveDb.deletedStaffIds = Array.from(allDeletedStaff);
-
-  // Filter out any explicitly deleted records
-  if (!Array.isArray(liveDb.users)) liveDb.users = [...defaultUsers];
+  // 4. Ensure all users and staff are intact and valid
+  if (!Array.isArray(liveDb.users) || liveDb.users.length === 0) {
+    liveDb.users = [...defaultUsers];
+  }
   if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
-  liveDb.users = liveDb.users.filter(u => !allDeletedUsers.has(u.UserID));
 
-  // Ensure default Admin exists if not already present, but never delete existing users
+  // Ensure default Admin exists if not present, but NEVER delete existing users!
   const hasAdmin = liveDb.users.some(u => u.Role === 'Admin');
   if (!hasAdmin) {
     liveDb.users.unshift(defaultUsers[0]);
   }
 
   // Preserve all staff, bookings, transactions, reviews, notifications
-  if (!Array.isArray(liveDb.staff)) liveDb.staff = [];
-  liveDb.staff = liveDb.staff.filter(s => !allDeletedStaff.has(s.StaffID) && (!s.UserID || !allDeletedUsers.has(s.UserID)));
   if (!Array.isArray(liveDb.bookings)) liveDb.bookings = [];
   if (!Array.isArray(liveDb.transactions)) liveDb.transactions = [];
   if (!Array.isArray(liveDb.reviews)) liveDb.reviews = [];
@@ -357,7 +349,7 @@ export function saveDatabase(db: DatabaseSchema): void {
     fs.writeFileSync(DB_TMP_PATH, jsonString, 'utf8');
     fs.renameSync(DB_TMP_PATH, DB_PATH);
 
-    // 2. Safe writes to backup and persistent files
+    // 2. Safe writes to backup and persistent files in repo
     try {
       fs.writeFileSync(DB_BAK_PATH, jsonString, 'utf8');
     } catch (e) {
@@ -368,6 +360,19 @@ export function saveDatabase(db: DatabaseSchema): void {
       fs.writeFileSync(DB_PERSISTENT_PATH, jsonString, 'utf8');
     } catch (e) {
       console.warn('[DB] Persistent backup write failed:', e);
+    }
+
+    // 3. Safe writes to external system vaults (untouched by git pulls/pushes)
+    try {
+      fs.writeFileSync(EXTERNAL_VAULT_PATH, jsonString, 'utf8');
+    } catch (e) {
+      console.warn('[DB] External vault write failed:', e);
+    }
+
+    try {
+      fs.writeFileSync(TMP_VAULT_PATH, jsonString, 'utf8');
+    } catch (e) {
+      console.warn('[DB] Tmp vault write failed:', e);
     }
   } catch (error) {
     console.error("[DB] Failed to save database to disk:", error);

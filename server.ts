@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 dotenv.config({ override: true });
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import { getDatabase, saveDatabase, DatabaseSchema, defaultSettings } from './server/db';
@@ -291,6 +292,59 @@ async function startServer() {
       return res.sendStatus(204);
     }
     next();
+  });
+
+  // Serve uploaded assets directly
+  const uploadsDir = path.join(process.cwd(), 'server', 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsDir));
+
+  // Dedicated QR Code Upload API (Saves image to disk & updates settings cleanly)
+  app.post('/api/upload-qr', (req, res) => {
+    try {
+      const { dataUrl, image } = req.body;
+      const target = dataUrl || image;
+      if (!target || typeof target !== 'string') {
+        return res.status(400).json({ error: 'ไม่พบข้อมูลรูปภาพ' });
+      }
+
+      let buffer: Buffer;
+      let ext = 'png';
+      if (target.startsWith('data:image/')) {
+        const commaIdx = target.indexOf(',');
+        const mimeMatch = target.slice(0, commaIdx).match(/data:image\/([a-zA-Z0-9]+)/);
+        if (mimeMatch && (mimeMatch[1] === 'jpeg' || mimeMatch[1] === 'jpg')) ext = 'jpg';
+        const base64Data = target.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
+        buffer = Buffer.from(base64Data, 'base64');
+      } else {
+        buffer = Buffer.from(target, 'base64');
+      }
+
+      const filePath = path.join(uploadsDir, `qr_code.${ext}`);
+      fs.writeFileSync(filePath, buffer);
+
+      const db = getDatabase();
+      const relativeUrl = `/uploads/qr_code.${ext}?t=${Date.now()}`;
+      db.settings = {
+        ...db.settings,
+        qrCodeImage: relativeUrl,
+        updatedAt: new Date().toISOString()
+      };
+      saveDatabase(db);
+      syncToGoogleSheet('UPDATE', 'Settings', db.settings);
+
+      console.log(`[UploadQR] Successfully saved QR Code image to ${filePath} (${buffer.length} bytes)`);
+      return res.json({
+        success: true,
+        url: relativeUrl,
+        settings: db.settings
+      });
+    } catch (err: any) {
+      console.error('[UploadQR] Error:', err);
+      return res.status(500).json({ error: 'เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ' });
+    }
   });
 
   // --- API Routes ---
@@ -650,7 +704,6 @@ async function startServer() {
     if (Array.isArray(users)) {
       for (const u of users) {
         if (!u || !u.UserID || !u.Phone) continue;
-        if (deletedUserSet.has(u.UserID)) continue; // Skip if explicitly deleted by admin
 
         const existingIdx = db.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
         if (existingIdx === -1) {
@@ -660,7 +713,7 @@ async function startServer() {
           console.log(`[Sync] Rehydrated user from client: ${u.Name} (${u.UserID} - ${u.Phone})`);
         } else {
           // Merge any client-updated profile details
-          db.users[existingIdx] = { ...u, ...db.users[existingIdx] };
+          db.users[existingIdx] = { ...db.users[existingIdx], ...u };
         }
       }
     }
@@ -669,7 +722,6 @@ async function startServer() {
     if (Array.isArray(staff)) {
       for (const s of staff) {
         if (!s || !s.StaffID) continue;
-        if (deletedStaffSet.has(s.StaffID) || (s.UserID && deletedUserSet.has(s.UserID))) continue;
 
         const existingIdx = db.staff.findIndex(x => x.StaffID === s.StaffID || (s.UserID && x.UserID === s.UserID));
         if (existingIdx === -1) {
@@ -682,8 +734,8 @@ async function startServer() {
           const currentCredit = Number(db.staff[existingIdx].Credit) || 0;
           const incomingCredit = Number(s.Credit) || 0;
           db.staff[existingIdx] = {
-            ...s,
             ...db.staff[existingIdx],
+            ...s,
             Credit: Math.max(currentCredit, incomingCredit)
           };
         }
@@ -2797,7 +2849,7 @@ async function startServer() {
     res.json({ success: true, transaction: newTx, autoApproved, newCredit: staff.Credit });
   });
 
-  // High-Resolution QR Code Image & Direct Device Download API (Handles image URLs, custom links, PromptPay, and LINE browser)
+  // High-Resolution QR Code Image & Direct Device Download API (Handles image URLs, local uploads, PromptPay, and LINE browser)
   app.get(['/api/qr-image', '/api/qr-image.png', '/api/qr-download', '/api/qr-download.png'], async (req, res) => {
     const db = getDatabase();
     const settings = db.settings || defaultSettings;
@@ -2808,13 +2860,26 @@ async function startServer() {
       let contentType = 'image/png';
 
       // 1. Determine target: URL from query param (override), or settings.qrCodeImage
-      const rawTarget = String(req.query.url || req.query.link || settings.qrCodeImage || '').trim();
+      const queryTarget = typeof req.query.url === 'string' ? req.query.url.trim() : (typeof req.query.link === 'string' ? req.query.link.trim() : '');
+      const rawTarget = (queryTarget || settings.qrCodeImage || '').trim();
       // Filter out dummy Wikipedia placeholders
       const qrTarget = rawTarget.toLowerCase().includes('wikipedia.org') ? '' : rawTarget;
 
       if (qrTarget) {
-        if (qrTarget.startsWith('data:image/')) {
-          // A. Base64 Data URL
+        // A. Local file in server/uploads/ (e.g. uploaded QR code image)
+        if (qrTarget.startsWith('/uploads/') || qrTarget.startsWith('uploads/')) {
+          const cleanRel = qrTarget.split('?')[0].replace(/^\//, '');
+          const localPath = path.join(process.cwd(), 'server', cleanRel);
+          if (fs.existsSync(localPath)) {
+            try {
+              pngBuffer = fs.readFileSync(localPath);
+              contentType = localPath.endsWith('.jpg') || localPath.endsWith('.jpeg') ? 'image/jpeg' : 'image/png';
+            } catch (readErr) {
+              console.warn('[QR] Error reading local uploaded file:', readErr);
+            }
+          }
+        } else if (qrTarget.startsWith('data:image/')) {
+          // B. Base64 Data URL
           const commaIdx = qrTarget.indexOf(',');
           if (commaIdx !== -1) {
             const mimeMatch = qrTarget.slice(0, commaIdx).match(/data:([^;]+)/);
@@ -2823,29 +2888,40 @@ async function startServer() {
             pngBuffer = Buffer.from(base64Data, 'base64');
           }
         } else if (qrTarget.startsWith('http://') || qrTarget.startsWith('https://')) {
-          // B. Remote URL: Could be a direct image URL, Google Drive image, or a web link (LINE OA, booking, payment)
+          // C. Remote URL: Google Drive, cloud image, or web link
           let fetchUrl = qrTarget;
-          const driveMatch = qrTarget.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+          const driveMatch = qrTarget.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/);
           if (driveMatch) {
-            fetchUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+            fetchUrl = `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w1000`;
           }
 
           let fetchedImageBuffer: Buffer | null = null;
           try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const timeoutId = setTimeout(() => controller.abort(), 6000);
             const fetchRes = await fetch(fetchUrl, {
-              headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+              headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+              },
+              redirect: 'follow',
               signal: controller.signal
             });
             clearTimeout(timeoutId);
 
             if (fetchRes.ok) {
+              const arrayBuf = await fetchRes.arrayBuffer();
+              const buf = Buffer.from(arrayBuf);
+              // Magic bytes check for images
+              const isPng = buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+              const isJpg = buf.length > 3 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+              const isWebp = buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP';
+              const isGif = buf.length > 6 && buf.toString('ascii', 0, 3) === 'GIF';
               const resType = (fetchRes.headers.get('content-type') || '').toLowerCase();
-              if (resType.startsWith('image/') && !resType.includes('svg')) {
-                const arrayBuf = await fetchRes.arrayBuffer();
-                fetchedImageBuffer = Buffer.from(arrayBuf);
-                contentType = resType;
+
+              if (isPng || isJpg || isWebp || isGif || resType.startsWith('image/')) {
+                fetchedImageBuffer = buf;
+                contentType = isJpg ? 'image/jpeg' : (isWebp ? 'image/webp' : (isGif ? 'image/gif' : 'image/png'));
               }
             }
           } catch (e) {
@@ -2855,8 +2931,7 @@ async function startServer() {
           if (fetchedImageBuffer && fetchedImageBuffer.length > 100) {
             pngBuffer = fetchedImageBuffer;
           } else {
-            // It's a web link (e.g. LINE link https://line.me/..., website, payment URL)
-            // Generate a crisp, high-resolution QR code encoding THIS EXACT LINK!
+            // It's a web link or payment URL -> generate crisp high-resolution QR
             console.log('[QR] Generating high-resolution QR code for custom link:', qrTarget);
             pngBuffer = await QRCode.toBuffer(qrTarget, {
               type: 'png',
@@ -2871,7 +2946,7 @@ async function startServer() {
             contentType = 'image/png';
           }
         } else if (qrTarget.length > 3) {
-          // C. Text / custom payload
+          // D. Text / custom payload
           pngBuffer = await QRCode.toBuffer(qrTarget, {
             type: 'png',
             width: 900,
@@ -2901,11 +2976,14 @@ async function startServer() {
       }
 
       const rawAccount = (settings.bankAccount || 'SabaiDee').replace(/[^0-9a-zA-Z]/g, '');
-      const filename = `QR_Code_${rawAccount || 'SabaiDee'}.png`;
+      const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : 'png';
+      const filename = `QR_Code_${rawAccount || 'SabaiDee'}.${ext}`;
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', String(pngBuffer.length));
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       if (isDownload) {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       } else {
@@ -2928,9 +3006,12 @@ async function startServer() {
     const bankAccountName = settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ';
     const rawTarget = String(req.query.url || req.query.link || settings.qrCodeImage || '').trim();
     const hasCustomQr = !!(rawTarget && !rawTarget.toLowerCase().includes('wikipedia.org'));
-    const qrParam = rawTarget ? `?url=${encodeURIComponent(rawTarget)}` : '';
-    const qrImgSrc = `/api/qr-image.png${qrParam}`;
-    const qrDownloadSrc = `/api/qr-download.png?download=1${rawTarget ? `&url=${encodeURIComponent(rawTarget)}` : ''}`;
+    
+    // Clean URLs without URL explosion
+    const qrImgSrc = (rawTarget.startsWith('data:') || rawTarget.startsWith('/uploads/') || (rawTarget.startsWith('http') && !rawTarget.includes('drive.google')))
+      ? rawTarget
+      : `/api/qr-image.png?t=${settings.updatedAt || Date.now()}`;
+    const qrDownloadSrc = `/api/qr-download.png?download=1&t=${Date.now()}`;
 
     const html = `<!DOCTYPE html>
 <html lang="th">

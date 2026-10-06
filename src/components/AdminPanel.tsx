@@ -85,10 +85,26 @@ export default function AdminPanel({
       return;
     }
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
       if (dataUrl) {
-        setFormSettings(prev => ({ ...prev, qrCodeImage: dataUrl }));
+        setFormSettings((prev: any) => ({ ...prev, qrCodeImage: dataUrl }));
+        try {
+          const res = await fetch('/api/upload-qr', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ dataUrl })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.url) {
+              setFormSettings((prev: any) => ({ ...prev, qrCodeImage: data.url }));
+              if (data.settings) onUpdateSettings(data.settings);
+            }
+          }
+        } catch (uploadErr) {
+          console.warn("Upload QR direct warning:", uploadErr);
+        }
         onShowToast("อัปโหลดรูปภาพ QR Code สำเร็จแล้ว! อย่าลืมกด 'บันทึกการตั้งค่า'", "success");
       }
     };
@@ -2493,7 +2509,7 @@ export default function AdminPanel({
                 <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row items-center gap-3 shadow-2xs">
                   <div className="w-24 h-24 bg-slate-50 border border-slate-200 rounded-xl p-1.5 flex items-center justify-center shrink-0 overflow-hidden">
                     <img 
-                      src={formSettings.qrCodeImage ? (formSettings.qrCodeImage.startsWith('data:image/') ? formSettings.qrCodeImage : `/api/qr-image?url=${encodeURIComponent(formSettings.qrCodeImage)}`) : '/api/qr-image'} 
+                      src={formSettings.qrCodeImage ? (formSettings.qrCodeImage.startsWith('data:') || formSettings.qrCodeImage.startsWith('/uploads/') || formSettings.qrCodeImage.startsWith('http') ? formSettings.qrCodeImage : `/api/qr-image.png?t=${Date.now()}`) : '/api/qr-image.png'} 
                       alt="QR Preview" 
                       className="w-full h-full object-contain rounded-lg" 
                     />

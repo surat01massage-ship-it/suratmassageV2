@@ -276,7 +276,7 @@ export default function StaffPanel({
   const handleOpenInExternalBrowser = (targetUrl?: string) => {
     try {
       const inLine = isLineBrowser();
-      const defaultTarget = settings.qrCodeImage ? `/qr-save?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save?download=1';
+      const defaultTarget = '/qr-save?download=1';
       const rawTarget = targetUrl || defaultTarget;
       const fullUrl = new URL(rawTarget, window.location.origin);
 
@@ -917,14 +917,14 @@ export default function StaffPanel({
     const inLine = isLineBrowser();
     const isAnd = isAndroidDevice();
     const isIos = isIosDevice();
-    const qrParam = settings.qrCodeImage ? `?url=${encodeURIComponent(settings.qrCodeImage)}` : '';
+    const qrParam = `?t=${Date.now()}`;
 
     try {
       // 1. Android inside LINE:
       // LINE Android WebView blocks blob downloads and lacks "Save Image" in native share sheet.
       // Therefore, open Chrome directly using LINE's openExternalBrowser=1 to auto-download!
       if (inLine && isAnd) {
-        handleOpenInExternalBrowser(settings.qrCodeImage ? `/api/qr-download.png?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/api/qr-download.png?download=1');
+        handleOpenInExternalBrowser('/api/qr-download.png?download=1');
         setQrDownloadSuccess(true);
         setShowFullQrModal(true);
         onShowToast("ระบบกำลังเปิด Chrome เพื่อดาวน์โหลด QR Code ลงเครื่องค่ะ หรือแตะค้างที่รูปภาพเพื่อบันทึก", "success");
@@ -938,7 +938,7 @@ export default function StaffPanel({
           const res = await fetch(`/api/qr-image.png${qrParam}`);
           if (res.ok) {
             const blob = await res.blob();
-            const file = new File([blob], fileName, { type: 'image/png' });
+            const file = new File([blob], fileName, { type: blob.type || 'image/png' });
             if (!navigator.canShare || navigator.canShare({ files: [file] })) {
               await navigator.share({
                 files: [file],
@@ -979,7 +979,7 @@ export default function StaffPanel({
         }
       } catch {
         const link = document.createElement('a');
-        link.href = `/api/qr-download.png${qrParam ? qrParam + '&' : '?'}download=1`;
+        link.href = `/api/qr-download.png?download=1&t=${Date.now()}`;
         link.download = fileName;
         document.body.appendChild(link);
         link.click();
@@ -2061,7 +2061,7 @@ export default function StaffPanel({
 
             <div className="relative group mx-auto w-48 h-48 bg-white border-2 border-slate-300 rounded-2xl p-2.5 shadow-sm flex items-center justify-center select-auto">
               <img 
-                src={settings.qrCodeImage ? `/api/qr-image.png?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image.png"} 
+                src={settings.qrCodeImage ? (settings.qrCodeImage.startsWith('data:') || settings.qrCodeImage.startsWith('/uploads/') || (settings.qrCodeImage.startsWith('http') && !settings.qrCodeImage.includes('drive.google')) ? settings.qrCodeImage : `/api/qr-image.png?t=${settings.updatedAt || ''}`) : "/api/qr-image.png"} 
                 className="w-full h-full object-contain rounded-lg select-auto pointer-events-auto cursor-pointer" 
                 alt="QR Code สำหรับเติมเครดิต" 
                 onClick={() => setShowFullQrModal(true)}
@@ -2157,7 +2157,7 @@ export default function StaffPanel({
                 <button
                   type="button"
                   id="btn-line-open-external"
-                  onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save?download=1')}
+                  onClick={() => handleOpenInExternalBrowser('/qr-save?download=1')}
                   className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
                 >
                   <ExternalLink className="w-4 h-4 text-white" />
@@ -3797,7 +3797,7 @@ export default function StaffPanel({
             <div className="space-y-2">
               <div className="bg-white p-3 rounded-2xl border-2 border-slate-300 shadow-md inline-block w-64 h-64 mx-auto select-auto">
                 <img 
-                  src={settings.qrCodeImage ? `/api/qr-image.png?url=${encodeURIComponent(settings.qrCodeImage)}` : "/api/qr-image.png"} 
+                  src={settings.qrCodeImage ? (settings.qrCodeImage.startsWith('data:') || settings.qrCodeImage.startsWith('/uploads/') || (settings.qrCodeImage.startsWith('http') && !settings.qrCodeImage.includes('drive.google')) ? settings.qrCodeImage : `/api/qr-image.png?t=${settings.updatedAt || ''}`) : "/api/qr-image.png"} 
                   alt="QR Code สำหรับเติมเครดิต" 
                   className="w-full h-full object-contain rounded-xl select-auto pointer-events-auto cursor-pointer"
                   style={{
@@ -3836,7 +3836,7 @@ export default function StaffPanel({
                   <button
                     type="button"
                     id="btn-modal-open-external"
-                    onClick={() => handleOpenInExternalBrowser(settings.qrCodeImage ? `/qr-save?download=1&url=${encodeURIComponent(settings.qrCodeImage)}` : '/qr-save?download=1')}
+                    onClick={() => handleOpenInExternalBrowser('/qr-save?download=1')}
                     className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
                   >
                     <ExternalLink className="w-4 h-4 text-white" />
