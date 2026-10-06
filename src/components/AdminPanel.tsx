@@ -2454,6 +2454,19 @@ export default function AdminPanel({
                       <Upload className="w-3 h-3" />
                       <span>อัปโหลดรูป QR จากเครื่อง</span>
                     </button>
+                    <a
+                      href={formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('data:image/') 
+                        ? formSettings.qrCodeImage 
+                        : (formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('/uploads/') 
+                          ? `${formSettings.qrCodeImage.split('?')[0]}?download=1&openExternalBrowser=1` 
+                          : `/api/qr-download.png?download=1&openExternalBrowser=1`)}
+                      download={`QR_Code_${(formSettings.bankAccount || 'SabaiDee').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.png`}
+                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                      title="ดาวน์โหลด QR Code สำหรับพนักงาน"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>ดาวน์โหลด QR Code</span>
+                    </a>
                     {formSettings.qrCodeImage && (
                       <button
                         type="button"
@@ -2506,15 +2519,15 @@ export default function AdminPanel({
                 </div>
 
                 {/* Live Preview Box */}
-                <div className="mt-2 p-3 bg-white border border-slate-200 rounded-xl flex flex-col sm:flex-row items-center gap-3 shadow-2xs">
-                  <div className="w-24 h-24 bg-slate-50 border border-slate-200 rounded-xl p-1.5 flex items-center justify-center shrink-0 overflow-hidden">
+                <div className="mt-2 p-3.5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center gap-4 shadow-2xs">
+                  <div className="w-28 h-28 bg-slate-50 border-2 border-slate-200 rounded-2xl p-2 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
                     <img 
                       src={formSettings.qrCodeImage ? (formSettings.qrCodeImage.startsWith('data:') || formSettings.qrCodeImage.startsWith('/uploads/') || formSettings.qrCodeImage.startsWith('http') ? formSettings.qrCodeImage : `/api/qr-image.png?t=${Date.now()}`) : '/api/qr-image.png'} 
                       alt="QR Preview" 
                       className="w-full h-full object-contain rounded-lg" 
                     />
                   </div>
-                  <div className="text-[11px] text-slate-500 leading-normal space-y-1 text-center sm:text-left">
+                  <div className="text-[11px] text-slate-500 leading-normal space-y-2 text-center sm:text-left flex-1 w-full">
                     <div className="flex items-center gap-1.5 justify-center sm:justify-start">
                       <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
                       <span className="font-black text-slate-800">
@@ -2524,8 +2537,37 @@ export default function AdminPanel({
                       </span>
                     </div>
                     <p className="text-slate-600">
-                      พนักงานจะเห็น QR Code รูปนี้บนหน้าเติมเครดิต และสามารถกด <strong className="text-sky-600">"บันทึก QR Code ลงเครื่อง"</strong> หรือเปิดใน Safari/Chrome เพื่อบันทึกรูปเข้าอัลบั้ม 100% ค่ะ
+                      พนักงานจะเห็น QR Code รูปนี้บนหน้าเติมเครดิต และสามารถกด <strong className="text-sky-600">"บันทึก QR Code ลงเครื่อง"</strong> หรือดาวน์โหลดผ่านเบราว์เซอร์ไลน์เข้าอัลบั้มในโทรศัพท์ (iOS / Android) ได้โดยตรง 100% ค่ะ
                     </p>
+                    
+                    {/* Action buttons with <a> download tag */}
+                    <div className="flex items-center gap-2 flex-wrap pt-1 justify-center sm:justify-start">
+                      <a 
+                        id="btn-admin-download-qr-code"
+                        href={formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('data:image/') 
+                          ? formSettings.qrCodeImage 
+                          : (formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('/uploads/') 
+                            ? `${formSettings.qrCodeImage.split('?')[0]}?download=1&openExternalBrowser=1` 
+                            : `/api/qr-download.png?download=1&openExternalBrowser=1`)}
+                        download={`QR_Code_${(formSettings.bankAccount || 'SabaiDee').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.png`}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer"
+                        title="ดาวน์โหลดไฟล์รูปภาพ QR Code ลงเครื่องทันที"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>ดาวน์โหลด QR Code</span>
+                      </a>
+
+                      <a 
+                        href={`/qr-save?download=1&openExternalBrowser=1`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                        title="เปิดหน้าบันทึก QR Code สำหรับผู้ใช้ LINE"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>เปิดหน้าบันทึกผ่าน LINE (/qr-save)</span>
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>
