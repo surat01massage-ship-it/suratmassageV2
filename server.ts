@@ -1254,9 +1254,29 @@ async function startServer() {
     }
     const incomingMinCredit = Number(req.body?.minCredit);
     const finalMinCredit = (!incomingMinCredit || isNaN(incomingMinCredit) || incomingMinCredit === 398 || incomingMinCredit < 298) ? 298 : incomingMinCredit;
+
+    let finalQrImage = req.body?.qrCodeImage !== undefined ? req.body.qrCodeImage : (db.settings?.qrCodeImage || '');
+    if (typeof finalQrImage === 'string' && finalQrImage.startsWith('data:image/')) {
+      try {
+        const uploadsDir = path.join(process.cwd(), 'server', 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+        const commaIdx = finalQrImage.indexOf(',');
+        const base64Data = finalQrImage.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
+        const buf = Buffer.from(base64Data, 'base64');
+        const ext = finalQrImage.includes('jpeg') || finalQrImage.includes('jpg') ? 'jpg' : 'png';
+        const filePath = path.join(uploadsDir, `qr_code.${ext}`);
+        fs.writeFileSync(filePath, buf);
+        finalQrImage = `/uploads/qr_code.${ext}?t=${Date.now()}`;
+        console.log(`[Settings] Automatically converted base64 QR Code to file: ${filePath} (${buf.length} bytes)`);
+      } catch (saveErr) {
+        console.warn('[Settings] Failed to save QR code file:', saveErr);
+      }
+    }
+
     db.settings = {
       ...db.settings,
       ...req.body,
+      qrCodeImage: finalQrImage,
       minCredit: finalMinCredit,
       lineAdminUserId: newAdminId,
       isCustomized: isCustom,

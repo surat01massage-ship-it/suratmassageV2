@@ -314,7 +314,7 @@ export function getDatabase(): DatabaseSchema {
   } else {
     liveDb.settings.minCredit = numMin;
   }
-  if (liveDb.settings.qrCodeImage && liveDb.settings.qrCodeImage.includes('wikipedia.org')) {
+  if (liveDb.settings.qrCodeImage && (liveDb.settings.qrCodeImage.includes('wikipedia.org') || (liveDb.settings.qrCodeImage.includes('/uploads/qr_code.png') && !fs.existsSync(path.join(process.cwd(), 'server', 'uploads', 'qr_code.png'))))) {
     liveDb.settings.qrCodeImage = '';
   }
 

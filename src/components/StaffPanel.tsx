@@ -909,22 +909,69 @@ export default function StaffPanel({
     }
   };
 
+  // Helper to extract the exact configured QR image blob (from base64, uploads, or server)
+  const getQrBlob = async (): Promise<{ blob: Blob; ext: string } | null> => {
+    // 1. If settings.qrCodeImage is a base64 Data URL (uploaded from device)
+    if (settings.qrCodeImage && settings.qrCodeImage.startsWith('data:image/')) {
+      try {
+        const arr = settings.qrCodeImage.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+        const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : 'png';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        return { blob: new Blob([u8arr], { type: mime }), ext };
+      } catch (e) {
+        console.warn("Base64 blob conversion failed:", e);
+      }
+    }
+
+    // 2. If settings.qrCodeImage is a local upload path or external image URL
+    if (settings.qrCodeImage && (settings.qrCodeImage.startsWith('/uploads/') || (settings.qrCodeImage.startsWith('http') && !settings.qrCodeImage.includes('drive.google')))) {
+      try {
+        const res = await fetch(settings.qrCodeImage);
+        if (res.ok) {
+          const blob = await res.blob();
+          const ext = blob.type.includes('jpeg') || blob.type.includes('jpg') ? 'jpg' : 'png';
+          return { blob, ext };
+        }
+      } catch (e) {
+        console.warn("Direct QR fetch warning:", e);
+      }
+    }
+
+    // 3. Server QR generator endpoint
+    try {
+      const res = await fetch(`/api/qr-image.png?t=${Date.now()}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const ext = blob.type.includes('jpeg') || blob.type.includes('jpg') ? 'jpg' : 'png';
+        return { blob, ext };
+      }
+    } catch (e) {
+      console.warn("Server QR fetch warning:", e);
+    }
+
+    return null;
+  };
+
   // Handler to download/save QR Code to local device (mobile photo gallery / computer / LINE browser)
   const handleDownloadQrCode = async () => {
     setIsDownloadingQr(true);
     const rawAccount = (settings.bankAccount || '').replace(/[^0-9a-zA-Z]/g, '') || 'pay';
-    const fileName = `QR_Code_${rawAccount}.png`;
     const inLine = isLineBrowser();
     const isAnd = isAndroidDevice();
     const isIos = isIosDevice();
-    const qrParam = `?t=${Date.now()}`;
 
     try {
       // 1. Android inside LINE:
       // LINE Android WebView blocks blob downloads and lacks "Save Image" in native share sheet.
       // Therefore, open Chrome directly using LINE's openExternalBrowser=1 to auto-download!
       if (inLine && isAnd) {
-        handleOpenInExternalBrowser('/api/qr-download.png?download=1');
+        handleOpenInExternalBrowser('/qr-save?download=1');
         setQrDownloadSuccess(true);
         setShowFullQrModal(true);
         onShowToast("ระบบกำลังเปิด Chrome เพื่อดาวน์โหลด QR Code ลงเครื่องค่ะ หรือแตะค้างที่รูปภาพเพื่อบันทึก", "success");
@@ -932,24 +979,25 @@ export default function StaffPanel({
         return;
       }
 
+      // Extract the EXACT image blob that the user configured
+      const qrData = await getQrBlob();
+      const ext = qrData?.ext || 'png';
+      const fileName = `QR_Code_${rawAccount}.${ext}`;
+
       // 2. Mobile Web Share API on iOS (iOS share sheet natively has "Save Image" to Photos)
-      if (isIos && typeof navigator !== 'undefined' && navigator.share) {
+      if (isIos && typeof navigator !== 'undefined' && navigator.share && qrData) {
         try {
-          const res = await fetch(`/api/qr-image.png${qrParam}`);
-          if (res.ok) {
-            const blob = await res.blob();
-            const file = new File([blob], fileName, { type: blob.type || 'image/png' });
-            if (!navigator.canShare || navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                files: [file],
-                title: 'QR Code SabaiDee',
-                text: `QR Code ${settings.bankAccountName || ''}`,
-              });
-              setQrDownloadSuccess(true);
-              onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีค่ะ", "success");
-              setTimeout(() => setQrDownloadSuccess(false), 4000);
-              return;
-            }
+          const file = new File([qrData.blob], fileName, { type: qrData.blob.type || 'image/png' });
+          if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+            await navigator.share({
+              files: [file],
+              title: 'QR Code SabaiDee',
+              text: `QR Code ${settings.bankAccountName || ''}`,
+            });
+            setQrDownloadSuccess(true);
+            onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีค่ะ", "success");
+            setTimeout(() => setQrDownloadSuccess(false), 4000);
+            return;
           }
         } catch (shareErr) {
           if ((shareErr as Error)?.name === 'AbortError') {
@@ -960,24 +1008,18 @@ export default function StaffPanel({
       }
 
       // 3. Direct browser file download via Blob URL & anchor click (for Chrome/Safari outside LINE)
-      try {
-        const res = await fetch(`/api/qr-image.png${qrParam}`);
-        if (res.ok) {
-          const blob = await res.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => {
-            document.body.removeChild(link);
-            URL.revokeObjectURL(blobUrl);
-          }, 1500);
-        } else {
-          throw new Error('Fetch failed');
-        }
-      } catch {
+      if (qrData) {
+        const blobUrl = URL.createObjectURL(qrData.blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        }, 1500);
+      } else {
         const link = document.createElement('a');
         link.href = `/api/qr-download.png?download=1&t=${Date.now()}`;
         link.download = fileName;
