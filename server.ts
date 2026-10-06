@@ -2948,6 +2948,13 @@ async function startServer() {
             console.warn('[QR] Remote fetch notice:', e);
           }
 
+          if (!fetchedImageBuffer && fs.existsSync(path.join(process.cwd(), 'server', 'uploads', 'qr_code.jpg'))) {
+            try {
+              fetchedImageBuffer = fs.readFileSync(path.join(process.cwd(), 'server', 'uploads', 'qr_code.jpg'));
+              contentType = 'image/jpeg';
+            } catch {}
+          }
+
           if (fetchedImageBuffer && fetchedImageBuffer.length > 100) {
             pngBuffer = fetchedImageBuffer;
           } else {
