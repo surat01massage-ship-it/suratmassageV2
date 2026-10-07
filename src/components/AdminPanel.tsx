@@ -2517,7 +2517,7 @@ export default function AdminPanel({
                       className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
                       title="ดาวน์โหลด QR Code สำหรับพนักงาน"
                       onClick={async (e) => {
-                        if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent || '') && navigator.share) {
+                        if (typeof navigator !== 'undefined' && navigator.share) {
                           try {
                             e.preventDefault();
                             const res = await fetch('/api/qr-image.jpg');
@@ -2530,7 +2530,7 @@ export default function AdminPanel({
                                   title: 'QR Code สำหรับเติมเครดิต',
                                   text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'}`
                                 });
-                                onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีรูปภาพค่ะ", "success");
+                                onShowToast("✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ", "success");
                                 return;
                               }
                             }
@@ -2629,7 +2629,7 @@ export default function AdminPanel({
                         className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer"
                         title="ดาวน์โหลดไฟล์รูปภาพ QR Code ลงเครื่องทันที"
                         onClick={async (e) => {
-                          if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent || '') && navigator.share) {
+                          if (typeof navigator !== 'undefined' && navigator.share) {
                             try {
                               e.preventDefault();
                               const res = await fetch('/api/qr-image.jpg');
@@ -2642,7 +2642,7 @@ export default function AdminPanel({
                                     title: 'QR Code สำหรับเติมเครดิต',
                                     text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'}`
                                   });
-                                  onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีรูปภาพค่ะ", "success");
+                                  onShowToast("✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ", "success");
                                   return;
                                 }
                               }
