@@ -52,7 +52,20 @@
     }
   ],
   "bookings": [],
-  "transactions": [],
+  "transactions": [
+    {
+      "TransactionID": "TX922057",
+      "StaffID": "SFT355362",
+      "Amount": 298,
+      "BeforeCredit": 0,
+      "AfterCredit": 298,
+      "Type": "Topup",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 298 เครดิต (รับงานฟรี 1 ครั้ง)",
+      "CreatedDate": "2026-10-07T08:30:01.508Z"
+    }
+  ],
   "reviews": [],
   "notifications": [
     {
@@ -171,11 +184,15 @@
     "U759249",
     "U347114",
     "U999",
-    "U_TEST_01"
+    "U_TEST_01",
+    "U477380",
+    "U695556",
+    "U739690"
   ],
   "deletedStaffIds": [
     "SFT001",
     "SFT956678",
-    "SFT738787"
+    "SFT738787",
+    "SFT355362"
   ]
 }

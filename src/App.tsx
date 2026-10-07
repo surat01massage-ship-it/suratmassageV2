@@ -96,8 +96,13 @@ const getPersistedSettings = (): AppSettings => {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && parsed.companyName) {
           const merged = { ...defaultAppSettings, ...parsed };
-          if (merged.qrCodeImage && merged.qrCodeImage.includes('wikipedia.org')) {
-            merged.qrCodeImage = '';
+          if (!merged.qrCodeImage || merged.qrCodeImage.includes('wikipedia.org')) {
+            merged.qrCodeImage = 'https://i.postimg.cc/g0yvnLTn/S-30990363.jpg';
+          }
+          if (!merged.bankAccount || merged.bankAccount === '081-234-5678' || !merged.bankAccount.includes('761')) {
+            merged.bankAccount = '761-7-99745-2';
+            merged.bankAccountName = 'นางเครือวัลย์ ชายแก้ว';
+            merged.bankName = 'ธนาคารทหารไทยธนชาต (ttb)';
           }
           const rawMin = Number(merged.minCredit);
           if (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) {
@@ -532,8 +537,13 @@ export default function App() {
               }
 
               // Always sanitize minCredit & qrCodeImage in localSettings immediately before anything else
-              if (localSettings.qrCodeImage && localSettings.qrCodeImage.includes('wikipedia.org')) {
-                localSettings.qrCodeImage = '';
+              if (!localSettings.qrCodeImage || localSettings.qrCodeImage.includes('wikipedia.org')) {
+                localSettings.qrCodeImage = 'https://i.postimg.cc/g0yvnLTn/S-30990363.jpg';
+              }
+              if (!localSettings.bankAccount || localSettings.bankAccount === '081-234-5678' || !localSettings.bankAccount.includes('761')) {
+                localSettings.bankAccount = '761-7-99745-2';
+                localSettings.bankAccountName = 'นางเครือวัลย์ ชายแก้ว';
+                localSettings.bankName = 'ธนาคารทหารไทยธนชาต (ttb)';
               }
               const localMin = Number(localSettings.minCredit);
               if (!localMin || isNaN(localMin) || localMin === 398 || localMin < 298) {
@@ -565,8 +575,13 @@ export default function App() {
             }
           }
 
-          if (serverData.qrCodeImage && serverData.qrCodeImage.includes('wikipedia.org')) {
-            serverData.qrCodeImage = '';
+          if (!serverData.qrCodeImage || serverData.qrCodeImage.includes('wikipedia.org')) {
+            serverData.qrCodeImage = 'https://i.postimg.cc/g0yvnLTn/S-30990363.jpg';
+          }
+          if (!serverData.bankAccount || serverData.bankAccount === '081-234-5678' || !serverData.bankAccount.includes('761')) {
+            serverData.bankAccount = '761-7-99745-2';
+            serverData.bankAccountName = 'นางเครือวัลย์ ชายแก้ว';
+            serverData.bankName = 'ธนาคารทหารไทยธนชาต (ttb)';
           }
           const serverMin = Number(serverData.minCredit);
           if (!serverMin || isNaN(serverMin) || serverMin === 398 || serverMin < 298) {

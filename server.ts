@@ -382,6 +382,11 @@ async function startServer() {
       CreatedDate: new Date().toISOString()
     };
 
+    // Remove any previous tombstones to ensure user is 100% permanently retained
+    if (db.deletedUserIds) {
+      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
+    }
+
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
@@ -390,6 +395,9 @@ async function startServer() {
     // If registering as Staff, create Staff record
     if (role === 'Staff') {
       const newStaffID = generateId('SFT');
+      if (db.deletedStaffIds) {
+        db.deletedStaffIds = db.deletedStaffIds.filter(id => id !== newStaffID);
+      }
       const info = staffInfo || {};
       const newStaff: Staff = {
         StaffID: newStaffID,
@@ -792,11 +800,21 @@ async function startServer() {
       CreatedDate: new Date().toISOString()
     };
 
+    // Remove any previous tombstones to ensure user is 100% permanently retained
+    if (db.deletedUserIds) {
+      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
+    }
+
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
+    let createdStaff: Staff | null = null;
+
     if (userRole === 'Staff') {
       const newStaffID = generateId('SFT');
+      if (db.deletedStaffIds) {
+        db.deletedStaffIds = db.deletedStaffIds.filter(id => id !== newStaffID);
+      }
       const info = staffInfo || {};
       const newStaff: Staff = {
         StaffID: newStaffID,
@@ -826,6 +844,7 @@ async function startServer() {
         IdCardFile: info.idCardFile || '',
         HouseRegFile: info.houseRegFile || ''
       };
+      createdStaff = newStaff;
       db.staff.push(newStaff);
       syncToGoogleSheet('INSERT', 'Staff', newStaff);
       const staffDocData = {
@@ -862,7 +881,7 @@ async function startServer() {
     }
 
     saveDatabase(db);
-    res.status(201).json({ success: true, user: newUser });
+    res.status(201).json({ success: true, user: newUser, staff: createdStaff });
   });
 
   app.put('/api/users/:id', (req, res) => {
@@ -2870,20 +2889,27 @@ async function startServer() {
   });
 
   // High-Resolution QR Code Image & Direct Device Download API (Handles image URLs, local uploads, PromptPay, and LINE browser)
-  app.get(['/api/qr-image', '/api/qr-image.png', '/api/qr-download', '/api/qr-download.png'], async (req, res) => {
+  app.get([
+    '/api/qr-image', '/api/qr-image.png', '/api/qr-image.jpg', '/api/qr-image.jpeg',
+    '/api/qr-download', '/api/qr-download.png', '/api/qr-download.jpg', '/api/qr-download.jpeg'
+  ], async (req, res) => {
     const db = getDatabase();
     const settings = db.settings || defaultSettings;
     const isDownload = req.path.includes('download') || req.query.download === '1';
 
     try {
       let pngBuffer: Buffer | null = null;
-      let contentType = 'image/png';
+      let contentType = 'image/jpeg';
 
       // 1. Determine target: URL from query param (override), or settings.qrCodeImage
       const queryTarget = typeof req.query.url === 'string' ? req.query.url.trim() : (typeof req.query.link === 'string' ? req.query.link.trim() : '');
-      const rawTarget = (queryTarget || settings.qrCodeImage || '').trim();
+      const rawTarget = (queryTarget || settings.qrCodeImage || 'https://i.postimg.cc/g0yvnLTn/S-30990363.jpg').trim();
       // Filter out dummy Wikipedia placeholders
-      const qrTarget = rawTarget.toLowerCase().includes('wikipedia.org') ? '' : rawTarget;
+      const qrTarget = rawTarget.toLowerCase().includes('wikipedia.org') ? 'https://i.postimg.cc/g0yvnLTn/S-30990363.jpg' : rawTarget;
+
+      // Always check local persistent image storage first for instant & reliable serving
+      const localJpg = path.join(process.cwd(), 'server', 'uploads', 'qr_code.jpg');
+      const publicJpg = path.join(process.cwd(), 'public', 'qr_code.jpg');
 
       if (qrTarget) {
         // A. Local file in server/uploads/ (e.g. uploaded QR code image)
@@ -2907,8 +2933,27 @@ async function startServer() {
             const base64Data = qrTarget.slice(commaIdx + 1).replace(/[\r\n\s]/g, '');
             pngBuffer = Buffer.from(base64Data, 'base64');
           }
-        } else if (qrTarget.startsWith('http://') || qrTarget.startsWith('https://')) {
-          // C. Remote URL: Google Drive, cloud image, or web link
+        } else if (qrTarget.includes('postimg.cc') || qrTarget.includes('S-30990363') || (fs.existsSync(localJpg) && (qrTarget.endsWith('.jpg') || qrTarget.endsWith('.jpeg') || qrTarget.endsWith('.png')))) {
+          // Prioritize local saved file of the configured user QR image
+          if (fs.existsSync(localJpg)) {
+            try {
+              pngBuffer = fs.readFileSync(localJpg);
+              contentType = 'image/jpeg';
+            } catch (e) {
+              console.warn('[QR] Error reading localJpg:', e);
+            }
+          } else if (fs.existsSync(publicJpg)) {
+            try {
+              pngBuffer = fs.readFileSync(publicJpg);
+              contentType = 'image/jpeg';
+            } catch (e) {
+              console.warn('[QR] Error reading publicJpg:', e);
+            }
+          }
+        }
+        
+        // If not loaded from local disk yet and is a remote URL
+        if (!pngBuffer && (qrTarget.startsWith('http://') || qrTarget.startsWith('https://'))) {
           let fetchUrl = qrTarget;
           const driveMatch = qrTarget.match(/drive\.google\.com\/(?:file\/d\/|open\?id=)([a-zA-Z0-9_-]+)/);
           if (driveMatch) {
@@ -2942,52 +2987,42 @@ async function startServer() {
               if (isPng || isJpg || isWebp || isGif || resType.startsWith('image/')) {
                 fetchedImageBuffer = buf;
                 contentType = isJpg ? 'image/jpeg' : (isWebp ? 'image/webp' : (isGif ? 'image/gif' : 'image/png'));
+                // Cache locally for offline/subsequent fast serving
+                try {
+                  const uploadsDir = path.join(process.cwd(), 'server', 'uploads');
+                  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+                  fs.writeFileSync(path.join(uploadsDir, 'qr_code.jpg'), buf);
+                } catch {}
               }
             }
           } catch (e) {
             console.warn('[QR] Remote fetch notice:', e);
           }
 
-          if (!fetchedImageBuffer && fs.existsSync(path.join(process.cwd(), 'server', 'uploads', 'qr_code.jpg'))) {
+          if (!fetchedImageBuffer && fs.existsSync(localJpg)) {
             try {
-              fetchedImageBuffer = fs.readFileSync(path.join(process.cwd(), 'server', 'uploads', 'qr_code.jpg'));
+              fetchedImageBuffer = fs.readFileSync(localJpg);
               contentType = 'image/jpeg';
             } catch {}
           }
 
           if (fetchedImageBuffer && fetchedImageBuffer.length > 100) {
             pngBuffer = fetchedImageBuffer;
-          } else {
-            // It's a web link or payment URL -> generate crisp high-resolution QR
-            console.log('[QR] Generating high-resolution QR code for custom link:', qrTarget);
-            pngBuffer = await QRCode.toBuffer(qrTarget, {
-              type: 'png',
-              width: 900,
-              margin: 3,
-              errorCorrectionLevel: 'H',
-              color: {
-                dark: '#000000',
-                light: '#ffffff'
-              }
-            });
-            contentType = 'image/png';
           }
-        } else if (qrTarget.length > 3) {
-          // D. Text / custom payload
-          pngBuffer = await QRCode.toBuffer(qrTarget, {
-            type: 'png',
-            width: 900,
-            margin: 3,
-            errorCorrectionLevel: 'H',
-            color: { dark: '#000000', light: '#ffffff' }
-          });
-          contentType = 'image/png';
         }
       }
 
-      // If no valid buffer (e.g. empty or default), generate crisp high-res PromptPay PNG QR code
+      // If no valid buffer, fallback to local qr_code.jpg if available
+      if (!pngBuffer && fs.existsSync(localJpg)) {
+        try {
+          pngBuffer = fs.readFileSync(localJpg);
+          contentType = 'image/jpeg';
+        } catch {}
+      }
+
+      // Final fallback: generate high-res PromptPay PNG QR code if no custom image configured
       if (!pngBuffer) {
-        const targetAccount = settings.bankAccount || settings.contactPhone || '0812345678';
+        const targetAccount = settings.bankAccount || settings.contactPhone || '7617997452';
         const promptPayPayload = generatePromptPayPayload(targetAccount);
         pngBuffer = await QRCode.toBuffer(promptPayPayload, {
           type: 'png',
@@ -3002,15 +3037,16 @@ async function startServer() {
         contentType = 'image/png';
       }
 
-      const rawAccount = (settings.bankAccount || 'SabaiDee').replace(/[^0-9a-zA-Z]/g, '');
+      const rawAccount = (settings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '');
       const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : 'png';
-      const filename = `QR_Code_${rawAccount || 'SabaiDee'}.${ext}`;
+      const filename = `QR_Code_${rawAccount || '7617997452'}.${ext}`;
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', String(pngBuffer.length));
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       if (isDownload) {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       } else {
@@ -3028,17 +3064,15 @@ async function startServer() {
   app.get('/qr-save', (req, res) => {
     const db = getDatabase();
     const settings = db.settings || defaultSettings;
-    const bankName = settings.bankName || 'ธนาคารทั่วไป';
-    const bankAccount = settings.bankAccount || '081-234-5678';
-    const bankAccountName = settings.bankAccountName || 'บจก. สบายดี โฮมมาสซาจ';
-    const rawTarget = String(req.query.url || req.query.link || settings.qrCodeImage || '').trim();
-    const hasCustomQr = !!(rawTarget && !rawTarget.toLowerCase().includes('wikipedia.org'));
+    const bankName = settings.bankName || 'ธนาคารทหารไทยธนชาต (ttb)';
+    const bankAccount = settings.bankAccount || '761-7-99745-2';
+    const bankAccountName = settings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว';
+    const rawTarget = String(req.query.url || req.query.link || settings.qrCodeImage || 'https://i.postimg.cc/g0yvnLTn/S-30990363.jpg').trim();
+    const hasCustomQr = true;
     
-    // Clean URLs without URL explosion
-    const qrImgSrc = (rawTarget.startsWith('data:') || rawTarget.startsWith('/uploads/') || (rawTarget.startsWith('http') && !rawTarget.includes('drive.google')))
-      ? rawTarget
-      : `/api/qr-image.png?t=${settings.updatedAt || Date.now()}`;
-    const qrDownloadSrc = `/api/qr-download.png?download=1&t=${Date.now()}`;
+    // Clean URLs without URL explosion - serve exact high-speed local image
+    const qrImgSrc = `/api/qr-image.jpg?t=${Date.now()}`;
+    const qrDownloadSrc = `/api/qr-download.jpg?download=1&t=${Date.now()}`;
 
     const html = `<!DOCTYPE html>
 <html lang="th">
@@ -3324,9 +3358,9 @@ async function startServer() {
       </div>
     </div>
 
-    <!-- Action Buttons -->
-    <a href="${qrDownloadSrc}&openExternalBrowser=1" class="btn-main" id="btn-save-action" onclick="saveQrToGallery(event)">
-      <span>📥</span> บันทึกรูปภาพลงอัลบั้ม (Save Image)
+    <!-- Action Buttons with <a> download tag -->
+    <a href="${qrDownloadSrc}" download="QR_Code_7617997452.jpg" class="btn-main" id="btn-save-action" onclick="saveQrToGallery(event)">
+      <span>📥</span> ดาวน์โหลด QR Code ลงเครื่อง (ผ่าน LINE ได้ทันที)
     </a>
 
     <a href="${qrDownloadSrc}&openExternalBrowser=1" class="btn-external" id="btn-external-action" onclick="openInExternal(event)">
@@ -3402,31 +3436,23 @@ async function startServer() {
 
     async function saveQrToGallery(e) {
       var inLine = /Line\//i.test(navigator.userAgent || '');
-      var isAndroid = /Android/i.test(navigator.userAgent || '');
       var isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-      
-      // On Android inside LINE: WebViews block blob downloads, so open external Chrome download via openExternalBrowser=1
-      if (inLine && isAndroid) {
-        showToast('กำลังดาวน์โหลดรูปภาพ QR Code ผ่าน Chrome ค่ะ...');
-        openInExternal(e);
-        return;
-      }
 
-      // On iOS: Try native Web Share API (gives direct native "Save Image" to Photos on iPhone)
+      // On iOS: Try native Web Share API (gives direct native "Save Image" to Photos on iPhone inside LINE)
       if (isIos && navigator.share) {
         try {
           var res = await fetch('${qrImgSrc}');
           if (res.ok) {
             var blob = await res.blob();
-            var file = new File([blob], 'QR_Code_SabaiDee.png', { type: 'image/png' });
+            var file = new File([blob], 'QR_Code_7617997452.jpg', { type: 'image/jpeg' });
             if (!navigator.canShare || navigator.canShare({ files: [file] })) {
               if (e) e.preventDefault();
               await navigator.share({
                 files: [file],
-                title: 'QR Code SabaiDee',
-                text: 'QR Code สำหรับเติมเครดิต'
+                title: 'QR Code สำหรับเติมเครดิต',
+                text: 'QR Code บัญชี นางเครือวัลย์ ชายแก้ว ธนาคารทหารไทยธนชาต (ttb)'
               });
-              showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีค่ะ');
+              showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีรูปภาพค่ะ');
               return;
             }
           }
@@ -3435,22 +3461,21 @@ async function startServer() {
         }
       }
 
-      // Direct browser download trigger
-      if (e) e.preventDefault();
-      triggerDirectDownload();
+      // Allow natural <a> click to download directly in LINE / browser
+      showToast('กำลังดาวน์โหลดภาพ QR Code ลงเครื่องค่ะ...');
     }
 
     function triggerDirectDownload() {
       try {
         var aLink = document.createElement('a');
         aLink.href = '${qrDownloadSrc}';
-        aLink.download = 'QR_Code_SabaiDee.png';
+        aLink.download = 'QR_Code_7617997452.jpg';
         document.body.appendChild(aLink);
         aLink.click();
         setTimeout(function() {
           if (document.body.contains(aLink)) document.body.removeChild(aLink);
         }, 1000);
-        showToast('✅ บันทึกรูปภาพ QR Code ลงเครื่องเรียบร้อยแล้วค่ะ');
+        showToast('✅ บันทึกรูปภาพ QR Code เรียบร้อยแล้วค่ะ');
       } catch (err) {
         window.location.href = '${qrDownloadSrc}';
       }
