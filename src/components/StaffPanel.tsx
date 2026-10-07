@@ -1064,8 +1064,9 @@ export default function StaffPanel({
         }
       }
 
-      // 2. Direct browser file download for regular desktop/mobile browsers (Chrome, Edge, Safari outside LINE)
-      if (qrData && !inLine) {
+      // 2. Direct browser file download for regular desktop browsers (Chrome, Edge, Safari outside mobile)
+      const isMobile = /Android|iPhone|iPad|iPod|Line/i.test(navigator.userAgent || '');
+      if (qrData && !isMobile) {
         const blobUrl = URL.createObjectURL(qrData.blob);
         const link = document.createElement('a');
         link.href = blobUrl;
@@ -1082,7 +1083,7 @@ export default function StaffPanel({
         return;
       }
 
-      // 3. For LINE in-app browser on Android & iOS: Open dedicated screenshot & touch-and-hold save modal
+      // 3. For mobile devices (Android, iOS, LINE, WebView): Open dedicated screenshot & touch-and-hold save modal
       await handleCaptureScreenshot();
     } catch (err) {
       console.error("Error saving QR Code:", err);

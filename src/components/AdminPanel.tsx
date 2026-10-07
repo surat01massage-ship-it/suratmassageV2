@@ -76,9 +76,12 @@ export default function AdminPanel({
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(settings.updatedAt || null);
   const [isDownloadingQr, setIsDownloadingQr] = useState(false);
+  const [showAdminQrSaveModal, setShowAdminQrSaveModal] = useState(false);
+  const [adminQrPreviewDataUrl, setAdminQrPreviewDataUrl] = useState<string>('');
+  const [adminQrFile, setAdminQrFile] = useState<File | null>(null);
   const qrFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Download QR Code image directly using Blob URL & simulated click
+  // Download QR Code image directly to device (Supports Web Share, Blob URL, direct download & touch-and-hold save)
   const handleDownloadQrBlob = async () => {
     setIsDownloadingQr(true);
     const accountClean = (formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || '7617997452';
@@ -114,18 +117,44 @@ export default function AdminPanel({
       if (!blob) throw new Error('ไม่พบข้อมูลไฟล์รูปภาพ QR Code');
 
       const fileName = `QR_Code_${accountClean}.${ext}`;
+      const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
+      setAdminQrFile(file);
 
-      // Create Blob URL
+      // Convert to Data URL for instant rendering in save modal
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setAdminQrPreviewDataUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(blob);
+
+      // Method 1: Web Share API (Primary method for mobile iOS Safari & Android to write file directly into Photos / Gallery)
+      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'QR Code สำหรับเติมเครดิต',
+            text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'} ธนาคารทหารไทยธนชาต (ttb)`
+          });
+          onShowToast("✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ", "success");
+          return;
+        } catch (shareErr: any) {
+          if (shareErr?.name === 'AbortError') {
+            return;
+          }
+          console.warn("Share attempt notice:", shareErr);
+        }
+      }
+
+      // Method 2: Blob URL Simulated Click Download (For standard desktop browsers)
       const blobUrl = URL.createObjectURL(blob);
-
-      // Simulate click on anchor element to download directly to device
       const link = document.createElement('a');
       link.href = blobUrl;
       link.download = fileName;
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
-
       setTimeout(() => {
         if (document.body.contains(link)) {
           document.body.removeChild(link);
@@ -133,9 +162,18 @@ export default function AdminPanel({
         URL.revokeObjectURL(blobUrl);
       }, 2500);
 
-      onShowToast("✅ ดาวน์โหลดรูปภาพ QR Code สำเร็จแล้ว (บันทึกลงเครื่องเรียบร้อย)", "success");
+      // Method 3: For mobile devices and in-app browsers (LINE, WebView) where automated download is blocked:
+      // Open the dedicated save modal with touch-and-hold instructions to ensure 100% guaranteed save to photo gallery
+      const isMobile = /Android|iPhone|iPad|iPod|Line/i.test(navigator.userAgent || '');
+      if (isMobile) {
+        setShowAdminQrSaveModal(true);
+        onShowToast("👆 แตะค้างที่รูปภาพ 1 วินาที เพื่อบันทึกรูปลงอัลบั้มทันทีค่ะ", "info");
+      } else {
+        onShowToast("✅ ดาวน์โหลดรูปภาพ QR Code สำเร็จแล้ว (บันทึกลงเครื่องเรียบร้อย)", "success");
+      }
     } catch (err: any) {
       console.error("Error downloading QR blob:", err);
+      setShowAdminQrSaveModal(true);
       onShowToast(err?.message || "เกิดข้อผิดพลาดในการดาวน์โหลดรูปภาพ", "error");
     } finally {
       setIsDownloadingQr(false);
@@ -3299,6 +3337,115 @@ export default function AdminPanel({
               >
                 ปิด
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 11. DEDICATED MOBILE QR SAVE & SHARE MODAL */}
+      {showAdminQrSaveModal && (
+        <div 
+          id="modal-admin-qr-save"
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
+          onClick={() => setShowAdminQrSaveModal(false)}
+        >
+          <div 
+            className="bg-white rounded-3xl p-5 sm:p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative my-auto animate-in zoom-in-95 duration-200 select-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={() => setShowAdminQrSaveModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
+              title="ปิด"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-black mb-1.5 border border-emerald-200">
+                <Download className="w-3.5 h-3.5 text-emerald-600" />
+                <span>บันทึกรูปภาพ QR Code ลงเครื่อง</span>
+              </div>
+              <h4 className="text-base font-black text-slate-900">
+                QR Code สำหรับเติมเครดิต
+              </h4>
+              <p className="text-xs text-slate-500 font-medium">
+                {formSettings.bankName || 'ธนาคารทหารไทยธนชาต (ttb)'} • {formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'}
+              </p>
+            </div>
+
+            {/* The QR Image */}
+            <div className="bg-slate-50 p-3 rounded-2xl border-2 border-emerald-400 shadow-sm inline-block mx-auto select-auto">
+              <img 
+                src={adminQrPreviewDataUrl || (formSettings.qrCodeImage ? (formSettings.qrCodeImage.startsWith('data:') ? formSettings.qrCodeImage : (formSettings.qrCodeImage.startsWith('/uploads/') ? formSettings.qrCodeImage : (formSettings.qrCodeImage.startsWith('http') ? formSettings.qrCodeImage : `/api/qr-image.jpg?t=${Date.now()}`))) : '/api/qr-image.jpg')}
+                alt="QR Code" 
+                className="w-52 h-52 object-contain rounded-xl select-auto pointer-events-auto mx-auto"
+                style={{
+                  WebkitTouchCallout: 'default',
+                  touchAction: 'auto',
+                  userSelect: 'auto',
+                  WebkitUserSelect: 'auto',
+                  pointerEvents: 'auto'
+                }}
+              />
+            </div>
+
+            {/* Crucial Touch & Hold Guide Box */}
+            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3 text-left space-y-1.5">
+              <div className="flex items-center gap-1.5 text-emerald-950 font-black text-xs">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                <span>วิธีบันทึกภาพให้เข้าอัลบั้มรูปในมือถือ 100%:</span>
+              </div>
+              <p className="text-[11px] text-emerald-950 font-semibold leading-relaxed">
+                👆 ใช้นิ้ว <strong>แตะค้างที่รูปภาพ QR Code ด้านบน 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปภาพในโทรศัพท์ของคุณทันทีค่ะ
+              </p>
+            </div>
+
+            {/* Action buttons inside modal */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (typeof navigator !== 'undefined' && navigator.share && adminQrFile && navigator.canShare && navigator.canShare({ files: [adminQrFile] })) {
+                    try {
+                      await navigator.share({
+                        files: [adminQrFile],
+                        title: 'QR Code สำหรับเติมเครดิต',
+                        text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'} ธนาคารทหารไทยธนชาต (ttb)`
+                      });
+                      onShowToast("✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ", "success");
+                    } catch (e: any) {
+                      if (e?.name !== 'AbortError') console.warn(e);
+                    }
+                  } else {
+                    onShowToast("👆 กรุณาแตะค้างที่รูปภาพด้านบน 1 วินาที แล้วเลือก 'บันทึกรูปภาพ' ค่ะ", "info");
+                  }
+                }}
+                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-white" />
+                <span>📤 บันทึกผ่านเมนูโทรศัพท์ (Share / Save)</span>
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={`/api/qr-download.jpg?download=1&t=${Date.now()}`}
+                  download={`QR_Code_${(formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.jpg`}
+                  className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer text-center"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ดาวน์โหลดไฟล์</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setShowAdminQrSaveModal(false)}
+                  className="py-2.5 px-3 bg-slate-200 hover:bg-slate-300 active:scale-[0.98] text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <span>ปิดหน้าต่าง</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
