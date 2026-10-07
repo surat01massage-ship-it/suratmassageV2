@@ -130,7 +130,9 @@ const defaultReviews: Review[] = [];
 const defaultNotifications: Notification[] = [];
 
 export function mergeDatabases(base: DatabaseSchema, additions: Partial<DatabaseSchema>): DatabaseSchema {
-  // Existing users in base.users are valid and active; NEVER filter them out!
+  const deletedUserIds = new Set([...(base.deletedUserIds || []), ...(additions.deletedUserIds || [])]);
+  const deletedStaffIds = new Set([...(base.deletedStaffIds || []), ...(additions.deletedStaffIds || [])]);
+
   const merged: DatabaseSchema = {
     users: [...(base.users || [])],
     staff: [...(base.staff || [])],
@@ -140,24 +142,23 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
     reviews: [...(base.reviews || [])],
     notifications: [...(base.notifications || [])],
     settings: { ...base.settings },
-    deletedUserIds: Array.from(new Set(base.deletedUserIds || [])),
-    deletedStaffIds: Array.from(new Set(base.deletedStaffIds || []))
+    deletedUserIds: Array.from(deletedUserIds),
+    deletedStaffIds: Array.from(deletedStaffIds)
   };
 
-  const baseDeletedUserIds = new Set(base.deletedUserIds || []);
-  const baseDeletedStaffIds = new Set(base.deletedStaffIds || []);
+  // Filter out any already deleted records from base
+  merged.users = merged.users.filter(u => !deletedUserIds.has(u.UserID));
+  merged.staff = merged.staff.filter(s => !deletedStaffIds.has(s.StaffID) && !deletedUserIds.has(s.UserID));
 
   if (Array.isArray(additions.users)) {
     for (const u of additions.users) {
       if (!u || !u.Phone || !u.UserID) continue;
+      if (deletedUserIds.has(u.UserID)) continue; // Never re-add permanently deleted user
       const idx = merged.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
       if (idx === -1) {
-        // If not in merged and not explicitly deleted by base, add user
-        if (baseDeletedUserIds.has(u.UserID)) continue;
         merged.users.push(u);
       } else {
-        // Merge newest info, ensuring crucial identity info is kept
-        merged.users[idx] = { ...u, ...merged.users[idx] };
+        merged.users[idx] = { ...merged.users[idx], ...u };
       }
     }
   }
@@ -165,18 +166,12 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
   if (Array.isArray(additions.staff)) {
     for (const s of additions.staff) {
       if (!s || !s.StaffID) continue;
-      const idx = merged.staff.findIndex(x => x.StaffID === s.StaffID || (s.UserID && x.UserID === s.UserID));
+      if (deletedStaffIds.has(s.StaffID) || (s.UserID && deletedUserIds.has(s.UserID))) continue; // Never re-add permanently deleted staff
+      const idx = merged.staff.findIndex(x => x.StaffID === s.StaffID || x.UserID === s.UserID);
       if (idx === -1) {
-        if (baseDeletedStaffIds.has(s.StaffID) || (s.UserID && baseDeletedUserIds.has(s.UserID))) continue;
         merged.staff.push(s);
       } else {
-        const curCredit = Number(merged.staff[idx].Credit) || 0;
-        const incCredit = Number(s.Credit) || 0;
-        merged.staff[idx] = {
-          ...s,
-          ...merged.staff[idx],
-          Credit: Math.max(curCredit, incCredit)
-        };
+        merged.staff[idx] = { ...merged.staff[idx], ...s };
       }
     }
   }
@@ -274,19 +269,17 @@ export function getDatabase(): DatabaseSchema {
   const sources = [primaryDb, backupDb, persistentDb, externalVaultDb, tmpVaultDb].filter(Boolean) as DatabaseSchema[];
 
   if (sources.length > 0) {
-    // Prefer primaryDb if available, otherwise pick source with the most users
-    if (primaryDb) {
-      liveDb = { ...primaryDb };
-    } else {
-      sources.sort((a, b) => ((b.users?.length || 0) + (b.staff?.length || 0)) - ((a.users?.length || 0) + (a.staff?.length || 0)));
-      liveDb = { ...sources[0] };
-    }
+    // Start with the source having the most users as base
+    sources.sort((a, b) => ((b.users?.length || 0) + (b.staff?.length || 0)) - ((a.users?.length || 0) + (a.staff?.length || 0)));
+    liveDb = { ...sources[0] };
 
-    // Merge in all other sources to recover any users not in liveDb
-    for (const src of sources) {
-      if (src !== liveDb) {
-        liveDb = mergeDatabases(liveDb, src);
-      }
+    // Merge in all other sources
+    for (let i = 1; i < sources.length; i++) {
+      liveDb = mergeDatabases(liveDb, sources[i]);
+    }
+    // Also merge primaryDb changes if any
+    if (primaryDb && primaryDb !== sources[0]) {
+      liveDb = mergeDatabases(liveDb, primaryDb);
     }
   }
 

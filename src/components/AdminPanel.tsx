@@ -75,110 +75,7 @@ export default function AdminPanel({
   const [isTestingLine, setIsTestingLine] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [lastSavedTime, setLastSavedTime] = useState<string | null>(settings.updatedAt || null);
-  const [isDownloadingQr, setIsDownloadingQr] = useState(false);
-  const [showAdminQrSaveModal, setShowAdminQrSaveModal] = useState(false);
-  const [adminQrPreviewDataUrl, setAdminQrPreviewDataUrl] = useState<string>('');
-  const [adminQrFile, setAdminQrFile] = useState<File | null>(null);
   const qrFileInputRef = useRef<HTMLInputElement>(null);
-
-  // Download QR Code image directly to device (Supports Web Share, Blob URL, direct download & touch-and-hold save)
-  const handleDownloadQrBlob = async () => {
-    setIsDownloadingQr(true);
-    const accountClean = (formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || '7617997452';
-
-    try {
-      let blob: Blob | null = null;
-      let ext = 'jpg';
-
-      // 1. If formSettings.qrCodeImage is already a Base64 Data URL
-      if (formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('data:image/')) {
-        const arr = formSettings.qrCodeImage.split(',');
-        const mimeMatch = arr[0].match(/:(.*?);/);
-        const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-        ext = mime.includes('png') ? 'png' : 'jpg';
-        const bstr = atob(arr[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-          u8arr[n] = bstr.charCodeAt(n);
-        }
-        blob = new Blob([u8arr], { type: mime });
-      } else {
-        // 2. Fetch the QR image from the server endpoint or local upload
-        const targetUrl = formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('/uploads/')
-          ? formSettings.qrCodeImage
-          : `/api/qr-image.jpg?t=${Date.now()}`;
-        const res = await fetch(targetUrl);
-        if (!res.ok) throw new Error('ไม่สามารถดึงรูปภาพ QR Code ได้');
-        blob = await res.blob();
-        if (blob.type.includes('png')) ext = 'png';
-      }
-
-      if (!blob) throw new Error('ไม่พบข้อมูลไฟล์รูปภาพ QR Code');
-
-      const fileName = `QR_Code_${accountClean}.${ext}`;
-      const file = new File([blob], fileName, { type: blob.type || 'image/jpeg' });
-      setAdminQrFile(file);
-
-      // Convert to Data URL for instant rendering in save modal
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setAdminQrPreviewDataUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(blob);
-
-      // Method 1: Web Share API (Primary method for mobile iOS Safari & Android to write file directly into Photos / Gallery)
-      if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: 'QR Code สำหรับเติมเครดิต',
-            text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'} ธนาคารทหารไทยธนชาต (ttb)`
-          });
-          onShowToast("✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ", "success");
-          return;
-        } catch (shareErr: any) {
-          if (shareErr?.name === 'AbortError') {
-            return;
-          }
-          console.warn("Share attempt notice:", shareErr);
-        }
-      }
-
-      // Method 2: Blob URL Simulated Click Download (For standard desktop browsers)
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = fileName;
-      link.style.display = 'none';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-        URL.revokeObjectURL(blobUrl);
-      }, 2500);
-
-      // Method 3: For mobile devices and in-app browsers (LINE, WebView) where automated download is blocked:
-      // Open the dedicated save modal with touch-and-hold instructions to ensure 100% guaranteed save to photo gallery
-      const isMobile = /Android|iPhone|iPad|iPod|Line/i.test(navigator.userAgent || '');
-      if (isMobile) {
-        setShowAdminQrSaveModal(true);
-        onShowToast("👆 แตะค้างที่รูปภาพ 1 วินาที เพื่อบันทึกรูปลงอัลบั้มทันทีค่ะ", "info");
-      } else {
-        onShowToast("✅ ดาวน์โหลดรูปภาพ QR Code สำเร็จแล้ว (บันทึกลงเครื่องเรียบร้อย)", "success");
-      }
-    } catch (err: any) {
-      console.error("Error downloading QR blob:", err);
-      setShowAdminQrSaveModal(true);
-      onShowToast(err?.message || "เกิดข้อผิดพลาดในการดาวน์โหลดรูปภาพ", "error");
-    } finally {
-      setIsDownloadingQr(false);
-    }
-  };
 
   const handleUploadQrFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -387,27 +284,6 @@ export default function AdminPanel({
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
       if (Array.isArray(data)) {
-        // Authoritative vault synchronization:
-        // Check if browser vault has users missing on server (e.g. after fresh deploy or server restart)
-        try {
-          const rawLocal = localStorage.getItem('sabaidee_persisted_users');
-          const localList: User[] = rawLocal ? JSON.parse(rawLocal) : [];
-          const serverIds = new Set(data.map((u: User) => u.UserID));
-          const missingOnServer = localList.filter(u => u && u.UserID && !serverIds.has(u.UserID));
-          if (missingOnServer.length > 0) {
-            fetch('/api/sync/rehydrate-users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ users: missingOnServer, staff: [] })
-            }).then(r => r.json()).then(syncData => {
-              if (syncData?.users && Array.isArray(syncData.users)) {
-                setAllUsers(syncData.users);
-                localStorage.setItem('sabaidee_persisted_users', JSON.stringify(syncData.users));
-              }
-            }).catch(console.warn);
-          }
-        } catch {}
-
         // Sort users so Customers appear first during testing
         const sortedData = data.sort((a: any, b: any) => {
           const roleOrder: any = { 'Customer': 1, 'Staff': 2, 'Admin': 3 };
@@ -477,43 +353,12 @@ export default function AdminPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      onShowToast(isEdit ? `อัปเดตข้อมูล ${userForm.name} และซิงค์ Google Sheets สำเร็จ` : `เพิ่มผู้ใช้งาน ${userForm.name} (บทบาท: ${userForm.role}) ถาวรเรียบร้อย`, "success");
+      onShowToast(isEdit ? `อัปเดตข้อมูล ${userForm.name} และซิงค์ Google Sheets สำเร็จ` : `เพิ่มผู้ใช้งาน ${userForm.name} และซิงค์เข้าชีตอัตโนมัติเรียบร้อย`, "success");
       setShowUserForm(false);
       setEditingUserId(null);
-
-      // Permanently record in local browser vault immediately
-      if (data.user) {
-        try {
-          const raw = localStorage.getItem('sabaidee_persisted_users') || '[]';
-          const list: User[] = JSON.parse(raw);
-          const idx = list.findIndex(u => u.UserID === data.user.UserID || u.Phone === data.user.Phone);
-          if (idx >= 0) {
-            list[idx] = data.user;
-          } else {
-            list.push(data.user);
-          }
-          localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
-        } catch {}
-      }
-
-      if (data.staff) {
-        try {
-          const raw = localStorage.getItem('sabaidee_persisted_staff') || '[]';
-          const list: Staff[] = JSON.parse(raw);
-          const idx = list.findIndex(s => s.StaffID === data.staff.StaffID);
-          if (idx >= 0) {
-            list[idx] = data.staff;
-          } else {
-            list.push(data.staff);
-          }
-          localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
-        } catch {}
-      }
-
       setUserForm({ name: '', phone: '', password: '', role: 'Customer' });
       fetchAllUsers();
-      fetchDashboardStats();
-      if (userForm.role === 'Staff' || data.staff) fetchStaffList();
+      if (userForm.role === 'Staff') fetchStaffList();
       fetchRawDatabase();
     } catch (e: any) {
       onShowToast(e.message, "error");
@@ -2609,21 +2454,43 @@ export default function AdminPanel({
                       <Upload className="w-3 h-3" />
                       <span>อัปโหลดรูป QR จากเครื่อง</span>
                     </button>
-                    <button
-                      type="button"
+                    <a
                       id="btn-admin-download-qr-code-top"
-                      onClick={handleDownloadQrBlob}
-                      disabled={isDownloadingQr}
-                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                      title="ดาวน์โหลดรูปภาพ QR Code (สร้าง Blob URL และจำลองคลิกเพื่อเซฟลงเครื่อง)"
+                      href={formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('data:image/') 
+                        ? formSettings.qrCodeImage 
+                        : (formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('/uploads/') 
+                          ? `${formSettings.qrCodeImage.split('?')[0]}?download=1` 
+                          : `/api/qr-download.jpg?download=1`)}
+                      download={`QR_Code_${(formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.jpg`}
+                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold rounded-lg transition shadow-2xs flex items-center gap-1 cursor-pointer"
+                      title="ดาวน์โหลด QR Code สำหรับพนักงาน"
+                      onClick={async (e) => {
+                        if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent || '') && navigator.share) {
+                          try {
+                            e.preventDefault();
+                            const res = await fetch('/api/qr-image.jpg');
+                            if (res.ok) {
+                              const blob = await res.blob();
+                              const file = new File([blob], `QR_Code_${(formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.jpg`, { type: 'image/jpeg' });
+                              if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+                                await navigator.share({
+                                  files: [file],
+                                  title: 'QR Code สำหรับเติมเครดิต',
+                                  text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'}`
+                                });
+                                onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีรูปภาพค่ะ", "success");
+                                return;
+                              }
+                            }
+                          } catch (err: any) {
+                            if (err?.name === 'AbortError') return;
+                          }
+                        }
+                      }}
                     >
-                      {isDownloadingQr ? (
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Download className="w-3 h-3" />
-                      )}
-                      <span>ดาวน์โหลดรูปภาพ QR Code</span>
-                    </button>
+                      <Download className="w-3 h-3" />
+                      <span>ดาวน์โหลด QR Code</span>
+                    </a>
                     {formSettings.qrCodeImage && (
                       <button
                         type="button"
@@ -2694,31 +2561,48 @@ export default function AdminPanel({
                       </span>
                     </div>
                     <p className="text-slate-600">
-                      พนักงานและแอดมินสามารถกด <strong className="text-emerald-700 font-bold">"ดาวน์โหลดรูปภาพ QR Code"</strong> เพื่อเซฟไฟล์รูปลงอัลบั้มในโทรศัพท์ได้โดยตรง (ผ่านระบบ Blob URL และจำลองการคลิก) แทนการแคปหน้าจอค่ะ
+                      พนักงานจะเห็น QR Code รูปนี้บนหน้าเติมเครดิต และสามารถกด <strong className="text-sky-600">"ดาวน์โหลด QR Code"</strong> เพื่อบันทึกรูปลงเครื่อง (ทั้ง iOS / Android) ได้โดยตรงจากเบราว์เซอร์ไลน์ 100% ค่ะ
                     </p>
                     
-                    {/* Action buttons with Blob URL direct download */}
+                    {/* Action buttons with <a> download tag */}
                     <div className="flex items-center gap-2 flex-wrap pt-1 justify-center sm:justify-start">
-                      <button 
-                        type="button"
-                        id="btn-admin-download-qr-blob"
-                        onClick={handleDownloadQrBlob}
-                        disabled={isDownloadingQr}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer disabled:opacity-50"
-                        title="ดาวน์โหลดรูปภาพ QR Code (สร้าง Blob URL และจำลองคลิกเพื่อเซฟลงอัลบั้มในมือถือโดยตรง)"
+                      <a 
+                        id="btn-admin-download-qr-code"
+                        href={formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('data:image/') 
+                          ? formSettings.qrCodeImage 
+                          : (formSettings.qrCodeImage && formSettings.qrCodeImage.startsWith('/uploads/') 
+                            ? `${formSettings.qrCodeImage.split('?')[0]}?download=1` 
+                            : `/api/qr-download.jpg?download=1`)}
+                        download={`QR_Code_${(formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.jpg`}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-xs transition active:scale-[0.98] cursor-pointer"
+                        title="ดาวน์โหลดไฟล์รูปภาพ QR Code ลงเครื่องทันที"
+                        onClick={async (e) => {
+                          if (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent || '') && navigator.share) {
+                            try {
+                              e.preventDefault();
+                              const res = await fetch('/api/qr-image.jpg');
+                              if (res.ok) {
+                                const blob = await res.blob();
+                                const file = new File([blob], `QR_Code_${(formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.jpg`, { type: 'image/jpeg' });
+                                if (!navigator.canShare || navigator.canShare({ files: [file] })) {
+                                  await navigator.share({
+                                    files: [file],
+                                    title: 'QR Code สำหรับเติมเครดิต',
+                                    text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'}`
+                                  });
+                                  onShowToast("เลือก 'บันทึกรูปภาพ' (Save Image) ในเมนูเพื่อบันทึกลงแกลเลอรีรูปภาพค่ะ", "success");
+                                  return;
+                                }
+                              }
+                            } catch (err: any) {
+                              if (err?.name === 'AbortError') return;
+                            }
+                          }
+                        }}
                       >
-                        {isDownloadingQr ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            <span>กำลังดาวน์โหลดรูปภาพ...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-3.5 h-3.5" />
-                            <span>ดาวน์โหลดรูปภาพ QR Code</span>
-                          </>
-                        )}
-                      </button>
+                        <Download className="w-3.5 h-3.5" />
+                        <span>ดาวน์โหลด QR Code</span>
+                      </a>
 
                       <a 
                         href={`/qr-save?download=1&openExternalBrowser=1`}
@@ -3337,115 +3221,6 @@ export default function AdminPanel({
               >
                 ปิด
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 11. DEDICATED MOBILE QR SAVE & SHARE MODAL */}
-      {showAdminQrSaveModal && (
-        <div 
-          id="modal-admin-qr-save"
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
-          onClick={() => setShowAdminQrSaveModal(false)}
-        >
-          <div 
-            className="bg-white rounded-3xl p-5 sm:p-6 max-w-sm w-full text-center space-y-4 shadow-2xl relative my-auto animate-in zoom-in-95 duration-200 select-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close button */}
-            <button
-              type="button"
-              onClick={() => setShowAdminQrSaveModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100 transition cursor-pointer"
-              title="ปิด"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-black mb-1.5 border border-emerald-200">
-                <Download className="w-3.5 h-3.5 text-emerald-600" />
-                <span>บันทึกรูปภาพ QR Code ลงเครื่อง</span>
-              </div>
-              <h4 className="text-base font-black text-slate-900">
-                QR Code สำหรับเติมเครดิต
-              </h4>
-              <p className="text-xs text-slate-500 font-medium">
-                {formSettings.bankName || 'ธนาคารทหารไทยธนชาต (ttb)'} • {formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'}
-              </p>
-            </div>
-
-            {/* The QR Image */}
-            <div className="bg-slate-50 p-3 rounded-2xl border-2 border-emerald-400 shadow-sm inline-block mx-auto select-auto">
-              <img 
-                src={adminQrPreviewDataUrl || (formSettings.qrCodeImage ? (formSettings.qrCodeImage.startsWith('data:') ? formSettings.qrCodeImage : (formSettings.qrCodeImage.startsWith('/uploads/') ? formSettings.qrCodeImage : (formSettings.qrCodeImage.startsWith('http') ? formSettings.qrCodeImage : `/api/qr-image.jpg?t=${Date.now()}`))) : '/api/qr-image.jpg')}
-                alt="QR Code" 
-                className="w-52 h-52 object-contain rounded-xl select-auto pointer-events-auto mx-auto"
-                style={{
-                  WebkitTouchCallout: 'default',
-                  touchAction: 'auto',
-                  userSelect: 'auto',
-                  WebkitUserSelect: 'auto',
-                  pointerEvents: 'auto'
-                }}
-              />
-            </div>
-
-            {/* Crucial Touch & Hold Guide Box */}
-            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-3 text-left space-y-1.5">
-              <div className="flex items-center gap-1.5 text-emerald-950 font-black text-xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
-                <span>วิธีบันทึกภาพให้เข้าอัลบั้มรูปในมือถือ 100%:</span>
-              </div>
-              <p className="text-[11px] text-emerald-950 font-semibold leading-relaxed">
-                👆 ใช้นิ้ว <strong>แตะค้างที่รูปภาพ QR Code ด้านบน 1 วินาที</strong> แล้วกดเลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปภาพในโทรศัพท์ของคุณทันทีค่ะ
-              </p>
-            </div>
-
-            {/* Action buttons inside modal */}
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={async () => {
-                  if (typeof navigator !== 'undefined' && navigator.share && adminQrFile && navigator.canShare && navigator.canShare({ files: [adminQrFile] })) {
-                    try {
-                      await navigator.share({
-                        files: [adminQrFile],
-                        title: 'QR Code สำหรับเติมเครดิต',
-                        text: `QR Code ${formSettings.bankAccountName || 'นางเครือวัลย์ ชายแก้ว'} ธนาคารทหารไทยธนชาต (ttb)`
-                      });
-                      onShowToast("✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ", "success");
-                    } catch (e: any) {
-                      if (e?.name !== 'AbortError') console.warn(e);
-                    }
-                  } else {
-                    onShowToast("👆 กรุณาแตะค้างที่รูปภาพด้านบน 1 วินาที แล้วเลือก 'บันทึกรูปภาพ' ค่ะ", "info");
-                  }
-                }}
-                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-[0.98] text-white font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow-md cursor-pointer"
-              >
-                <Download className="w-4 h-4 text-white" />
-                <span>📤 บันทึกผ่านเมนูโทรศัพท์ (Share / Save)</span>
-              </button>
-
-              <div className="grid grid-cols-2 gap-2">
-                <a
-                  href={`/api/qr-download.jpg?download=1&t=${Date.now()}`}
-                  download={`QR_Code_${(formSettings.bankAccount || '7617997452').replace(/[^0-9a-zA-Z]/g, '') || 'pay'}.jpg`}
-                  className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 active:scale-[0.98] text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer text-center"
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-500" />
-                  <span>ดาวน์โหลดไฟล์</span>
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setShowAdminQrSaveModal(false)}
-                  className="py-2.5 px-3 bg-slate-200 hover:bg-slate-300 active:scale-[0.98] text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
-                >
-                  <span>ปิดหน้าต่าง</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>

@@ -382,11 +382,6 @@ async function startServer() {
       CreatedDate: new Date().toISOString()
     };
 
-    // Remove any previous tombstones to ensure user is 100% permanently retained
-    if (db.deletedUserIds) {
-      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
-    }
-
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
@@ -395,9 +390,6 @@ async function startServer() {
     // If registering as Staff, create Staff record
     if (role === 'Staff') {
       const newStaffID = generateId('SFT');
-      if (db.deletedStaffIds) {
-        db.deletedStaffIds = db.deletedStaffIds.filter(id => id !== newStaffID);
-      }
       const info = staffInfo || {};
       const newStaff: Staff = {
         StaffID: newStaffID,
@@ -800,21 +792,11 @@ async function startServer() {
       CreatedDate: new Date().toISOString()
     };
 
-    // Remove any previous tombstones to ensure user is 100% permanently retained
-    if (db.deletedUserIds) {
-      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
-    }
-
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
-    let createdStaff: Staff | null = null;
-
     if (userRole === 'Staff') {
       const newStaffID = generateId('SFT');
-      if (db.deletedStaffIds) {
-        db.deletedStaffIds = db.deletedStaffIds.filter(id => id !== newStaffID);
-      }
       const info = staffInfo || {};
       const newStaff: Staff = {
         StaffID: newStaffID,
@@ -844,7 +826,6 @@ async function startServer() {
         IdCardFile: info.idCardFile || '',
         HouseRegFile: info.houseRegFile || ''
       };
-      createdStaff = newStaff;
       db.staff.push(newStaff);
       syncToGoogleSheet('INSERT', 'Staff', newStaff);
       const staffDocData = {
@@ -881,7 +862,7 @@ async function startServer() {
     }
 
     saveDatabase(db);
-    res.status(201).json({ success: true, user: newUser, staff: createdStaff });
+    res.status(201).json({ success: true, user: newUser });
   });
 
   app.put('/api/users/:id', (req, res) => {
@@ -3342,8 +3323,8 @@ async function startServer() {
         <span>💡</span> วิธีบันทึกภาพให้เข้าเครื่อง 100% (สำหรับผู้ใช้ LINE):
       </div>
       <div class="line-guide-desc">
-        <strong>• วิธีที่ 1:</strong> กดปุ่มสีฟ้า/เขียว <strong>"ดาวน์โหลด QR Code ลงเครื่อง"</strong> ด้านล่างเพื่อบันทึกรูปเข้าอัลบั้มทันทีค่ะ<br>
-        <strong>• วิธีที่ 2:</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> ➔ เลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันที 100% ค่ะ
+        <strong>• สำหรับ Android:</strong> กดปุ่มสีเขียว <strong>"เปิดใน Chrome (ดาวน์โหลดอัตโนมัติ)"</strong> หรือกดปุ่ม <strong>"บันทึกรูปภาพลงอัลบั้ม"</strong> ด้านล่าง รูปจะถูกดาวน์โหลดลงเครื่องทันที 100% ค่ะ<br>
+        <strong>• สำหรับ iPhone:</strong> ใช้นิ้ว <strong>แตะค้างที่รูป QR ด้านบน 1 วินาที</strong> ➔ เลือก <strong>"บันทึกรูปภาพ" (Save Image)</strong> รูปจะเข้าอัลบั้มรูปในโทรศัพท์ทันทีค่ะ
       </div>
     </div>
 
@@ -3363,8 +3344,8 @@ async function startServer() {
       <span>📥</span> ดาวน์โหลด QR Code ลงเครื่อง (ผ่าน LINE ได้ทันที)
     </a>
 
-    <a href="${qrImgSrc}" class="btn-external" id="btn-external-action">
-      <span>🖼️</span> เปิดรูป QR Code เต็มจอใน LINE (กด 📥 บันทึกใน LINE)
+    <a href="${qrDownloadSrc}&openExternalBrowser=1" class="btn-external" id="btn-external-action" onclick="openInExternal(event)">
+      <span>🌐</span> เปิดใน Chrome / Safari (ดาวน์โหลดอัตโนมัติ)
     </a>
 
     <a href="/" class="btn-back">⬅️ กลับสู่ระบบ</a>
@@ -3420,9 +3401,26 @@ async function startServer() {
       document.body.removeChild(ta);
     }
 
+    function openInExternal(e) {
+      var inLine = /Line\//i.test(navigator.userAgent || '');
+      if (inLine) {
+        // In LINE (both Android & iOS), openExternalBrowser=1 instructs LINE to open in device default browser (Chrome/Safari)
+        var targetUrl = new URL('${qrDownloadSrc}', window.location.origin);
+        targetUrl.searchParams.set('openExternalBrowser', '1');
+        targetUrl.searchParams.set('download', '1');
+        window.location.href = targetUrl.toString();
+        showToast('กำลังเปิดเบราว์เซอร์เพื่อดาวน์โหลด QR Code ค่ะ...');
+        return;
+      }
+      triggerDirectDownload();
+    }
+
     async function saveQrToGallery(e) {
-      // Native Web Share API (Works on Android & iOS inside LINE to save directly to Gallery without opening external browser!)
-      if (navigator.share) {
+      var inLine = /Line\//i.test(navigator.userAgent || '');
+      var isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
+      // On iOS: Try native Web Share API (gives direct native "Save Image" to Photos on iPhone inside LINE)
+      if (isIos && navigator.share) {
         try {
           var res = await fetch('${qrImgSrc}');
           if (res.ok) {
@@ -3435,7 +3433,7 @@ async function startServer() {
                 title: 'QR Code สำหรับเติมเครดิต',
                 text: 'QR Code บัญชี นางเครือวัลย์ ชายแก้ว ธนาคารทหารไทยธนชาต (ttb)'
               });
-              showToast('✅ บันทึกรูปภาพลงเครื่องเรียบร้อยแล้วค่ะ');
+              showToast('✅ เลือก "บันทึกรูปภาพ" (Save Image) เพื่อเข้าแกลเลอรีรูปภาพค่ะ');
               return;
             }
           }
@@ -3444,9 +3442,8 @@ async function startServer() {
         }
       }
 
-      // Fallback: highlight the image and guide user to touch-and-hold (long press)
-      highlightQr();
-      showToast('👆 แตะค้างที่รูปภาพ QR Code ด้านบน 1 วินาที ➔ เลือก "บันทึกรูปภาพ" ค่ะ');
+      // Allow natural <a> click to download directly in LINE / browser
+      showToast('กำลังดาวน์โหลดภาพ QR Code ลงเครื่องค่ะ...');
     }
 
     function triggerDirectDownload() {
