@@ -284,6 +284,27 @@ export default function AdminPanel({
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
       if (Array.isArray(data)) {
+        // Authoritative vault synchronization:
+        // Check if browser vault has users missing on server (e.g. after fresh deploy or server restart)
+        try {
+          const rawLocal = localStorage.getItem('sabaidee_persisted_users');
+          const localList: User[] = rawLocal ? JSON.parse(rawLocal) : [];
+          const serverIds = new Set(data.map((u: User) => u.UserID));
+          const missingOnServer = localList.filter(u => u && u.UserID && !serverIds.has(u.UserID));
+          if (missingOnServer.length > 0) {
+            fetch('/api/sync/rehydrate-users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ users: missingOnServer, staff: [] })
+            }).then(r => r.json()).then(syncData => {
+              if (syncData?.users && Array.isArray(syncData.users)) {
+                setAllUsers(syncData.users);
+                localStorage.setItem('sabaidee_persisted_users', JSON.stringify(syncData.users));
+              }
+            }).catch(console.warn);
+          }
+        } catch {}
+
         // Sort users so Customers appear first during testing
         const sortedData = data.sort((a: any, b: any) => {
           const roleOrder: any = { 'Customer': 1, 'Staff': 2, 'Admin': 3 };
@@ -353,12 +374,43 @@ export default function AdminPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       
-      onShowToast(isEdit ? `อัปเดตข้อมูล ${userForm.name} และซิงค์ Google Sheets สำเร็จ` : `เพิ่มผู้ใช้งาน ${userForm.name} และซิงค์เข้าชีตอัตโนมัติเรียบร้อย`, "success");
+      onShowToast(isEdit ? `อัปเดตข้อมูล ${userForm.name} และซิงค์ Google Sheets สำเร็จ` : `เพิ่มผู้ใช้งาน ${userForm.name} (บทบาท: ${userForm.role}) ถาวรเรียบร้อย`, "success");
       setShowUserForm(false);
       setEditingUserId(null);
+
+      // Permanently record in local browser vault immediately
+      if (data.user) {
+        try {
+          const raw = localStorage.getItem('sabaidee_persisted_users') || '[]';
+          const list: User[] = JSON.parse(raw);
+          const idx = list.findIndex(u => u.UserID === data.user.UserID || u.Phone === data.user.Phone);
+          if (idx >= 0) {
+            list[idx] = data.user;
+          } else {
+            list.push(data.user);
+          }
+          localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
+        } catch {}
+      }
+
+      if (data.staff) {
+        try {
+          const raw = localStorage.getItem('sabaidee_persisted_staff') || '[]';
+          const list: Staff[] = JSON.parse(raw);
+          const idx = list.findIndex(s => s.StaffID === data.staff.StaffID);
+          if (idx >= 0) {
+            list[idx] = data.staff;
+          } else {
+            list.push(data.staff);
+          }
+          localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
+        } catch {}
+      }
+
       setUserForm({ name: '', phone: '', password: '', role: 'Customer' });
       fetchAllUsers();
-      if (userForm.role === 'Staff') fetchStaffList();
+      fetchDashboardStats();
+      if (userForm.role === 'Staff' || data.staff) fetchStaffList();
       fetchRawDatabase();
     } catch (e: any) {
       onShowToast(e.message, "error");

@@ -382,6 +382,11 @@ async function startServer() {
       CreatedDate: new Date().toISOString()
     };
 
+    // Remove any previous tombstones to ensure user is 100% permanently retained
+    if (db.deletedUserIds) {
+      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
+    }
+
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
@@ -390,6 +395,9 @@ async function startServer() {
     // If registering as Staff, create Staff record
     if (role === 'Staff') {
       const newStaffID = generateId('SFT');
+      if (db.deletedStaffIds) {
+        db.deletedStaffIds = db.deletedStaffIds.filter(id => id !== newStaffID);
+      }
       const info = staffInfo || {};
       const newStaff: Staff = {
         StaffID: newStaffID,
@@ -792,11 +800,21 @@ async function startServer() {
       CreatedDate: new Date().toISOString()
     };
 
+    // Remove any previous tombstones to ensure user is 100% permanently retained
+    if (db.deletedUserIds) {
+      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
+    }
+
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
 
+    let createdStaff: Staff | null = null;
+
     if (userRole === 'Staff') {
       const newStaffID = generateId('SFT');
+      if (db.deletedStaffIds) {
+        db.deletedStaffIds = db.deletedStaffIds.filter(id => id !== newStaffID);
+      }
       const info = staffInfo || {};
       const newStaff: Staff = {
         StaffID: newStaffID,
@@ -826,6 +844,7 @@ async function startServer() {
         IdCardFile: info.idCardFile || '',
         HouseRegFile: info.houseRegFile || ''
       };
+      createdStaff = newStaff;
       db.staff.push(newStaff);
       syncToGoogleSheet('INSERT', 'Staff', newStaff);
       const staffDocData = {
@@ -862,7 +881,7 @@ async function startServer() {
     }
 
     saveDatabase(db);
-    res.status(201).json({ success: true, user: newUser });
+    res.status(201).json({ success: true, user: newUser, staff: createdStaff });
   });
 
   app.put('/api/users/:id', (req, res) => {
