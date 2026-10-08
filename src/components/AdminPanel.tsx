@@ -35,7 +35,14 @@ export default function AdminPanel({
   const [salesViewMode, setSalesViewMode] = useState<'daily' | 'monthly'>('daily');
   const [allStaff, setAllStaff] = useState<any[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
+  const [services, setServices] = useState<Service[]>(() => {
+    try {
+      const saved = localStorage.getItem('sabaidee_persisted_services');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [transactions, setTransactions] = useState<any[]>([]);
   const [rawDb, setRawDb] = useState<any | null>(null);
 
@@ -284,34 +291,14 @@ export default function AdminPanel({
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
       if (Array.isArray(data)) {
-        // Authoritative vault synchronization:
-        // Check if browser vault has users missing on server (e.g. after fresh deploy or server restart)
-        try {
-          const rawLocal = localStorage.getItem('sabaidee_persisted_users');
-          const localList: User[] = rawLocal ? JSON.parse(rawLocal) : [];
-          const serverIds = new Set(data.map((u: User) => u.UserID));
-          const missingOnServer = localList.filter(u => u && u.UserID && !serverIds.has(u.UserID));
-          if (missingOnServer.length > 0) {
-            fetch('/api/sync/rehydrate-users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ users: missingOnServer, staff: [] })
-            }).then(r => r.json()).then(syncData => {
-              if (syncData?.users && Array.isArray(syncData.users)) {
-                setAllUsers(syncData.users);
-                localStorage.setItem('sabaidee_persisted_users', JSON.stringify(syncData.users));
-              }
-            }).catch(console.warn);
-          }
-        } catch {}
-
+        // Authoritative server list:
         // Sort users so Customers appear first during testing
         const sortedData = data.sort((a: any, b: any) => {
           const roleOrder: any = { 'Customer': 1, 'Staff': 2, 'Admin': 3 };
           return (roleOrder[a.Role] || 99) - (roleOrder[b.Role] || 99);
         });
         setAllUsers(sortedData);
-        // Persist users into local vault
+        // Persist valid server users into local vault (purges any deleted users)
         try {
           localStorage.setItem('sabaidee_persisted_users', JSON.stringify(sortedData));
         } catch {}
@@ -328,6 +315,9 @@ export default function AdminPanel({
       const data = await res.json().catch(() => []);
       if (Array.isArray(data)) {
         setServices(data);
+        try {
+          localStorage.setItem('sabaidee_persisted_services', JSON.stringify(data));
+        } catch {}
       }
     } catch (e) {
       console.warn("fetchServices notice:", e);
@@ -443,7 +433,7 @@ export default function AdminPanel({
       try {
         const rawUsers = localStorage.getItem('sabaidee_persisted_users');
         if (rawUsers) {
-          const list = JSON.parse(rawUsers).filter((u: any) => u.UserID !== userToDelete.UserID);
+          const list = JSON.parse(rawUsers).filter((u: any) => u.UserID !== userToDelete.UserID && (!userToDelete.Phone || u.Phone !== userToDelete.Phone));
           localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
         }
         const rawStaff = localStorage.getItem('sabaidee_persisted_staff');
@@ -452,6 +442,10 @@ export default function AdminPanel({
           localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
         }
       } catch {}
+
+      // Immediately filter UI state
+      setAllUsers(prev => prev.filter(u => u.UserID !== userToDelete.UserID && (!userToDelete.Phone || u.Phone !== userToDelete.Phone)));
+      setAllStaff(prev => prev.filter(s => s.UserID !== userToDelete.UserID));
 
       onShowToast(data.message ? `${data.message} (ลบออกจากชีตเรียบร้อย)` : `ลบผู้ใช้งาน "${userToDelete.Name}" และแถวใน Google Sheets สำเร็จ`, "success");
       setUserToDelete(null);
@@ -479,6 +473,10 @@ export default function AdminPanel({
         localStorage.removeItem('sabaidee_persisted_users');
         localStorage.removeItem('sabaidee_persisted_staff');
       } catch {}
+
+      // Immediately filter UI state
+      setAllUsers(prev => prev.filter(u => u.Role === 'Admin'));
+      setAllStaff([]);
 
       onShowToast("ลบผู้ใช้ทุกคนออกเรียบร้อย เหลือเฉพาะแอดมินคนเดียว และบล็อกไม่ให้บัญชีเดิมกลับมาอีกถาวรค่ะ", "success");
       setShowCleanAdminModal(false);
@@ -519,6 +517,12 @@ export default function AdminPanel({
           }
         }
       } catch {}
+
+      // Immediately filter UI state
+      setAllStaff(prev => prev.filter(s => s.StaffID !== staffToDelete.StaffID && s.UserID !== staffToDelete.UserID));
+      if (deleteStaffUserAccount && staffToDelete.UserID) {
+        setAllUsers(prev => prev.filter(u => u.UserID !== staffToDelete.UserID));
+      }
 
       onShowToast(data.message || `ลบข้อมูลพนักงาน "${staffToDelete.Nickname}" ออกจากระบบถาวรเรียบร้อยแล้ว`, "success");
       setStaffToDelete(null);
@@ -641,9 +645,25 @@ export default function AdminPanel({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      onShowToast(editingService ? "แก้ไขข้อมูลบริการสำเร็จ" : "เพิ่มบริการนวดใหม่ในระบบเรียบร้อยแล้วค่ะ", "success");
+      onShowToast(
+        editingService 
+          ? `บันทึกราคาและข้อมูลบริการ "${payload.ServiceName}" (ราคา ฿${payload.Price} บาท) สำเร็จถาวรแล้ว` 
+          : `เพิ่มบริการนวดใหม่ "${payload.ServiceName}" (ราคา ฿${payload.Price} บาท) เรียบร้อยแล้วค่ะ`, 
+        "success"
+      );
       setEditingService(null);
       setShowServiceForm(false);
+      if (data.service) {
+        setServices(prev => {
+          const updated = prev.some(s => s.ServiceID === data.service.ServiceID)
+            ? prev.map(s => s.ServiceID === data.service.ServiceID ? data.service : s)
+            : [...prev, data.service];
+          try {
+            localStorage.setItem('sabaidee_persisted_services', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
       fetchServices();
     } catch (e: any) {
       onShowToast(e.message, "error");
@@ -1670,7 +1690,9 @@ export default function AdminPanel({
                     <span className="text-[9px] bg-sky-50 text-sky-800 border border-sky-100 font-extrabold px-2.5 py-0.5 rounded-full">
                       {service.Duration} นาที
                     </span>
-                    <span className="text-xs font-black text-sky-600">฿{service.Price}</span>
+                    <span className="text-sm font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full shadow-2xs">
+                      ฿{service.Price} บาท
+                    </span>
                   </div>
                   <h4 className="font-bold text-slate-800 text-sm">{service.ServiceName}</h4>
                   <p className="text-xs text-slate-500 leading-normal">{service.Detail}</p>
@@ -1683,18 +1705,18 @@ export default function AdminPanel({
                   </div>
                   <div className="flex justify-between items-center text-slate-500">
                     <span>พนักงานได้เงินสุทธิ:</span>
-                    <span className="text-sky-600 font-black">฿{Math.max(0, service.Price - service.CreditRequired)}</span>
+                    <span className="text-sky-600 font-black">฿{Math.max(0, service.Price - service.CreditRequired)} บาท</span>
                   </div>
                   <div className="flex justify-end gap-2 mt-1">
                     <button
                       onClick={() => handleEditServiceInit(service)}
-                      className="text-sky-600 hover:text-sky-700 bg-sky-50 px-2 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                      className="text-sky-700 hover:text-sky-800 bg-sky-50 hover:bg-sky-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-black text-[11px]"
                     >
-                      <Edit className="w-3.5 h-3.5" /> แก้ไข
+                      <Edit className="w-3.5 h-3.5" /> แก้ไขราคา/บริการ
                     </button>
                     <button
                       onClick={() => handleDeleteService(service.ServiceID)}
-                      className="text-rose-600 hover:text-rose-700 bg-rose-50 px-2 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                      className="text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px]"
                     >
                       <Trash2 className="w-3.5 h-3.5" /> ลบ
                     </button>

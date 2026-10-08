@@ -686,11 +686,17 @@ async function startServer() {
   // Users APIs
   app.get('/api/users', (req, res) => {
     const db = getDatabase();
-    res.json(db.users);
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    const activeUsers = db.users.filter(u => !deletedUserSet.has(u.UserID) && (!u.Phone || !deletedUserSet.has(u.Phone)));
+    res.json(activeUsers);
   });
 
   app.get('/api/users/:id', (req, res) => {
     const db = getDatabase();
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (deletedUserSet.has(req.params.id)) {
+      return res.status(404).json({ error: 'ผู้ใช้งานนี้ถูกลบออกจากระบบแล้ว' });
+    }
     const user = db.users.find(u => u.UserID === req.params.id);
     if (!user) {
       return res.status(404).json({ error: 'ไม่พบผู้ใช้ในระบบ' });
@@ -712,6 +718,11 @@ async function startServer() {
     if (Array.isArray(users)) {
       for (const u of users) {
         if (!u || !u.UserID || !u.Phone) continue;
+        // CRITICAL CHECK: If deleted, NEVER rehydrate or restore!
+        if (deletedUserSet.has(u.UserID) || deletedUserSet.has(u.Phone)) {
+          console.log(`[Sync] Blocked deleted user from rehydrating: ${u.Name} (${u.UserID} - ${u.Phone})`);
+          continue;
+        }
 
         const existingIdx = db.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
         if (existingIdx === -1) {
@@ -730,6 +741,11 @@ async function startServer() {
     if (Array.isArray(staff)) {
       for (const s of staff) {
         if (!s || !s.StaffID) continue;
+        // CRITICAL CHECK: If deleted, NEVER rehydrate or restore!
+        if (deletedStaffSet.has(s.StaffID) || (s.UserID && deletedUserSet.has(s.UserID))) {
+          console.log(`[Sync] Blocked deleted staff from rehydrating: ${s.Nickname || s.StaffID}`);
+          continue;
+        }
 
         const existingIdx = db.staff.findIndex(x => x.StaffID === s.StaffID || (s.UserID && x.UserID === s.UserID));
         if (existingIdx === -1) {
@@ -748,6 +764,15 @@ async function startServer() {
           };
         }
       }
+    }
+
+    // Ensure database never contains deleted users or staff
+    const initialUserLen = db.users.length;
+    const initialStaffLen = db.staff.length;
+    db.users = db.users.filter(u => !deletedUserSet.has(u.UserID) && (!u.Phone || !deletedUserSet.has(u.Phone)));
+    db.staff = db.staff.filter(s => !deletedStaffSet.has(s.StaffID) && (!s.UserID || !deletedUserSet.has(s.UserID)));
+    if (db.users.length !== initialUserLen || db.staff.length !== initialStaffLen) {
+      dbModified = true;
     }
 
     if (dbModified) {
@@ -1016,6 +1041,9 @@ async function startServer() {
     if (!db.deletedUserIds.includes(id)) {
       db.deletedUserIds.push(id);
     }
+    if (userToDelete.Phone && !db.deletedUserIds.includes(userToDelete.Phone)) {
+      db.deletedUserIds.push(userToDelete.Phone);
+    }
 
     // If staff, permanently remove staff profile as well
     let deletedStaffId: string | undefined;
@@ -1075,8 +1103,9 @@ async function startServer() {
 
     // Tombstone all non-admin users being removed so they NEVER return
     for (const u of db.users) {
-      if (u.UserID !== adminUser.UserID && !db.deletedUserIds.includes(u.UserID)) {
-        db.deletedUserIds.push(u.UserID);
+      if (u.UserID !== adminUser.UserID) {
+        if (!db.deletedUserIds.includes(u.UserID)) db.deletedUserIds.push(u.UserID);
+        if (u.Phone && !db.deletedUserIds.includes(u.Phone)) db.deletedUserIds.push(u.Phone);
       }
     }
 
@@ -1145,6 +1174,9 @@ async function startServer() {
             db.users.splice(uIndex, 1);
             if (!db.deletedUserIds.includes(staff.UserID)) {
               db.deletedUserIds.push(staff.UserID);
+            }
+            if (user.Phone && !db.deletedUserIds.includes(user.Phone)) {
+              db.deletedUserIds.push(user.Phone);
             }
             deletedUserId = staff.UserID;
             syncToGoogleSheet('DELETE', 'Users', { UserID: user.UserID, Name: user.Name });
@@ -1237,6 +1269,8 @@ async function startServer() {
 
     const deleted = db.services[index];
     db.services.splice(index, 1);
+    if (!db.deletedServiceIds) db.deletedServiceIds = [];
+    if (!db.deletedServiceIds.includes(id)) db.deletedServiceIds.push(id);
     saveDatabase(db);
     syncToGoogleSheet('DELETE', 'Services', { ServiceID: id, ServiceName: deleted.ServiceName });
     res.json({ success: true });

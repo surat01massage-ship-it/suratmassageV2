@@ -163,12 +163,12 @@ const saveActiveSession = (user: User | null, staff: Staff | null, role: 'Custom
   }
 };
 
-export const removeLocallyPersistedUser = (userId: string) => {
+export const removeLocallyPersistedUser = (userId: string, phone?: string) => {
   if (typeof window === 'undefined' || !userId) return;
   try {
     const raw = localStorage.getItem('sabaidee_persisted_users') || '[]';
     const list: User[] = JSON.parse(raw);
-    const filtered = list.filter(u => u.UserID !== userId);
+    const filtered = list.filter(u => u.UserID !== userId && (!phone || u.Phone !== phone));
     localStorage.setItem('sabaidee_persisted_users', JSON.stringify(filtered));
 
     // Also check active session
@@ -274,36 +274,52 @@ const syncVaultWithServer = async () => {
         const combinedUsersMap = new Map<string, User>();
         if (Array.isArray(data.users)) {
           data.users.forEach((u: User) => {
-            if (u && u.UserID) combinedUsersMap.set(u.UserID, u);
+            if (u && u.UserID && !serverDeletedUsers.has(u.UserID) && (!u.Phone || !serverDeletedUsers.has(u.Phone))) {
+              combinedUsersMap.set(u.UserID, u);
+            }
           });
         }
         users.forEach((u: User) => {
           if (u && u.UserID && !combinedUsersMap.has(u.UserID)) {
+            // NEVER resurrect a deleted account
+            if (serverDeletedUsers.has(u.UserID) || (u.Phone && serverDeletedUsers.has(u.Phone))) {
+              return;
+            }
             combinedUsersMap.set(u.UserID, u);
           }
         });
-        const cleanUsers = Array.from(combinedUsersMap.values());
+        const cleanUsers = Array.from(combinedUsersMap.values()).filter(u => 
+          !serverDeletedUsers.has(u.UserID) && (!u.Phone || !serverDeletedUsers.has(u.Phone))
+        );
         localStorage.setItem('sabaidee_persisted_users', JSON.stringify(cleanUsers));
 
         const combinedStaffMap = new Map<string, Staff>();
         if (Array.isArray(data.staff)) {
           data.staff.forEach((s: Staff) => {
-            if (s && s.StaffID) combinedStaffMap.set(s.StaffID, s);
+            if (s && s.StaffID && !serverDeletedStaff.has(s.StaffID) && (!s.UserID || !serverDeletedUsers.has(s.UserID))) {
+              combinedStaffMap.set(s.StaffID, s);
+            }
           });
         }
         staff.forEach((s: Staff) => {
           if (s && s.StaffID && !combinedStaffMap.has(s.StaffID)) {
+            // NEVER resurrect deleted staff
+            if (serverDeletedStaff.has(s.StaffID) || (s.UserID && serverDeletedUsers.has(s.UserID))) {
+              return;
+            }
             combinedStaffMap.set(s.StaffID, s);
           }
         });
-        const cleanStaff = Array.from(combinedStaffMap.values());
+        const cleanStaff = Array.from(combinedStaffMap.values()).filter(s =>
+          !serverDeletedStaff.has(s.StaffID) && (!s.UserID || !serverDeletedUsers.has(s.UserID))
+        );
         localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(cleanStaff));
 
         const sessionRaw = localStorage.getItem('sabaidee_active_session');
         if (sessionRaw) {
           try {
             const sess = JSON.parse(sessionRaw);
-            if (sess?.user?.UserID && serverDeletedUsers.has(sess.user.UserID)) {
+            if (sess?.user?.UserID && (serverDeletedUsers.has(sess.user.UserID) || (sess.user.Phone && serverDeletedUsers.has(sess.user.Phone)))) {
               localStorage.removeItem('sabaidee_active_session');
               localStorage.removeItem('sabaidee_auth');
             } else if (sess?.user?.UserID && combinedUsersMap.has(sess.user.UserID)) {

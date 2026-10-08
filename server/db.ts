@@ -32,6 +32,7 @@ export interface DatabaseSchema {
   settings: AppSettings;
   deletedUserIds?: string[];
   deletedStaffIds?: string[];
+  deletedServiceIds?: string[];
 }
 
 export const defaultSettings: AppSettings = {
@@ -130,7 +131,20 @@ const defaultReviews: Review[] = [];
 const defaultNotifications: Notification[] = [];
 
 export function mergeDatabases(base: DatabaseSchema, additions: Partial<DatabaseSchema>): DatabaseSchema {
-  // Existing users in base.users are valid and active; NEVER filter them out!
+  // Combine all tombstones from base and additions so deletions are 100% permanent and NEVER undone
+  const combinedDeletedUserIds = new Set([
+    ...(base.deletedUserIds || []),
+    ...(additions.deletedUserIds || [])
+  ]);
+  const combinedDeletedStaffIds = new Set([
+    ...(base.deletedStaffIds || []),
+    ...(additions.deletedStaffIds || [])
+  ]);
+  const combinedDeletedServiceIds = new Set([
+    ...(base.deletedServiceIds || []),
+    ...(additions.deletedServiceIds || [])
+  ]);
+
   const merged: DatabaseSchema = {
     users: [...(base.users || [])],
     staff: [...(base.staff || [])],
@@ -140,20 +154,33 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
     reviews: [...(base.reviews || [])],
     notifications: [...(base.notifications || [])],
     settings: { ...base.settings },
-    deletedUserIds: Array.from(new Set(base.deletedUserIds || [])),
-    deletedStaffIds: Array.from(new Set(base.deletedStaffIds || []))
+    deletedUserIds: Array.from(combinedDeletedUserIds),
+    deletedStaffIds: Array.from(combinedDeletedStaffIds),
+    deletedServiceIds: Array.from(combinedDeletedServiceIds)
   };
 
-  const baseDeletedUserIds = new Set(base.deletedUserIds || []);
-  const baseDeletedStaffIds = new Set(base.deletedStaffIds || []);
+  if (Array.isArray(additions.services)) {
+    for (const s of additions.services) {
+      if (!s || !s.ServiceID) continue;
+      if (combinedDeletedServiceIds.has(s.ServiceID)) continue;
+      const idx = merged.services.findIndex(x => x.ServiceID === s.ServiceID);
+      if (idx === -1) {
+        merged.services.push(s);
+      } else {
+        // Base has priority for current edited prices/details, but fill missing fields from additions
+        merged.services[idx] = { ...s, ...merged.services[idx] };
+      }
+    }
+  }
 
   if (Array.isArray(additions.users)) {
     for (const u of additions.users) {
       if (!u || !u.Phone || !u.UserID) continue;
+      // PERMANENT DELETION: Never restore any user whose UserID or Phone was deleted
+      if (combinedDeletedUserIds.has(u.UserID) || combinedDeletedUserIds.has(u.Phone)) continue;
+
       const idx = merged.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
       if (idx === -1) {
-        // If not in merged and not explicitly deleted by base, add user
-        if (baseDeletedUserIds.has(u.UserID)) continue;
         merged.users.push(u);
       } else {
         // Merge newest info, ensuring crucial identity info is kept
@@ -165,9 +192,11 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
   if (Array.isArray(additions.staff)) {
     for (const s of additions.staff) {
       if (!s || !s.StaffID) continue;
+      // PERMANENT DELETION: Never restore any staff or user account that was deleted
+      if (combinedDeletedStaffIds.has(s.StaffID) || (s.UserID && combinedDeletedUserIds.has(s.UserID))) continue;
+
       const idx = merged.staff.findIndex(x => x.StaffID === s.StaffID || (s.UserID && x.UserID === s.UserID));
       if (idx === -1) {
-        if (baseDeletedStaffIds.has(s.StaffID) || (s.UserID && baseDeletedUserIds.has(s.UserID))) continue;
         merged.staff.push(s);
       } else {
         const curCredit = Number(merged.staff[idx].Credit) || 0;
@@ -180,6 +209,17 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
       }
     }
   }
+
+  // Purge any deleted users or staff from merged lists to guarantee no resurrected accounts
+  merged.users = merged.users.filter(u => 
+    !combinedDeletedUserIds.has(u.UserID) && (!u.Phone || !combinedDeletedUserIds.has(u.Phone))
+  );
+  merged.staff = merged.staff.filter(s => 
+    !combinedDeletedStaffIds.has(s.StaffID) && (!s.UserID || !combinedDeletedUserIds.has(s.UserID))
+  );
+  merged.services = merged.services.filter(s =>
+    !combinedDeletedServiceIds.has(s.ServiceID)
+  );
 
   if (Array.isArray(additions.bookings)) {
     for (const b of additions.bookings) {
@@ -273,6 +313,23 @@ export function getDatabase(): DatabaseSchema {
   // 3. Sequentially merge all database sources to guarantee ZERO user data loss across git pushes, git pulls, or GitHub deployments!
   const sources = [primaryDb, backupDb, persistentDb, externalVaultDb, tmpVaultDb].filter(Boolean) as DatabaseSchema[];
 
+  // Collect all deletion tombstones across all storage layers
+  const allDeletedUserIds = new Set<string>();
+  const allDeletedStaffIds = new Set<string>();
+  const allDeletedServiceIds = new Set<string>();
+
+  for (const src of sources) {
+    if (Array.isArray(src.deletedUserIds)) {
+      src.deletedUserIds.forEach(id => { if (id) allDeletedUserIds.add(id); });
+    }
+    if (Array.isArray(src.deletedStaffIds)) {
+      src.deletedStaffIds.forEach(id => { if (id) allDeletedStaffIds.add(id); });
+    }
+    if (Array.isArray(src.deletedServiceIds)) {
+      src.deletedServiceIds.forEach(id => { if (id) allDeletedServiceIds.add(id); });
+    }
+  }
+
   if (sources.length > 0) {
     // Prefer primaryDb if available, otherwise pick source with the most users
     if (primaryDb) {
@@ -289,6 +346,25 @@ export function getDatabase(): DatabaseSchema {
       }
     }
   }
+
+  // Enforce permanent tombstones: Purge any user/staff matching deleted IDs or phones
+  liveDb.deletedUserIds = Array.from(new Set([...(liveDb.deletedUserIds || []), ...allDeletedUserIds]));
+  liveDb.deletedStaffIds = Array.from(new Set([...(liveDb.deletedStaffIds || []), ...allDeletedStaffIds]));
+  liveDb.deletedServiceIds = Array.from(new Set([...(liveDb.deletedServiceIds || []), ...allDeletedServiceIds]));
+
+  const finalDeletedUserIds = new Set(liveDb.deletedUserIds);
+  const finalDeletedStaffIds = new Set(liveDb.deletedStaffIds);
+  const finalDeletedServiceIds = new Set(liveDb.deletedServiceIds);
+
+  liveDb.users = liveDb.users.filter(u => 
+    !finalDeletedUserIds.has(u.UserID) && (!u.Phone || !finalDeletedUserIds.has(u.Phone))
+  );
+  liveDb.staff = liveDb.staff.filter(s => 
+    !finalDeletedStaffIds.has(s.StaffID) && (!s.UserID || !finalDeletedUserIds.has(s.UserID))
+  );
+  liveDb.services = liveDb.services.filter(s =>
+    !finalDeletedServiceIds.has(s.ServiceID)
+  );
 
   // 4. Ensure all users and staff are intact and valid
   if (!Array.isArray(liveDb.users) || liveDb.users.length === 0) {
@@ -334,12 +410,16 @@ export function getDatabase(): DatabaseSchema {
     }
   });
 
-  // Ensure all 3 services are updated to 598 THB
-  liveDb.services.forEach(srv => {
-    if (srv.Price === 798 || srv.ServiceID === 'S001' || srv.ServiceID === 'S002' || srv.ServiceID === 'S003') {
-      srv.Price = 598;
-    }
-  });
+  // Ensure all services maintain valid numbers without overriding user-configured prices
+  if (!Array.isArray(liveDb.services) || liveDb.services.length === 0) {
+    liveDb.services = [...defaultServices];
+  } else {
+    liveDb.services.forEach(srv => {
+      if (typeof srv.Price === 'string') srv.Price = parseFloat(srv.Price) || 0;
+      if (typeof srv.Duration === 'string') srv.Duration = parseInt(srv.Duration) || 60;
+      if (typeof srv.CreditRequired === 'string') srv.CreditRequired = parseFloat(srv.CreditRequired) || 0;
+    });
+  }
 
   inMemoryDB = liveDb;
   saveDatabase(liveDb);
