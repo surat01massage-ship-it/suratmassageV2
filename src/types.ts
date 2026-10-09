@@ -61,6 +61,7 @@ export interface Service {
   CreditRequired: number; // minimum credit required by staff to accept
   Active: 'ON' | 'OFF';
   SortOrder: number;
+  UpdatedAt?: string;
 }
 
 export type BookingStatus = 'Waiting' | 'Accepted' | 'Working' | 'Completed' | 'Cancel';

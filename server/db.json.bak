@@ -28,7 +28,8 @@
       "Price": 598,
       "CreditRequired": 298,
       "Active": "ON",
-      "SortOrder": 1
+      "SortOrder": 1,
+      "UpdatedAt": "2026-10-09T07:04:33.985Z"
     },
     {
       "ServiceID": "S002",

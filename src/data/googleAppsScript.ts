@@ -20,7 +20,7 @@ function setupInitialSheets() {
     Users: ["UserID", "Name", "Phone", "PasswordHash", "Email", "Address", "Province", "District", "SubDistrict", "Latitude", "Longitude", "ProfileImage", "Role", "Status", "CreatedDate"],
     Staff: ["StaffID", "UserID", "Nickname", "Gender", "Age", "Weight", "Height", "RegisteredAddress", "Experience", "Description", "Rating", "ReviewCount", "Credit", "Available", "VerifyStatus", "CurrentLatitude", "CurrentLongitude", "LastLocationUpdate", "TotalIncome", "TotalJobs", "OfferedServices", "MaxJobDistance", "Photos", "LicenseFile", "IdCardFile", "HouseRegFile"],
     StaffDocuments: ["DocID", "StaffID", "UserID", "StaffName", "Nickname", "Phone", "VerifyStatus", "LicenseFile", "IdCardFile", "HouseRegFile", "RegisteredAddress", "SubmittedDate", "Notes"],
-    Services: ["ServiceID", "ServiceName", "Detail", "Duration", "Price", "CreditRequired", "Active", "SortOrder"],
+    Services: ["ServiceID", "ServiceName", "Detail", "Duration", "Price", "CreditRequired", "Active", "SortOrder", "UpdatedAt"],
     Booking: ["BookingID", "CustomerID", "StaffID", "BookingDate", "BookingTime", "ServiceID", "ServicePrice", "Distance", "TravelFee", "TotalPrice", "CustomerLatitude", "CustomerLongitude", "CustomerAddress", "Status", "PaymentStatus", "CreatedDate"],
     CreditTransaction: ["TransactionID", "StaffID", "Amount", "BeforeCredit", "AfterCredit", "Type", "SlipImage", "Status", "AdminRemark", "CreatedDate"],
     Reviews: ["ReviewID", "BookingID", "CustomerID", "StaffID", "Score", "Comment", "CreatedDate"],
@@ -246,6 +246,10 @@ function updateSheetRow(sheetName, idColumnName, idValue, updatedData) {
   const processedData = processDataFiles(updatedData);
   
   let lastCol = sheet.getLastColumn();
+  if (lastCol === 0) {
+    appendSheetRow(sheetName, processedData);
+    return true;
+  }
   let headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   
   // Dynamic header check: auto-expand missing headers if not present
@@ -255,17 +259,42 @@ function updateSheetRow(sheetName, idColumnName, idValue, updatedData) {
     headers = headers.concat(missingHeaders);
   }
   
-  let idColIndex = headers.indexOf(idColumnName);
+  const trimmedHeaders = headers.map(h => String(h || "").trim());
+  const lowerHeaders = trimmedHeaders.map(h => h.toLowerCase());
+  const sName = String(sheetName || "").trim().toLowerCase();
+  const searchId = String(idColumnName || "").trim().toLowerCase();
+
+  let idColIndex = lowerHeaders.indexOf(searchId);
   if (idColIndex === -1) {
-    if (sheetName.toLowerCase() === 'users') idColIndex = headers.indexOf('UserID');
-    else if (sheetName.toLowerCase() === 'staff') idColIndex = headers.indexOf('StaffID');
-    else if (sheetName.toLowerCase() === 'staffdocuments') idColIndex = headers.indexOf('DocID');
-    else if (sheetName.toLowerCase() === 'services') idColIndex = headers.indexOf('ServiceID');
-    else if (sheetName.toLowerCase() === 'booking' || sheetName.toLowerCase() === 'bookings') idColIndex = headers.indexOf('BookingID');
-    else if (sheetName.toLowerCase() === 'credittransaction' || sheetName.toLowerCase() === 'transactions') idColIndex = headers.indexOf('TransactionID');
+    if (sName === 'users' || sName === 'user') idColIndex = lowerHeaders.indexOf('userid');
+    else if (sName === 'staff') idColIndex = lowerHeaders.indexOf('staffid');
+    else if (sName === 'staffdocuments') idColIndex = lowerHeaders.indexOf('docid');
+    else if (sName === 'services' || sName === 'service') idColIndex = lowerHeaders.indexOf('serviceid');
+    else if (sName === 'booking' || sName === 'bookings') idColIndex = lowerHeaders.indexOf('bookingid');
+    else if (sName === 'credittransaction' || sName === 'transactions') idColIndex = lowerHeaders.indexOf('transactionid');
+    else if (sName === 'reviews' || sName === 'review') idColIndex = lowerHeaders.indexOf('reviewid');
+    else if (sName === 'notification' || sName === 'notifications') idColIndex = lowerHeaders.indexOf('notificationid');
   }
 
-  if (idColIndex === -1) throw new Error("ID Column " + idColumnName + " not found");
+  // Fallback: check for standard id column name
+  if (idColIndex === -1) {
+    idColIndex = lowerHeaders.indexOf('serviceid');
+  }
+  if (idColIndex === -1) {
+    idColIndex = lowerHeaders.indexOf('id');
+  }
+  if (idColIndex === -1) {
+    idColIndex = lowerHeaders.findIndex(h => h.includes('id'));
+  }
+
+  // If column still doesn't exist, auto-insert the header instead of throwing an unhandled exception
+  if (idColIndex === -1) {
+    const colName = idColumnName || (sName === 'services' ? 'ServiceID' : 'ID');
+    sheet.insertColumnBefore(1);
+    sheet.getRange(1, 1).setValue(colName).setFontWeight("bold").setBackground("#d9ead3");
+    headers = [colName, ...headers];
+    idColIndex = 0;
+  }
   
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
@@ -283,7 +312,10 @@ function updateSheetRow(sheetName, idColumnName, idValue, updatedData) {
       return true;
     }
   }
-  return false;
+  
+  // If no existing row found matching the ID, append as new row so data is preserved
+  appendSheetRow(sheetName, processedData);
+  return true;
 }
 
 function upsertSheetRow(sheetName, idColumnName, idValue, rowData) {
@@ -401,14 +433,35 @@ function doPost(e) {
         result = handleSyncAllTables(request.tables || payload?.tables);
         break;
       case "INSERT": {
-        const idCol = request.table === 'Users' ? 'UserID' : (request.table === 'Staff' ? 'StaffID' : (request.table === 'StaffDocuments' ? 'DocID' : (request.table === 'Services' ? 'ServiceID' : (request.table === 'Booking' ? 'BookingID' : (request.table === 'CreditTransaction' ? 'TransactionID' : 'ID')))));
-        const idVal = request.data ? (request.data[idCol] || request.data.DocID || request.data.UserID || request.data.StaffID || request.data.TransactionID) : null;
-        result = upsertSheetRow(request.table, idCol, idVal, request.data);
+        const table = request.table || request.sheetName || "Services";
+        const idCol = request.idColumn || request.idColumnName || (
+          table.toLowerCase() === 'users' ? 'UserID' : 
+          table.toLowerCase() === 'staff' ? 'StaffID' : 
+          table.toLowerCase() === 'staffdocuments' ? 'DocID' : 
+          (table.toLowerCase() === 'services' || table.toLowerCase() === 'service') ? 'ServiceID' : 
+          (table.toLowerCase() === 'booking' || table.toLowerCase() === 'bookings') ? 'BookingID' : 
+          (table.toLowerCase() === 'credittransaction' || table.toLowerCase() === 'transactions') ? 'TransactionID' : 
+          table.toLowerCase() === 'reviews' ? 'ReviewID' : 
+          table.toLowerCase() === 'notification' ? 'NotificationID' : 'ID'
+        );
+        const idVal = request.id || request.ID || (request.data ? (request.data[idCol] || request.data.ServiceID || request.data.UserID || request.data.StaffID || request.data.DocID || request.data.BookingID || request.data.TransactionID || request.data.ID || request.data.id) : null);
+        result = upsertSheetRow(table, idCol, idVal, request.data);
         break;
       }
       case "UPDATE": {
-        const idCol = request.table === 'Users' ? 'UserID' : (request.table === 'Staff' ? 'StaffID' : (request.table === 'StaffDocuments' ? 'DocID' : (request.table === 'Booking' ? 'BookingID' : (request.table === 'Services' ? 'ServiceID' : (request.table === 'CreditTransaction' ? 'TransactionID' : 'ID')))));
-        result = updateSheetRow(request.table, idCol, request.data[idCol] || request.data.DocID || request.data.StaffID || request.data.TransactionID, request.data);
+        const table = request.table || request.sheetName || "Services";
+        const idCol = request.idColumn || request.idColumnName || (
+          table.toLowerCase() === 'users' ? 'UserID' : 
+          table.toLowerCase() === 'staff' ? 'StaffID' : 
+          table.toLowerCase() === 'staffdocuments' ? 'DocID' : 
+          (table.toLowerCase() === 'services' || table.toLowerCase() === 'service') ? 'ServiceID' : 
+          (table.toLowerCase() === 'booking' || table.toLowerCase() === 'bookings') ? 'BookingID' : 
+          (table.toLowerCase() === 'credittransaction' || table.toLowerCase() === 'transactions') ? 'TransactionID' : 
+          table.toLowerCase() === 'reviews' ? 'ReviewID' : 
+          table.toLowerCase() === 'notification' ? 'NotificationID' : 'ID'
+        );
+        const idVal = request.id || request.ID || (request.data ? (request.data[idCol] || request.data.ServiceID || request.data.UserID || request.data.StaffID || request.data.DocID || request.data.BookingID || request.data.TransactionID || request.data.ID || request.data.id) : null);
+        result = upsertSheetRow(table, idCol, idVal, request.data);
         break;
       }
       case "DELETE": {

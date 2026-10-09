@@ -248,24 +248,73 @@ async function syncToGoogleSheet(action: 'INSERT' | 'UPDATE' | 'DELETE' | 'SYNC_
       return;
     }
     
+    // Resolve standard primary key ID column name and value for the table
+    const idCol = 
+      table.toLowerCase() === 'services' ? 'ServiceID' :
+      table.toLowerCase() === 'users' ? 'UserID' :
+      table.toLowerCase() === 'staff' ? 'StaffID' :
+      table.toLowerCase() === 'staffdocuments' ? 'DocID' :
+      (table.toLowerCase() === 'booking' || table.toLowerCase() === 'bookings') ? 'BookingID' :
+      (table.toLowerCase() === 'credittransaction' || table.toLowerCase() === 'transactions') ? 'TransactionID' :
+      table.toLowerCase() === 'reviews' ? 'ReviewID' :
+      table.toLowerCase() === 'notification' ? 'NotificationID' : 'ID';
+
+    const idVal = data ? (data[idCol] || data.ServiceID || data.UserID || data.StaffID || data.DocID || data.BookingID || data.TransactionID || data.ID || data.id) : null;
+
+    // Enrich payload with all ID fields so both old and new Google Apps Script deployments work seamlessly
+    const enrichedData = data && typeof data === 'object' ? {
+      ...data,
+      ...(idVal ? { [idCol]: idVal, ID: idVal, id: idVal } : {})
+    } : data;
+
+    const payload = {
+      action,
+      table,
+      sheetName: table,
+      idColumn: idCol,
+      idColumnName: idCol,
+      idCol: idCol,
+      id: idVal,
+      ID: idVal,
+      data: enrichedData,
+      timestamp: new Date().toISOString()
+    };
+
     // Non-blocking asynchronous sync to Google Sheets
     fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       redirect: 'follow',
-      signal: AbortSignal.timeout(4000),
-      body: JSON.stringify({
-        action,
-        table,
-        data,
-        timestamp: new Date().toISOString()
-      })
+      signal: AbortSignal.timeout(5000),
+      body: JSON.stringify(payload)
     }).then(async res => {
       if (!res.ok) {
         console.warn(`[GoogleSheetSync] ${table} (${action}) responded with status ${res.status}`);
       } else {
         const json = await res.json().catch(() => null);
-        console.log(`[GoogleSheetSync] Success ${table} (${action}):`, json);
+        if (json && json.success === false) {
+          console.warn(`[GoogleSheetSync] Warning ${table} (${action}):`, json.error || json);
+          // If UPDATE fails because of ID Column or not found, automatically fallback to INSERT (upsert)
+          if (action === 'UPDATE') {
+            console.log(`[GoogleSheetSync] Retrying ${table} with upsert fallback...`);
+            fetch(webhookUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              redirect: 'follow',
+              signal: AbortSignal.timeout(5000),
+              body: JSON.stringify({
+                ...payload,
+                action: 'INSERT'
+              })
+            }).then(r => r.json()).then(rJson => {
+              console.log(`[GoogleSheetSync] Fallback ${table} (INSERT/UPSERT) result:`, rJson);
+            }).catch(e => {
+              console.warn(`[GoogleSheetSync] Fallback error:`, e.message);
+            });
+          }
+        } else {
+          console.log(`[GoogleSheetSync] Success ${table} (${action}):`, json);
+        }
       }
     }).catch(err => {
       console.error(`[GoogleSheetSync] Error syncing ${table} (${action}):`, err.message);
@@ -1225,7 +1274,8 @@ async function startServer() {
       Price: parseFloat(Price),
       CreditRequired: parseFloat(CreditRequired) || Math.floor(Price * 0.15),
       Active: Active || 'ON',
-      SortOrder: parseInt(SortOrder) || (db.services.length + 1)
+      SortOrder: parseInt(SortOrder) || (db.services.length + 1),
+      UpdatedAt: new Date().toISOString()
     };
 
     db.services.push(newService);
@@ -1252,6 +1302,7 @@ async function startServer() {
     service.CreditRequired = CreditRequired !== undefined ? parseFloat(CreditRequired) : service.CreditRequired;
     service.Active = Active || service.Active;
     service.SortOrder = SortOrder !== undefined ? parseInt(SortOrder) : service.SortOrder;
+    service.UpdatedAt = new Date().toISOString();
 
     saveDatabase(db);
     syncToGoogleSheet('UPDATE', 'Services', service);
