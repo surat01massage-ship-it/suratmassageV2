@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
-import { getDatabase, saveDatabase, DatabaseSchema, defaultSettings } from './server/db';
+import { getDatabase, saveDatabase, DatabaseSchema, defaultSettings, cleanPhone, isUserDeleted, isStaffDeleted } from './server/db';
 import { User, Staff, Service, Booking, CreditTransaction, Review, Notification, AppSettings, DEFAULT_BLANK_AVATAR } from './src/types';
 import { scanSlipQRCode, DecodedSlipQR } from './server/slipQrScanner';
 import QRCode from 'qrcode';
@@ -292,8 +292,9 @@ async function syncToGoogleSheet(action: 'INSERT' | 'UPDATE' | 'DELETE' | 'SYNC_
         console.warn(`[GoogleSheetSync] ${table} (${action}) responded with status ${res.status}`);
       } else {
         const json = await res.json().catch(() => null);
-        if (json && json.success === false) {
-          console.warn(`[GoogleSheetSync] Warning ${table} (${action}):`, json.error || json);
+        const isFailure = !json || json.success === false || json.success === 'false' || Boolean(json.error);
+        if (isFailure) {
+          console.warn(`[GoogleSheetSync] Warning ${table} (${action}):`, json?.error || json || 'Empty response');
           // If UPDATE fails because of ID Column or not found, automatically fallback to INSERT (upsert)
           if (action === 'UPDATE') {
             console.log(`[GoogleSheetSync] Retrying ${table} with upsert fallback...`);
@@ -407,7 +408,12 @@ async function startServer() {
       return res.status(400).json({ error: 'กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (ชื่อ, เบอร์โทรศัพท์, รหัสผ่าน, บทบาท)' });
     }
 
-    const existingUser = db.users.find(u => u.Phone === phone);
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (isUserDeleted({ Phone: phone }, deletedUserSet)) {
+      return res.status(403).json({ error: 'เบอร์โทรศัพท์นี้ถูกลบออกจากระบบอย่างถาวรแล้ว ไม่อนุญาตให้ลงทะเบียนหรือกลับมาใช้งานอีก' });
+    }
+
+    const existingUser = db.users.find(u => u.Phone === phone || cleanPhone(u.Phone) === cleanPhone(phone));
     if (existingUser) {
       return res.status(400).json({ error: 'เบอร์โทรศัพท์นี้ถูกใช้งานแล้วในระบบ' });
     }
@@ -430,11 +436,6 @@ async function startServer() {
       Status: 'Active',
       CreatedDate: new Date().toISOString()
     };
-
-    // Remove any previous tombstones to ensure user is 100% permanently retained
-    if (db.deletedUserIds) {
-      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
-    }
 
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
@@ -556,9 +557,14 @@ async function startServer() {
     const db = getDatabase();
     const { phone, password } = req.body;
 
-    const user = db.users.find(u => u.Phone === phone && u.PasswordHash === password);
-    if (!user) {
-      return res.status(401).json({ error: 'เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง' });
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (isUserDeleted({ Phone: phone }, deletedUserSet)) {
+      return res.status(403).json({ error: 'บัญชีนี้ถูกลบออกจากระบบอย่างถาวรแล้ว ไม่อนุญาตให้เข้าสู่ระบบ' });
+    }
+
+    const user = db.users.find(u => (u.Phone === phone || cleanPhone(u.Phone) === cleanPhone(phone)) && u.PasswordHash === password);
+    if (!user || isUserDeleted(user, deletedUserSet)) {
+      return res.status(401).json({ error: 'เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกลบแล้ว' });
     }
 
     if (user.Status === 'Inactive') {
@@ -581,6 +587,11 @@ async function startServer() {
   app.put('/api/auth/profile', (req, res) => {
     const db = getDatabase();
     const { userId, name, email, address, province, district, subDistrict, latitude, longitude, profileImage, staffInfo } = req.body;
+
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (isUserDeleted({ UserID: userId }, deletedUserSet)) {
+      return res.status(404).json({ error: 'ผู้ใช้งานนี้ถูกลบออกจากระบบแล้ว' });
+    }
 
     const userIndex = db.users.findIndex(u => u.UserID === userId);
     if (userIndex === -1) {
@@ -736,18 +747,18 @@ async function startServer() {
   app.get('/api/users', (req, res) => {
     const db = getDatabase();
     const deletedUserSet = new Set(db.deletedUserIds || []);
-    const activeUsers = db.users.filter(u => !deletedUserSet.has(u.UserID) && (!u.Phone || !deletedUserSet.has(u.Phone)));
+    const activeUsers = db.users.filter(u => !isUserDeleted(u, deletedUserSet));
     res.json(activeUsers);
   });
 
   app.get('/api/users/:id', (req, res) => {
     const db = getDatabase();
     const deletedUserSet = new Set(db.deletedUserIds || []);
-    if (deletedUserSet.has(req.params.id)) {
+    if (isUserDeleted({ UserID: req.params.id, Phone: req.params.id }, deletedUserSet)) {
       return res.status(404).json({ error: 'ผู้ใช้งานนี้ถูกลบออกจากระบบแล้ว' });
     }
     const user = db.users.find(u => u.UserID === req.params.id);
-    if (!user) {
+    if (!user || isUserDeleted(user, deletedUserSet)) {
       return res.status(404).json({ error: 'ไม่พบผู้ใช้ในระบบ' });
     }
     const staff = user.Role === 'Staff' ? (db.staff.find(s => s.UserID === user.UserID) || null) : null;
@@ -768,12 +779,12 @@ async function startServer() {
       for (const u of users) {
         if (!u || !u.UserID || !u.Phone) continue;
         // CRITICAL CHECK: If deleted, NEVER rehydrate or restore!
-        if (deletedUserSet.has(u.UserID) || deletedUserSet.has(u.Phone)) {
+        if (isUserDeleted(u, deletedUserSet)) {
           console.log(`[Sync] Blocked deleted user from rehydrating: ${u.Name} (${u.UserID} - ${u.Phone})`);
           continue;
         }
 
-        const existingIdx = db.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
+        const existingIdx = db.users.findIndex(x => x.UserID === u.UserID || cleanPhone(x.Phone) === cleanPhone(u.Phone));
         if (existingIdx === -1) {
           // User exists on client but not on server (e.g. after fresh git deploy) -> Rehydrate back into database!
           db.users.push(u);
@@ -791,7 +802,7 @@ async function startServer() {
       for (const s of staff) {
         if (!s || !s.StaffID) continue;
         // CRITICAL CHECK: If deleted, NEVER rehydrate or restore!
-        if (deletedStaffSet.has(s.StaffID) || (s.UserID && deletedUserSet.has(s.UserID))) {
+        if (isStaffDeleted(s, deletedStaffSet, deletedUserSet)) {
           console.log(`[Sync] Blocked deleted staff from rehydrating: ${s.Nickname || s.StaffID}`);
           continue;
         }
@@ -818,8 +829,8 @@ async function startServer() {
     // Ensure database never contains deleted users or staff
     const initialUserLen = db.users.length;
     const initialStaffLen = db.staff.length;
-    db.users = db.users.filter(u => !deletedUserSet.has(u.UserID) && (!u.Phone || !deletedUserSet.has(u.Phone)));
-    db.staff = db.staff.filter(s => !deletedStaffSet.has(s.StaffID) && (!s.UserID || !deletedUserSet.has(s.UserID)));
+    db.users = db.users.filter(u => !isUserDeleted(u, deletedUserSet));
+    db.staff = db.staff.filter(s => !isStaffDeleted(s, deletedStaffSet, deletedUserSet));
     if (db.users.length !== initialUserLen || db.staff.length !== initialStaffLen) {
       dbModified = true;
     }
@@ -849,7 +860,12 @@ async function startServer() {
       return res.status(400).json({ error: 'กรุณากรอกข้อมูลสำคัญให้ครบถ้วน (ชื่อ, เบอร์โทรศัพท์, รหัสผ่าน)' });
     }
 
-    const existingUser = db.users.find(u => u.Phone === phone);
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (isUserDeleted({ Phone: phone }, deletedUserSet)) {
+      return res.status(400).json({ error: 'เบอร์โทรศัพท์นี้อยู่ในรายการผู้ใช้ที่ถูกลบถาวรแล้ว หากต้องการเพิ่มใหม่กรุณาใช้เบอร์อื่น' });
+    }
+
+    const existingUser = db.users.find(u => u.Phone === phone || cleanPhone(u.Phone) === cleanPhone(phone));
     if (existingUser) {
       return res.status(400).json({ error: 'เบอร์โทรศัพท์นี้ถูกใช้งานแล้วในระบบ' });
     }
@@ -873,11 +889,6 @@ async function startServer() {
       Status: 'Active',
       CreatedDate: new Date().toISOString()
     };
-
-    // Remove any previous tombstones to ensure user is 100% permanently retained
-    if (db.deletedUserIds) {
-      db.deletedUserIds = db.deletedUserIds.filter(id => id !== newUserID && id !== phone);
-    }
 
     db.users.push(newUser);
     syncToGoogleSheet('INSERT', 'Users', newUser);
@@ -1090,8 +1101,14 @@ async function startServer() {
     if (!db.deletedUserIds.includes(id)) {
       db.deletedUserIds.push(id);
     }
-    if (userToDelete.Phone && !db.deletedUserIds.includes(userToDelete.Phone)) {
-      db.deletedUserIds.push(userToDelete.Phone);
+    if (userToDelete.Phone) {
+      if (!db.deletedUserIds.includes(userToDelete.Phone)) {
+        db.deletedUserIds.push(userToDelete.Phone);
+      }
+      const cp = cleanPhone(userToDelete.Phone);
+      if (cp && cp.length >= 8 && !db.deletedUserIds.includes(cp)) {
+        db.deletedUserIds.push(cp);
+      }
     }
 
     // If staff, permanently remove staff profile as well
@@ -1154,7 +1171,11 @@ async function startServer() {
     for (const u of db.users) {
       if (u.UserID !== adminUser.UserID) {
         if (!db.deletedUserIds.includes(u.UserID)) db.deletedUserIds.push(u.UserID);
-        if (u.Phone && !db.deletedUserIds.includes(u.Phone)) db.deletedUserIds.push(u.Phone);
+        if (u.Phone) {
+          if (!db.deletedUserIds.includes(u.Phone)) db.deletedUserIds.push(u.Phone);
+          const cp = cleanPhone(u.Phone);
+          if (cp && cp.length >= 8 && !db.deletedUserIds.includes(cp)) db.deletedUserIds.push(cp);
+        }
       }
     }
 
@@ -1219,13 +1240,18 @@ async function startServer() {
         const user = db.users[uIndex];
         if (user.Role !== 'Admin') {
           if (deleteUser) {
-            // Permanently remove user account too
             db.users.splice(uIndex, 1);
             if (!db.deletedUserIds.includes(staff.UserID)) {
               db.deletedUserIds.push(staff.UserID);
             }
-            if (user.Phone && !db.deletedUserIds.includes(user.Phone)) {
-              db.deletedUserIds.push(user.Phone);
+            if (user.Phone) {
+              if (!db.deletedUserIds.includes(user.Phone)) {
+                db.deletedUserIds.push(user.Phone);
+              }
+              const cp = cleanPhone(user.Phone);
+              if (cp && cp.length >= 8 && !db.deletedUserIds.includes(cp)) {
+                db.deletedUserIds.push(cp);
+              }
             }
             deletedUserId = staff.UserID;
             syncToGoogleSheet('DELETE', 'Users', { UserID: user.UserID, Name: user.Name });
@@ -1272,7 +1298,7 @@ async function startServer() {
       Detail: Detail || '',
       Duration: parseInt(Duration),
       Price: parseFloat(Price),
-      CreditRequired: parseFloat(CreditRequired) || Math.floor(Price * 0.15),
+      CreditRequired: (CreditRequired !== undefined && CreditRequired !== '') ? parseFloat(CreditRequired) : Math.floor(Price * 0.15),
       Active: Active || 'ON',
       SortOrder: parseInt(SortOrder) || (db.services.length + 1),
       UpdatedAt: new Date().toISOString()
@@ -1299,7 +1325,7 @@ async function startServer() {
     service.Detail = Detail !== undefined ? Detail : service.Detail;
     service.Duration = Duration !== undefined ? parseInt(Duration) : service.Duration;
     service.Price = Price !== undefined ? parseFloat(Price) : service.Price;
-    service.CreditRequired = CreditRequired !== undefined ? parseFloat(CreditRequired) : service.CreditRequired;
+    service.CreditRequired = (CreditRequired !== undefined && CreditRequired !== '') ? parseFloat(CreditRequired) : (service.CreditRequired ?? 200);
     service.Active = Active || service.Active;
     service.SortOrder = SortOrder !== undefined ? parseInt(SortOrder) : service.SortOrder;
     service.UpdatedAt = new Date().toISOString();
@@ -1332,9 +1358,9 @@ async function startServer() {
     const db = getDatabase();
     const settings = { ...db.settings };
     const numMin = Number(settings.minCredit);
-    if (!numMin || isNaN(numMin) || numMin === 398 || numMin < 298) {
-      settings.minCredit = 298;
-      db.settings.minCredit = 298;
+    if (isNaN(numMin) || settings.minCredit === undefined || settings.minCredit === null || numMin < 0) {
+      settings.minCredit = 200;
+      db.settings.minCredit = 200;
       saveDatabase(db);
     } else {
       settings.minCredit = numMin;
@@ -1357,7 +1383,7 @@ async function startServer() {
       newAdminId = 'Cf544171f0f9753863ade1ddd1acd67a7';
     }
     const incomingMinCredit = Number(req.body?.minCredit);
-    const finalMinCredit = (!incomingMinCredit || isNaN(incomingMinCredit) || incomingMinCredit === 398 || incomingMinCredit < 298) ? 298 : incomingMinCredit;
+    const finalMinCredit = (incomingMinCredit !== undefined && !isNaN(incomingMinCredit) && incomingMinCredit >= 0) ? incomingMinCredit : (Number(db.settings?.minCredit) || 200);
 
     let finalQrImage = req.body?.qrCodeImage !== undefined ? req.body.qrCodeImage : (db.settings?.qrCodeImage || '');
     if (typeof finalQrImage === 'string' && finalQrImage.startsWith('data:image/')) {
@@ -1424,7 +1450,7 @@ async function startServer() {
 
     // Distribute income to staff & deduct credit after completion
     if (currentStaff) {
-      const creditRequired = service ? (service.CreditRequired ?? 298) : 298;
+      const creditRequired = service ? (service.CreditRequired ?? 200) : 200;
       const staffEarning = Math.max(0, booking.ServicePrice - creditRequired) + booking.TravelFee;
       currentStaff.TotalIncome = (currentStaff.TotalIncome || 0) + staffEarning;
       currentStaff.TotalJobs = Math.max(1, (currentStaff.TotalJobs || 0) + 1);
@@ -1458,7 +1484,7 @@ async function startServer() {
 
       // When this job is completed: if credit is exhausted (<= 0) or below minCredit, turn off availability now!
       const rawMin = Number(db.settings?.minCredit);
-      const minCredit = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
+      const minCredit = (rawMin !== undefined && !isNaN(rawMin) && rawMin >= 0) ? rawMin : 200;
       const otherActiveBookings = db.bookings.some(b => 
         b.StaffID === currentStaff.StaffID && 
         b.BookingID !== booking.BookingID && 
@@ -1806,7 +1832,7 @@ async function startServer() {
       }
 
       const rawMin = Number(db.settings?.minCredit);
-      const minCredit = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
+      const minCredit = (rawMin !== undefined && !isNaN(rawMin) && rawMin >= 0) ? rawMin : 200;
       const staffCredit = Number(db.staff[index].Credit || 0);
       if (staffCredit < minCredit) {
         return res.status(400).json({ error: `เครดิตไม่พอรับงาน (ขั้นต่ำ ${minCredit} เครดิต) กรุณาเติมเครดิตก่อนเปิดรับงานค่ะ` });
@@ -1934,6 +1960,11 @@ async function startServer() {
     const { id } = req.params;
     const { latitude, longitude, address } = req.body;
 
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (isUserDeleted({ UserID: id }, deletedUserSet)) {
+      return res.status(404).json({ error: 'ผู้ใช้งานนี้ถูกลบออกจากระบบแล้ว' });
+    }
+
     const uIndex = db.users.findIndex(u => u.UserID === id);
     if (uIndex === -1) {
       return res.status(404).json({ error: 'ไม่พบผู้ใช้ในระบบ' });
@@ -1963,8 +1994,13 @@ async function startServer() {
       return res.status(404).json({ error: 'ไม่พบรหัสบริการที่ระบุ' });
     }
 
+    const deletedUserSet = new Set(db.deletedUserIds || []);
+    if (isUserDeleted({ UserID: customerId }, deletedUserSet)) {
+      return res.status(403).json({ error: 'บัญชีผู้ใช้นี้ถูกลบออกจากระบบแล้ว' });
+    }
+
     const customerUser = db.users.find(u => u.UserID === customerId);
-    if (!customerUser) {
+    if (!customerUser || isUserDeleted(customerUser, deletedUserSet)) {
       return res.status(404).json({ error: 'ไม่พบผู้ใช้ลูกค้า' });
     }
 
@@ -2008,6 +2044,8 @@ async function startServer() {
     const maxSearchRadius = settings.searchRadius && settings.searchRadius > 0 ? settings.searchRadius : 15;
 
     // Find and sort eligible staff (ON, Approved, Credit >= Service.CreditRequired, within search radius)
+    const targetService = db.services.find(srv => srv.ServiceID === serviceId);
+    const serviceRequiredCredit = targetService ? (targetService.CreditRequired ?? 0) : (Number(settings.minCredit) || 0);
     const eligibleStaff = db.staff
       .filter(s => {
         const staffLat = typeof s.CurrentLatitude === 'number' ? s.CurrentLatitude : 9.138244;
@@ -2020,7 +2058,7 @@ async function startServer() {
         return (
           s.Available === 'ON' &&
           s.VerifyStatus === 'Approved' &&
-          s.Credit >= ((!Number(settings.minCredit) || Number(settings.minCredit) === 398 || Number(settings.minCredit) < 298) ? 298 : Number(settings.minCredit)) &&
+          s.Credit >= serviceRequiredCredit &&
           dist <= maxDist &&
           offersService
         );
@@ -2310,8 +2348,8 @@ async function startServer() {
 
       // Double-check credit requirements (พนักงานต้องมีเครดิตเพียงพอต่อการรับงาน)
       const rawMin = Number(db.settings?.minCredit);
-      const defaultMin = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
-      const requiredCredit = Number(service.CreditRequired) || defaultMin;
+      const defaultMin = (rawMin !== undefined && !isNaN(rawMin) && rawMin >= 0) ? rawMin : 200;
+      const requiredCredit = service && service.CreditRequired !== undefined ? Number(service.CreditRequired) : defaultMin;
       if (Number(staff.Credit || 0) < requiredCredit) {
         return res.status(400).json({ error: `เครดิตของคุณ (${staff.Credit} CR) ต่ำกว่าขั้นต่ำที่บริการนี้กำหนดไว้ (${requiredCredit} CR) กรุณาเติมเครดิตก่อนรับงาน` });
       }
@@ -2342,8 +2380,8 @@ async function startServer() {
       if (!currentStaff) return res.status(404).json({ error: 'ไม่พบข้อมูลพนักงาน' });
 
       const rawMin = Number(db.settings?.minCredit);
-      const defaultMin = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
-      const creditRequired = Number(service?.CreditRequired) || defaultMin;
+      const defaultMin = (rawMin !== undefined && !isNaN(rawMin) && rawMin >= 0) ? rawMin : 200;
+      const creditRequired = service && service.CreditRequired !== undefined ? Number(service.CreditRequired) : defaultMin;
 
       const hasDeducted = db.transactions.some(t => 
         t.StaffID === currentStaff.StaffID && 
@@ -2583,8 +2621,8 @@ async function startServer() {
 
     const service = db.services.find(s => s.ServiceID === booking.ServiceID);
     const rawMin = Number(db.settings?.minCredit);
-    const defaultMin = (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) ? 298 : rawMin;
-    const creditRequired = Number(service?.CreditRequired) || defaultMin;
+    const defaultMin = (rawMin !== undefined && !isNaN(rawMin) && rawMin >= 0) ? rawMin : 200;
+    const creditRequired = service && service.CreditRequired !== undefined ? Number(service.CreditRequired) : defaultMin;
 
     // Check if credit has already been deducted for this booking
     const alreadyDeducted = Boolean(booking.CreditDeducted) || db.transactions.some(t => 

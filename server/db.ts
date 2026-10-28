@@ -46,7 +46,7 @@ export const defaultSettings: AppSettings = {
     { minKm: 10, maxKm: 15, fee: 200 }
   ],
   commissionRate: 15, // 15%
-  minCredit: 298,
+  minCredit: 200,
   searchRadius: 15, // 15 km
   systemOpen: 'ON',
   contactPhone: "081-234-5678",
@@ -74,9 +74,10 @@ const defaultServices: Service[] = [
     Detail: "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
     Duration: 120,
     Price: 598,
-    CreditRequired: 298,
+    CreditRequired: 200,
     Active: 'ON',
-    SortOrder: 1
+    SortOrder: 1,
+    UpdatedAt: "2026-10-28T00:00:00.000Z"
   },
   {
     ServiceID: "S002",
@@ -84,9 +85,10 @@ const defaultServices: Service[] = [
     Detail: "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
     Duration: 120,
     Price: 598,
-    CreditRequired: 298,
+    CreditRequired: 200,
     Active: 'ON',
-    SortOrder: 2
+    SortOrder: 2,
+    UpdatedAt: "2026-10-28T00:00:00.000Z"
   },
   {
     ServiceID: "S003",
@@ -94,9 +96,10 @@ const defaultServices: Service[] = [
     Detail: "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
     Duration: 120,
     Price: 598,
-    CreditRequired: 298,
+    CreditRequired: 200,
     Active: 'ON',
-    SortOrder: 3
+    SortOrder: 3,
+    UpdatedAt: "2026-10-28T00:00:00.000Z"
   }
 ];
 
@@ -129,6 +132,32 @@ const defaultTransactions: CreditTransaction[] = [];
 const defaultReviews: Review[] = [];
 
 const defaultNotifications: Notification[] = [];
+
+export function cleanPhone(phone?: string | null): string {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+export function isUserDeleted(u: { UserID?: string; Phone?: string } | null | undefined, deletedSet: Set<string>): boolean {
+  if (!u) return false;
+  if (u.UserID && deletedSet.has(u.UserID)) return true;
+  if (u.Phone) {
+    if (deletedSet.has(u.Phone)) return true;
+    const cp = cleanPhone(u.Phone);
+    if (cp && cp.length >= 8) {
+      for (const d of deletedSet) {
+        if (cleanPhone(d) === cp) return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function isStaffDeleted(s: { StaffID?: string; UserID?: string } | null | undefined, deletedStaffSet: Set<string>, deletedUserSet: Set<string>): boolean {
+  if (!s) return false;
+  if (s.StaffID && deletedStaffSet.has(s.StaffID)) return true;
+  if (s.UserID && isUserDeleted({ UserID: s.UserID }, deletedUserSet)) return true;
+  return false;
+}
 
 export function mergeDatabases(base: DatabaseSchema, additions: Partial<DatabaseSchema>): DatabaseSchema {
   // Combine all tombstones from base and additions so deletions are 100% permanent and NEVER undone
@@ -165,10 +194,16 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
       if (combinedDeletedServiceIds.has(s.ServiceID)) continue;
       const idx = merged.services.findIndex(x => x.ServiceID === s.ServiceID);
       if (idx === -1) {
-        merged.services.push(s);
+        merged.services.push({ ...s });
       } else {
-        // Base has priority for current edited prices/details, but fill missing fields from additions
-        merged.services[idx] = { ...s, ...merged.services[idx] };
+        const existing = merged.services[idx];
+        const existingTime = existing.UpdatedAt ? new Date(existing.UpdatedAt).getTime() : 0;
+        const incomingTime = s.UpdatedAt ? new Date(s.UpdatedAt).getTime() : 0;
+        if (incomingTime >= existingTime) {
+          merged.services[idx] = { ...existing, ...s };
+        } else {
+          merged.services[idx] = { ...s, ...existing };
+        }
       }
     }
   }
@@ -177,9 +212,9 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
     for (const u of additions.users) {
       if (!u || !u.Phone || !u.UserID) continue;
       // PERMANENT DELETION: Never restore any user whose UserID or Phone was deleted
-      if (combinedDeletedUserIds.has(u.UserID) || combinedDeletedUserIds.has(u.Phone)) continue;
+      if (isUserDeleted(u, combinedDeletedUserIds)) continue;
 
-      const idx = merged.users.findIndex(x => x.UserID === u.UserID || x.Phone === u.Phone);
+      const idx = merged.users.findIndex(x => x.UserID === u.UserID || cleanPhone(x.Phone) === cleanPhone(u.Phone));
       if (idx === -1) {
         merged.users.push(u);
       } else {
@@ -193,7 +228,7 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
     for (const s of additions.staff) {
       if (!s || !s.StaffID) continue;
       // PERMANENT DELETION: Never restore any staff or user account that was deleted
-      if (combinedDeletedStaffIds.has(s.StaffID) || (s.UserID && combinedDeletedUserIds.has(s.UserID))) continue;
+      if (isStaffDeleted(s, combinedDeletedStaffIds, combinedDeletedUserIds)) continue;
 
       const idx = merged.staff.findIndex(x => x.StaffID === s.StaffID || (s.UserID && x.UserID === s.UserID));
       if (idx === -1) {
@@ -211,12 +246,8 @@ export function mergeDatabases(base: DatabaseSchema, additions: Partial<Database
   }
 
   // Purge any deleted users or staff from merged lists to guarantee no resurrected accounts
-  merged.users = merged.users.filter(u => 
-    !combinedDeletedUserIds.has(u.UserID) && (!u.Phone || !combinedDeletedUserIds.has(u.Phone))
-  );
-  merged.staff = merged.staff.filter(s => 
-    !combinedDeletedStaffIds.has(s.StaffID) && (!s.UserID || !combinedDeletedUserIds.has(s.UserID))
-  );
+  merged.users = merged.users.filter(u => !isUserDeleted(u, combinedDeletedUserIds));
+  merged.staff = merged.staff.filter(s => !isStaffDeleted(s, combinedDeletedStaffIds, combinedDeletedUserIds));
   merged.services = merged.services.filter(s =>
     !combinedDeletedServiceIds.has(s.ServiceID)
   );
@@ -348,7 +379,14 @@ export function getDatabase(): DatabaseSchema {
   }
 
   // Enforce permanent tombstones: Purge any user/staff matching deleted IDs or phones
-  liveDb.deletedUserIds = Array.from(new Set([...(liveDb.deletedUserIds || []), ...allDeletedUserIds]));
+  const normalizedUserTombstones = new Set<string>([...(liveDb.deletedUserIds || []), ...allDeletedUserIds]);
+  // Also add cleaned phone representation to tombstones for 100% resilient matching
+  for (const t of Array.from(normalizedUserTombstones)) {
+    const cp = cleanPhone(t);
+    if (cp && cp.length >= 8) normalizedUserTombstones.add(cp);
+  }
+
+  liveDb.deletedUserIds = Array.from(normalizedUserTombstones);
   liveDb.deletedStaffIds = Array.from(new Set([...(liveDb.deletedStaffIds || []), ...allDeletedStaffIds]));
   liveDb.deletedServiceIds = Array.from(new Set([...(liveDb.deletedServiceIds || []), ...allDeletedServiceIds]));
 
@@ -356,12 +394,8 @@ export function getDatabase(): DatabaseSchema {
   const finalDeletedStaffIds = new Set(liveDb.deletedStaffIds);
   const finalDeletedServiceIds = new Set(liveDb.deletedServiceIds);
 
-  liveDb.users = liveDb.users.filter(u => 
-    !finalDeletedUserIds.has(u.UserID) && (!u.Phone || !finalDeletedUserIds.has(u.Phone))
-  );
-  liveDb.staff = liveDb.staff.filter(s => 
-    !finalDeletedStaffIds.has(s.StaffID) && (!s.UserID || !finalDeletedUserIds.has(s.UserID))
-  );
+  liveDb.users = liveDb.users.filter(u => !isUserDeleted(u, finalDeletedUserIds));
+  liveDb.staff = liveDb.staff.filter(s => !isStaffDeleted(s, finalDeletedStaffIds, finalDeletedUserIds));
   liveDb.services = liveDb.services.filter(s =>
     !finalDeletedServiceIds.has(s.ServiceID)
   );
@@ -392,8 +426,8 @@ export function getDatabase(): DatabaseSchema {
   }
 
   const numMin = Number(liveDb.settings.minCredit);
-  if (!numMin || isNaN(numMin) || numMin === 398 || numMin < 298) {
-    liveDb.settings.minCredit = 298;
+  if (isNaN(numMin) || liveDb.settings.minCredit === undefined || liveDb.settings.minCredit === null || numMin < 0) {
+    liveDb.settings.minCredit = 200;
   } else {
     liveDb.settings.minCredit = numMin;
   }

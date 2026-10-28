@@ -340,19 +340,30 @@ function deleteSheetRow(sheetName, idColumnName, idValue) {
   
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
-  let idColIndex = headers.indexOf(idColumnName);
+  const trimmedHeaders = headers.map(h => String(h || "").trim());
+  const lowerHeaders = trimmedHeaders.map(h => h.toLowerCase());
+  let idColIndex = lowerHeaders.indexOf(String(idColumnName || "").toLowerCase());
   
   if (idColIndex === -1) {
-    if (sheetName.toLowerCase() === 'users') idColIndex = headers.indexOf('UserID');
-    else if (sheetName.toLowerCase() === 'staff') idColIndex = headers.indexOf('StaffID');
-    else if (sheetName.toLowerCase() === 'staffdocuments') idColIndex = headers.indexOf('DocID');
-    else if (sheetName.toLowerCase() === 'services') idColIndex = headers.indexOf('ServiceID');
-    else if (sheetName.toLowerCase() === 'booking' || sheetName.toLowerCase() === 'bookings') idColIndex = headers.indexOf('BookingID');
-    else if (sheetName.toLowerCase() === 'credittransaction' || sheetName.toLowerCase() === 'transactions') idColIndex = headers.indexOf('TransactionID');
+    const sName = sheetName.toLowerCase();
+    if (sName === 'users' || sName === 'user') idColIndex = lowerHeaders.indexOf('userid');
+    else if (sName === 'staff') idColIndex = lowerHeaders.indexOf('staffid');
+    else if (sName === 'staffdocuments') idColIndex = lowerHeaders.indexOf('docid');
+    else if (sName === 'services' || sName === 'service') idColIndex = lowerHeaders.indexOf('serviceid');
+    else if (sName === 'booking' || sName === 'bookings') idColIndex = lowerHeaders.indexOf('bookingid');
+    else if (sName === 'credittransaction' || sName === 'transactions') idColIndex = lowerHeaders.indexOf('transactionid');
+    else if (sName === 'reviews' || sName === 'review') idColIndex = lowerHeaders.indexOf('reviewid');
+    else if (sName === 'notification' || sName === 'notifications') idColIndex = lowerHeaders.indexOf('notificationid');
+  }
+  if (idColIndex === -1) {
+    idColIndex = lowerHeaders.indexOf('id');
+  }
+  if (idColIndex === -1) {
+    idColIndex = lowerHeaders.findIndex(h => h.includes('id'));
   }
   
   if (idColIndex === -1) {
-    throw new Error("ID Column " + idColumnName + " not found in sheet " + sheetName);
+    return { success: true, deletedCount: 0, message: "No matching ID column found in sheet " + sheetName };
   }
   
   let deletedCount = 0;
@@ -762,7 +773,8 @@ function updateBookingState(bookingId, actionName, staffId) {
   const updates = {};
   if (actionName === "accept") {
     const staff = getSheetData("Staff").find(s => s.StaffID === staffId);
-    if (staff.Credit < 298) throw new Error("เครดิตต่ำกว่าเกณฑ์ขั้นต่ำ (298 เครดิต)");
+    var reqCredit = Number(b.CreditRequired || 200);
+    if (staff.Credit < reqCredit) throw new Error("เครดิตต่ำกว่าเกณฑ์ขั้นต่ำ (" + reqCredit + " เครดิต)");
     
     // ตัดเครดิตหลังจบงาน ไม่ตัดตอนรับงาน
     updates.Status = "Accepted";
@@ -779,7 +791,7 @@ function updateBookingState(bookingId, actionName, staffId) {
     // Deduct credit & add income to staff after job completion
     const staff = getSheetData("Staff").find(s => s.StaffID === b.StaffID);
     if (staff) {
-      var creditDeduct = Number(b.CreditRequired || 298);
+      var creditDeduct = Number(b.CreditRequired !== undefined ? b.CreditRequired : 200);
       var currentCredit = Math.max(0, Number(staff.Credit || 0) - creditDeduct);
       var newIncome = Number(staff.TotalIncome || 0) + Number(b.TotalPrice || 0);
       var staffUpdates = { 
@@ -787,7 +799,7 @@ function updateBookingState(bookingId, actionName, staffId) {
         TotalIncome: newIncome,
         TotalJobs: Number(staff.TotalJobs || 0) + 1 
       };
-      var minCredit = 298;
+      var minCredit = 200;
       if (currentCredit <= 0 || currentCredit < minCredit) {
         staffUpdates.Available = "OFF";
         createNotification(staff.UserID, "🔴 ปิดรับงานอัตโนมัติ (จบงานแล้ว & เครดิตหมด)", "งาน #" + bookingId + " เสร็จสิ้นแล้ว ตัดเครดิต -" + creditDeduct + " CR เนื่องจากเครดิตคงเหลือหมดหรือต่ำกว่าเกณฑ์ขั้นต่ำ (" + minCredit + " เครดิต) ระบบได้ปิดรับงานให้อัตโนมัติ กรุณาเติมเครดิตเพื่อเปิดรับงานใหม่ค่ะ");

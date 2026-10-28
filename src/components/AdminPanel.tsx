@@ -441,6 +441,14 @@ export default function AdminPanel({
           const list = JSON.parse(rawStaff).filter((s: any) => s.UserID !== userToDelete.UserID);
           localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
         }
+
+        const cleanP = userToDelete.Phone ? userToDelete.Phone.replace(/\D/g, '') : '';
+        const delRaw = localStorage.getItem('sabaidee_deleted_user_ids') || '[]';
+        const delList: string[] = JSON.parse(delRaw);
+        if (!delList.includes(userToDelete.UserID)) delList.push(userToDelete.UserID);
+        if (userToDelete.Phone && !delList.includes(userToDelete.Phone)) delList.push(userToDelete.Phone);
+        if (cleanP && cleanP.length >= 8 && !delList.includes(cleanP)) delList.push(cleanP);
+        localStorage.setItem('sabaidee_deleted_user_ids', JSON.stringify(delList));
       } catch {}
 
       // Immediately filter UI state
@@ -509,12 +517,21 @@ export default function AdminPanel({
           const list = JSON.parse(rawStaff).filter((s: any) => s.StaffID !== staffToDelete.StaffID && s.UserID !== staffToDelete.UserID);
           localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(list));
         }
+        const delStaffRaw = localStorage.getItem('sabaidee_deleted_staff_ids') || '[]';
+        const delStaffList: string[] = JSON.parse(delStaffRaw);
+        if (!delStaffList.includes(staffToDelete.StaffID)) delStaffList.push(staffToDelete.StaffID);
+        localStorage.setItem('sabaidee_deleted_staff_ids', JSON.stringify(delStaffList));
+
         if (deleteStaffUserAccount && staffToDelete.UserID) {
           const rawUsers = localStorage.getItem('sabaidee_persisted_users');
           if (rawUsers) {
             const list = JSON.parse(rawUsers).filter((u: any) => u.UserID !== staffToDelete.UserID);
             localStorage.setItem('sabaidee_persisted_users', JSON.stringify(list));
           }
+          const delUserRaw = localStorage.getItem('sabaidee_deleted_user_ids') || '[]';
+          const delUserList: string[] = JSON.parse(delUserRaw);
+          if (!delUserList.includes(staffToDelete.UserID)) delUserList.push(staffToDelete.UserID);
+          localStorage.setItem('sabaidee_deleted_user_ids', JSON.stringify(delUserList));
         }
       } catch {}
 
@@ -621,7 +638,7 @@ export default function AdminPanel({
       Detail: serviceFormDetail,
       Price: Number(serviceFormPrice) || 0,
       Duration: Number(serviceFormDuration) || 60,
-      CreditRequired: Number(serviceFormCredit) || 0
+      CreditRequired: serviceFormCredit !== '' && !isNaN(Number(serviceFormCredit)) ? Number(serviceFormCredit) : 0
     };
 
     try {
@@ -711,7 +728,7 @@ export default function AdminPanel({
       ...formSettings,
       travelFeePerKm: typeof formSettings.travelFeePerKm === 'string' ? (parseFloat(formSettings.travelFeePerKm) || 0) : (formSettings.travelFeePerKm || 0),
       commissionRate: typeof formSettings.commissionRate === 'string' ? (parseFloat(formSettings.commissionRate) || 0) : (formSettings.commissionRate || 0),
-      minCredit: typeof formSettings.minCredit === 'string' ? (parseInt(formSettings.minCredit) || 298) : (formSettings.minCredit || 298),
+      minCredit: typeof formSettings.minCredit === 'string' ? (parseInt(formSettings.minCredit) >= 0 ? parseInt(formSettings.minCredit) : 200) : (formSettings.minCredit ?? 200),
       searchRadius: typeof formSettings.searchRadius === 'string' ? (parseFloat(formSettings.searchRadius) || 15) : (formSettings.searchRadius || 15),
       travelFeeTiers: sanitizedTiers,
       isCustomized: true,
@@ -1643,8 +1660,8 @@ export default function AdminPanel({
                       <input
                         type="number"
                         value={serviceFormCredit}
-                        onChange={(e) => setServiceFormCredit(e.target.value === '' ? '' : (parseInt(e.target.value) || ''))}
-                        placeholder="เช่น 50"
+                        onChange={(e) => setServiceFormCredit(e.target.value === '' ? '' : (isNaN(parseInt(e.target.value)) ? '' : parseInt(e.target.value)))}
+                        placeholder="เช่น 200"
                         required
                         className="w-full text-xs font-semibold border border-amber-200 rounded-xl p-3 bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-amber-700"
                       />
@@ -2288,7 +2305,7 @@ export default function AdminPanel({
                   type="number"
                   min={1}
                   step="1"
-                  value={formSettings.minCredit === undefined || formSettings.minCredit === null ? '' : (Number(formSettings.minCredit) === 398 ? 298 : formSettings.minCredit)}
+                  value={formSettings.minCredit === undefined || formSettings.minCredit === null ? '' : formSettings.minCredit}
                   onFocus={(e) => { if (e.target.value === '0') e.target.select(); }}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -2296,7 +2313,7 @@ export default function AdminPanel({
                     setFormSettings({ ...formSettings, minCredit: cleanVal });
                   }}
                   required
-                  placeholder="298"
+                  placeholder="200"
                   className="w-full text-xs font-semibold border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none font-mono"
                 />
               </div>

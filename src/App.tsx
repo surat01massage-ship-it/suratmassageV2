@@ -68,7 +68,7 @@ const defaultAppSettings: AppSettings = {
     { minKm: 10, maxKm: 15, fee: 200 }
   ],
   commissionRate: 15,
-  minCredit: 298,
+  minCredit: 200,
   searchRadius: 15,
   systemOpen: 'ON',
   contactPhone: "081-234-5678",
@@ -105,8 +105,8 @@ const getPersistedSettings = (): AppSettings => {
             merged.bankName = 'ธนาคารทหารไทยธนชาต (ttb)';
           }
           const rawMin = Number(merged.minCredit);
-          if (!rawMin || isNaN(rawMin) || rawMin === 398 || rawMin < 298) {
-            merged.minCredit = 298;
+          if (isNaN(rawMin) || merged.minCredit === undefined || merged.minCredit === null || rawMin < 0) {
+            merged.minCredit = 200;
           } else {
             merged.minCredit = rawMin;
           }
@@ -127,14 +127,27 @@ const getPersistedSettings = (): AppSettings => {
   return defaultAppSettings;
 };
 
-// Safe local persistence helpers to ensure users, staff, and session NEVER disappear
+// Safe local persistence helpers to ensure users, staff, and session NEVER disappear, and deleted accounts NEVER return
 const getPersistedSession = (): { user: User | null; staff: Staff | null; role: 'Customer' | 'Staff' | 'Admin' } => {
   if (typeof window !== 'undefined') {
     try {
+      const deletedUserIdsRaw = localStorage.getItem('sabaidee_deleted_user_ids');
+      const deletedUserIds: string[] = deletedUserIdsRaw ? JSON.parse(deletedUserIdsRaw) : [];
+      const deletedSet = new Set(deletedUserIds);
+
       const saved = localStorage.getItem('sabaidee_active_session');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.user && parsed.user.UserID) {
+          const userPhone = parsed.user.Phone ? parsed.user.Phone.replace(/\D/g, '') : '';
+          const isDeleted = deletedSet.has(parsed.user.UserID) || 
+            (parsed.user.Phone && deletedSet.has(parsed.user.Phone)) ||
+            (userPhone && userPhone.length >= 8 && deletedUserIds.some(d => d.replace(/\D/g, '') === userPhone));
+          if (isDeleted) {
+            localStorage.removeItem('sabaidee_active_session');
+            localStorage.removeItem('sabaidee_auth');
+            return { user: null, staff: null, role: 'Customer' };
+          }
           return {
             user: parsed.user,
             staff: parsed.staff || null,
@@ -168,14 +181,23 @@ export const removeLocallyPersistedUser = (userId: string, phone?: string) => {
   try {
     const raw = localStorage.getItem('sabaidee_persisted_users') || '[]';
     const list: User[] = JSON.parse(raw);
-    const filtered = list.filter(u => u.UserID !== userId && (!phone || u.Phone !== phone));
+    const cleanP = phone ? phone.replace(/\D/g, '') : '';
+    const filtered = list.filter(u => u.UserID !== userId && (!phone || u.Phone !== phone) && (!cleanP || !u.Phone || u.Phone.replace(/\D/g, '') !== cleanP));
     localStorage.setItem('sabaidee_persisted_users', JSON.stringify(filtered));
+
+    // Also record in local deletedUserIds
+    const delRaw = localStorage.getItem('sabaidee_deleted_user_ids') || '[]';
+    const delList: string[] = JSON.parse(delRaw);
+    if (!delList.includes(userId)) delList.push(userId);
+    if (phone && !delList.includes(phone)) delList.push(phone);
+    if (cleanP && cleanP.length >= 8 && !delList.includes(cleanP)) delList.push(cleanP);
+    localStorage.setItem('sabaidee_deleted_user_ids', JSON.stringify(delList));
 
     // Also check active session
     const sessionRaw = localStorage.getItem('sabaidee_active_session');
     if (sessionRaw) {
       const session = JSON.parse(sessionRaw);
-      if (session?.user?.UserID === userId) {
+      if (session?.user?.UserID === userId || (phone && session?.user?.Phone === phone)) {
         localStorage.removeItem('sabaidee_active_session');
         localStorage.removeItem('sabaidee_auth');
       }
@@ -269,12 +291,29 @@ const syncVaultWithServer = async () => {
         const serverDeletedUsers = new Set<string>(data.deletedUserIds || []);
         const serverDeletedStaff = new Set<string>(data.deletedStaffIds || []);
 
+        try {
+          localStorage.setItem('sabaidee_deleted_user_ids', JSON.stringify(data.deletedUserIds || []));
+          localStorage.setItem('sabaidee_deleted_staff_ids', JSON.stringify(data.deletedStaffIds || []));
+        } catch {}
+
+        const cleanP = (p?: string) => String(p || '').replace(/\D/g, '');
+        const isUserDeletedClient = (u?: { UserID?: string; Phone?: string } | null) => {
+          if (!u) return false;
+          if (u.UserID && serverDeletedUsers.has(u.UserID)) return true;
+          if (u.Phone) {
+            if (serverDeletedUsers.has(u.Phone)) return true;
+            const cp = cleanP(u.Phone);
+            if (cp && cp.length >= 8 && Array.from(serverDeletedUsers).some(d => cleanP(d) === cp)) return true;
+          }
+          return false;
+        };
+
         // Authoritative two-way synchronization:
         // Merge server users with local persisted users so user accounts are always up-to-date and never wiped
         const combinedUsersMap = new Map<string, User>();
         if (Array.isArray(data.users)) {
           data.users.forEach((u: User) => {
-            if (u && u.UserID && !serverDeletedUsers.has(u.UserID) && (!u.Phone || !serverDeletedUsers.has(u.Phone))) {
+            if (u && u.UserID && !isUserDeletedClient(u)) {
               combinedUsersMap.set(u.UserID, u);
             }
           });
@@ -282,15 +321,13 @@ const syncVaultWithServer = async () => {
         users.forEach((u: User) => {
           if (u && u.UserID && !combinedUsersMap.has(u.UserID)) {
             // NEVER resurrect a deleted account
-            if (serverDeletedUsers.has(u.UserID) || (u.Phone && serverDeletedUsers.has(u.Phone))) {
+            if (isUserDeletedClient(u)) {
               return;
             }
             combinedUsersMap.set(u.UserID, u);
           }
         });
-        const cleanUsers = Array.from(combinedUsersMap.values()).filter(u => 
-          !serverDeletedUsers.has(u.UserID) && (!u.Phone || !serverDeletedUsers.has(u.Phone))
-        );
+        const cleanUsers = Array.from(combinedUsersMap.values()).filter(u => !isUserDeletedClient(u));
         localStorage.setItem('sabaidee_persisted_users', JSON.stringify(cleanUsers));
 
         const combinedStaffMap = new Map<string, Staff>();
@@ -319,9 +356,10 @@ const syncVaultWithServer = async () => {
         if (sessionRaw) {
           try {
             const sess = JSON.parse(sessionRaw);
-            if (sess?.user?.UserID && (serverDeletedUsers.has(sess.user.UserID) || (sess.user.Phone && serverDeletedUsers.has(sess.user.Phone)))) {
+            if (sess?.user && isUserDeletedClient(sess.user)) {
               localStorage.removeItem('sabaidee_active_session');
               localStorage.removeItem('sabaidee_auth');
+              window.dispatchEvent(new CustomEvent('sabaidee_account_deleted', { detail: { deletedUserIds: data.deletedUserIds } }));
             } else if (sess?.user?.UserID && combinedUsersMap.has(sess.user.UserID)) {
               const latestUser = combinedUsersMap.get(sess.user.UserID)!;
               const latestStaff = sess.staff?.StaffID && combinedStaffMap.has(sess.staff.StaffID) ? combinedStaffMap.get(sess.staff.StaffID)! : sess.staff;
@@ -404,6 +442,12 @@ export default function App() {
           })
           .then(async res => {
             if (!res.ok) {
+              if (res.status === 403 || res.status === 401 || res.status === 404) {
+                // If account deleted or invalid credentials, clear saved auth immediately
+                localStorage.removeItem('sabaidee_auth');
+                localStorage.removeItem('sabaidee_active_session');
+                return null;
+              }
               // Server may have rebooted/restarted: rehydrate from local vault and retry once
               await syncVaultWithServer();
               const retryRes = await fetch('/api/auth/login', {
@@ -411,7 +455,10 @@ export default function App() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ phone, password })
               });
-              if (!retryRes.ok) return null;
+              if (!retryRes.ok) {
+                localStorage.removeItem('sabaidee_auth');
+                return null;
+              }
               return retryRes.json().catch(() => null);
             }
             return res.json().catch(() => null);
@@ -464,6 +511,45 @@ export default function App() {
           console.warn("Initial GPS request note:", err.message);
         });
     }
+
+    // Immediate check of currentUser against server
+    if (currentUser?.UserID) {
+      fetch(`/api/users/${currentUser.UserID}`).then(res => {
+        if (res.status === 404 || res.status === 403) {
+          removeLocallyPersistedUser(currentUser.UserID, currentUser.Phone);
+          setCurrentUser(null);
+          setCurrentStaff(null);
+          setUserRoleMode('Customer');
+          localStorage.removeItem('sabaidee_active_session');
+          localStorage.removeItem('sabaidee_auth');
+          showToast('บัญชีนี้ถูกลบออกจากระบบแล้ว', 'error');
+        }
+      }).catch(() => {});
+    }
+
+    const handleAccountDeleted = (e: any) => {
+      const deletedIds = new Set<string>(e?.detail?.deletedUserIds || []);
+      const cleanP = (p?: string) => String(p || '').replace(/\D/g, '');
+      const curPhone = cleanP(currentUser?.Phone);
+      const isDel = currentUser && (
+        deletedIds.has(currentUser.UserID) ||
+        (currentUser.Phone && deletedIds.has(currentUser.Phone)) ||
+        (curPhone && curPhone.length >= 8 && Array.from(deletedIds).some(d => cleanP(d) === curPhone))
+      );
+      if (isDel) {
+        removeLocallyPersistedUser(currentUser.UserID, currentUser.Phone);
+        setCurrentUser(null);
+        setCurrentStaff(null);
+        setUserRoleMode('Customer');
+        localStorage.removeItem('sabaidee_active_session');
+        localStorage.removeItem('sabaidee_auth');
+        showToast('บัญชีผู้ใช้งานนี้ถูกลบออกจากระบบแล้ว', 'error');
+      }
+    };
+    window.addEventListener('sabaidee_account_deleted', handleAccountDeleted);
+    return () => {
+      window.removeEventListener('sabaidee_account_deleted', handleAccountDeleted);
+    };
   }, []);
 
   // Keep current user and staff continuously up to date in real time ("จำเป็นปัจจุบันทั้งระบบ")
@@ -473,14 +559,15 @@ export default function App() {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/api/users/${currentUser.UserID}`);
-        if (res.status === 404) {
+        if (res.status === 404 || res.status === 403) {
           // User was permanently deleted from server
-          removeLocallyPersistedUser(currentUser.UserID);
+          removeLocallyPersistedUser(currentUser.UserID, currentUser.Phone);
           setCurrentUser(null);
           setCurrentStaff(null);
           setUserRoleMode('Customer');
           localStorage.removeItem('sabaidee_active_session');
           localStorage.removeItem('sabaidee_auth');
+          showToast('บัญชีนี้ถูกลบออกจากระบบแล้ว', 'error');
           return;
         }
         if (res.ok) {
@@ -562,8 +649,8 @@ export default function App() {
                 localSettings.bankName = 'ธนาคารทหารไทยธนชาต (ttb)';
               }
               const localMin = Number(localSettings.minCredit);
-              if (!localMin || isNaN(localMin) || localMin === 398 || localMin < 298) {
-                localSettings.minCredit = 298;
+              if (isNaN(localMin) || localSettings.minCredit === undefined || localSettings.minCredit === null || localMin < 0) {
+                localSettings.minCredit = 200;
               } else {
                 localSettings.minCredit = localMin;
               }
@@ -600,8 +687,8 @@ export default function App() {
             serverData.bankName = 'ธนาคารทหารไทยธนชาต (ttb)';
           }
           const serverMin = Number(serverData.minCredit);
-          if (!serverMin || isNaN(serverMin) || serverMin === 398 || serverMin < 298) {
-            serverData.minCredit = 298;
+          if (isNaN(serverMin) || serverData.minCredit === undefined || serverData.minCredit === null || serverMin < 0) {
+            serverData.minCredit = 200;
           } else {
             serverData.minCredit = serverMin;
           }
@@ -625,8 +712,8 @@ export default function App() {
   const handlePersistSettings = (newSettings: AppSettings) => {
     const sanitized = { ...newSettings };
     const num = Number(sanitized.minCredit);
-    if (!num || isNaN(num) || num === 398 || num < 298) {
-      sanitized.minCredit = 298;
+    if (isNaN(num) || sanitized.minCredit === undefined || sanitized.minCredit === null || num < 0) {
+      sanitized.minCredit = 200;
     } else {
       sanitized.minCredit = num;
     }

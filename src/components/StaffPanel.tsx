@@ -90,10 +90,10 @@ interface StaffPanelProps {
   onUpdateUser?: (updatedUser: User) => void;
 }
 
-// Helper to ensure minimum credit requirement is never erroneously 398 and defaults cleanly to 298
+// Helper to ensure minimum credit requirement defaults cleanly to configured amount
 const normalizeMinCredit = (val: any): number => {
   const n = Number(val);
-  return (!n || isNaN(n) || n === 398 || n < 298) ? 298 : n;
+  return (isNaN(n) || val === undefined || val === null || n < 0) ? 200 : n;
 };
 
 export default function StaffPanel({
@@ -712,9 +712,9 @@ export default function StaffPanel({
         if (data.alreadyDeducted) {
           onShowToast("เข้าใจแล้ว: เข้าสู่หน้าควบคุมงานเรียบร้อยค่ะ", "info");
         } else {
-          onShowToast(`💳 หักเครดิตรับงาน -${data.creditDeducted || 298} CR เรียบร้อยแล้วค่ะ (เครดิตคงเหลือ ${data.remainingCredit} CR)`, "success");
+          onShowToast(`💳 หักเครดิตรับงาน -${data.creditDeducted ?? 200} CR เรียบร้อยแล้วค่ะ (เครดิตคงเหลือ ${data.remainingCredit} CR)`, "success");
         }
-        const finalCredit = data.remainingCredit !== undefined ? data.remainingCredit : (data.staff?.Credit ?? (staff ? staff.Credit - (data.creditDeducted || 298) : 0));
+        const finalCredit = data.remainingCredit !== undefined ? data.remainingCredit : (data.staff?.Credit ?? (staff ? staff.Credit - (data.creditDeducted ?? 200) : 0));
         if (data.staff) {
           onUpdateStaffData({
             ...data.staff,
@@ -731,7 +731,7 @@ export default function StaffPanel({
       } else {
         // Fallback local credit deduction if server returned an error or offline
         if (staff) {
-          const reqCr = Number(modalData.CreditRequired || 298);
+          const reqCr = Number(modalData.CreditRequired ?? 200);
           const newCredit = Math.max(0, (staff.Credit || 0) - reqCr);
           onUpdateStaffData({
             ...staff,
@@ -745,7 +745,7 @@ export default function StaffPanel({
     } catch (e: any) {
       console.warn("Deduct credit on understood error:", e);
       if (staff) {
-        const reqCr = Number(modalData.CreditRequired || 298);
+        const reqCr = Number(modalData.CreditRequired ?? 200);
         const newCredit = Math.max(0, (staff.Credit || 0) - reqCr);
         onUpdateStaffData({
           ...staff,
@@ -3453,7 +3453,7 @@ export default function StaffPanel({
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-left space-y-1">
                 <div className="flex items-center justify-between text-xs font-bold text-amber-900">
                   <span>ตัดเครดิตค่าธรรมเนียมหลังจบงาน:</span>
-                  <span className="font-mono text-emerald-700 font-black">-{incomingBooking.CreditRequired ?? 298} CR</span>
+                  <span className="font-mono text-emerald-700 font-black">-{incomingBooking.CreditRequired ?? 200} CR</span>
                 </div>
                 <p className="text-[10px] text-amber-700 leading-relaxed">
                   • เครดิตคงเหลือของคุณ: <span className="font-bold">{staff?.Credit ?? 0} CR</span><br />
@@ -3555,7 +3555,7 @@ export default function StaffPanel({
                     <span>💳 หักเครดิตรับงาน:</span>
                   </span>
                   <span className="font-black text-amber-300 font-mono">
-                    -{Number(acceptedJobModal.CreditRequired || 298)} CR (หักเมื่อกดเข้าใจแล้ว)
+                    -{Number(acceptedJobModal.CreditRequired ?? 200)} CR (หักเมื่อกดเข้าใจแล้ว)
                   </span>
                 </div>
 
