@@ -29,7 +29,7 @@
       "CreditRequired": 200,
       "Active": "ON",
       "SortOrder": 1,
-      "UpdatedAt": "2026-10-28T06:51:03.745Z"
+      "UpdatedAt": "2026-10-28T08:36:29.006Z"
     },
     {
       "ServiceID": "S002",
@@ -37,9 +37,10 @@
       "Detail": "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
       "Duration": 120,
       "Price": 598,
-      "CreditRequired": 298,
+      "CreditRequired": 200,
       "Active": "ON",
-      "SortOrder": 2
+      "SortOrder": 2,
+      "UpdatedAt": "2026-10-28T08:36:29.006Z"
     },
     {
       "ServiceID": "S003",
@@ -47,9 +48,10 @@
       "Detail": "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
       "Duration": 120,
       "Price": 598,
-      "CreditRequired": 298,
+      "CreditRequired": 200,
       "Active": "ON",
-      "SortOrder": 3
+      "SortOrder": 3,
+      "UpdatedAt": "2026-10-28T08:36:29.006Z"
     }
   ],
   "bookings": [],
@@ -57,13 +59,13 @@
     {
       "TransactionID": "TX922057",
       "StaffID": "SFT355362",
-      "Amount": 298,
+      "Amount": 200,
       "BeforeCredit": 0,
-      "AfterCredit": 298,
+      "AfterCredit": 200,
       "Type": "Topup",
       "SlipImage": "",
       "Status": "Approved",
-      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 298 เครดิต (รับงานฟรี 1 ครั้ง)",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้ง)",
       "CreatedDate": "2026-10-07T08:30:01.508Z"
     }
   ],
@@ -157,7 +159,7 @@
       }
     ],
     "commissionRate": 15,
-    "minCredit": 298,
+    "minCredit": 200,
     "searchRadius": 15,
     "systemOpen": "ON",
     "contactPhone": "081-234-5678",

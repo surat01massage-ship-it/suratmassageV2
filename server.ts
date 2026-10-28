@@ -462,7 +462,7 @@ async function startServer() {
         Description: info.description || 'ยินดีให้บริการนวดเพื่อสุขภาพค่ะ',
         Rating: 5.0,
         ReviewCount: 0,
-        Credit: 298, // เครดิตเริ่มต้น 298 เครดิตสำหรับพนักงานใหม่เพื่อรับงานฟรีได้ 1 ครั้ง
+        Credit: 200, // เครดิตเริ่มต้น 200 เครดิตสำหรับพนักงานใหม่เพื่อรับงานฟรีได้ 1 ครั้ง
         Available: 'OFF', // พนักงานใหม่เริ่มต้นสถานะ OFF (ต้องรอแอดมินอนุมัติก่อนเปิดรับงาน)
         VerifyStatus: 'Pending', // ต้องให้แอดมินอนุมัติก่อนถึงจะเริ่มทำงานได้
         CurrentLatitude: newUser.Latitude || 9.138244,
@@ -499,17 +499,17 @@ async function startServer() {
       };
       syncToGoogleSheet('INSERT', 'StaffDocuments', staffDocData);
 
-      // Add welcome bonus credit transaction (298 credits = 1 free job)
+      // Add welcome bonus credit transaction (200 credits = 1 free job)
       const welcomeTx = {
         TransactionID: generateId('TX'),
         StaffID: newStaffID,
-        Amount: 298,
+        Amount: 200,
         BeforeCredit: 0,
-        AfterCredit: 298,
+        AfterCredit: 200,
         Type: 'Topup' as const,
         SlipImage: '',
         Status: 'Approved' as const,
-        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 298 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)',
+        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)',
         CreatedDate: new Date().toISOString()
       };
       db.transactions.push(welcomeTx);
@@ -520,7 +520,7 @@ async function startServer() {
         NotificationID: generateId('N'),
         UserID: newUserID,
         Title: '⏳ ใบสมัครพนักงานของคุณอยู่ระหว่างรอแอดมินอนุมัติ',
-        Detail: 'ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 298 เครดิตฟรีค่ะ',
+        Detail: 'ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 200 เครดิตฟรีค่ะ',
         ReadStatus: 'Unread' as const,
         CreatedDate: new Date().toISOString()
       };
@@ -914,7 +914,7 @@ async function startServer() {
         Description: info.description || 'ยินดีให้บริการนวดเพื่อสุขภาพค่ะ',
         Rating: 5.0,
         ReviewCount: 0,
-        Credit: 298,
+        Credit: 200,
         Available: 'ON',
         VerifyStatus: 'Approved',
         CurrentLatitude: newUser.Latitude || 9.138244,
@@ -952,13 +952,13 @@ async function startServer() {
       const welcomeTx = {
         TransactionID: generateId('TX'),
         StaffID: newStaffID,
-        Amount: 298,
+        Amount: 200,
         BeforeCredit: 0,
-        AfterCredit: 298,
+        AfterCredit: 200,
         Type: 'Topup' as const,
         SlipImage: '',
         Status: 'Approved' as const,
-        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 298 เครดิต (รับงานฟรี 1 ครั้ง)',
+        AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้ง)',
         CreatedDate: new Date().toISOString()
       };
       db.transactions.push(welcomeTx);
@@ -1015,7 +1015,7 @@ async function startServer() {
             Description: 'ยินดีให้บริการค่ะ',
             Rating: 5.0,
             ReviewCount: 0,
-            Credit: 298,
+            Credit: 200,
             Available: 'OFF',
             VerifyStatus: 'Pending',
             CurrentLatitude: user.Latitude,
@@ -1052,13 +1052,13 @@ async function startServer() {
           const welcomeTx = {
             TransactionID: generateId('TX'),
             StaffID: newStaffID,
-            Amount: 298,
+            Amount: 200,
             BeforeCredit: 0,
-            AfterCredit: 298,
+            AfterCredit: 200,
             Type: 'Topup' as const,
             SlipImage: '',
             Status: 'Approved' as const,
-            AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 298 เครดิต (รับงานฟรี 1 ครั้ง)',
+            AdminRemark: '🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้ง)',
             CreatedDate: new Date().toISOString()
           };
           db.transactions.push(welcomeTx);

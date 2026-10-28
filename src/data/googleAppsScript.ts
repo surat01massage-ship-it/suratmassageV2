@@ -653,7 +653,7 @@ function handleRegister(payload) {
       Description: payload.description || "ยินดีให้บริการนวดเพื่อสุขภาพค่ะ",
       Rating: 5.0,
       ReviewCount: 0,
-      Credit: 298,
+      Credit: 200,
       Available: "OFF",
       VerifyStatus: "Pending",
       CurrentLatitude: newUser.Latitude,

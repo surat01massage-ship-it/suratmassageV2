@@ -941,7 +941,7 @@ export default function App() {
       if (staff) persistStaffLocally(staff);
 
       showToast(currentRole === 'Staff' 
-        ? `🎉 สมัครพนักงานนวดสำเร็จและเข้าสู่ระบบเรียบร้อยค่ะ! ยินดีต้อนรับคุณ ${user.Name} (ได้รับ 298 เครดิตต้อนรับ รอแอดมินอนุมัติเพื่อเริ่มรับงาน)` 
+        ? `🎉 สมัครพนักงานนวดสำเร็จและเข้าสู่ระบบเรียบร้อยค่ะ! ยินดีต้อนรับคุณ ${user.Name} (ได้รับ 200 เครดิตต้อนรับ รอแอดมินอนุมัติเพื่อเริ่มรับงาน)` 
         : `🎉 สมัครสมาชิกและเข้าสู่ระบบสำเร็จแล้วค่ะ ยินดีต้อนรับคุณ ${user.Name}!`, "success");
 
       setAuthMode('welcome');
@@ -1234,7 +1234,7 @@ export default function App() {
                       <div className="flex items-center gap-1.5">
                         <span className="block text-sm font-black text-slate-900">สมัครสมาชิกพนักงานนวด</span>
                         <span className="text-[9px] font-black bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-md">
-                          ฟรี 298 CR
+                          ฟรี 200 CR
                         </span>
                       </div>
                       <span className="block text-[10px] font-bold text-slate-500">สำหรับผู้ให้บริการหมอนวดมืออาชีพ รับงานฟรี 1 ครั้งแรก</span>
@@ -1438,11 +1438,11 @@ export default function App() {
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-black">สิทธิพิเศษพนักงานใหม่!</span>
                       <span className="text-[10px] font-black bg-amber-300 text-slate-900 px-2 py-0.5 rounded-full shadow-xs">
-                        ฟรี 298 เครดิต
+                        ฟรี 200 เครดิต
                       </span>
                     </div>
                     <p className="text-[11px] text-emerald-50 font-medium leading-tight mt-1">
-                      สมัครวันนี้ รับเครดิตเริ่มต้น 298 CR ทันที สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งโดยไม่ต้องเติมเงิน
+                      สมัครวันนี้ รับเครดิตเริ่มต้น 200 CR ทันที สามารถใช้รับงานลูกค้าฟรีได้ 1 ครั้งโดยไม่ต้องเติมเงิน
                     </p>
                   </div>
                 </div>
@@ -1865,7 +1865,7 @@ export default function App() {
                 >
                   <span>💆 ยืนยันสมัครสมาชิกพนักงานนวด</span>
                   <span className="bg-emerald-700/60 text-emerald-100 text-[10px] px-2 py-0.5 rounded-full font-bold">
-                    (รับฟรี 298 เครดิต)
+                    (รับฟรี 200 เครดิต)
                   </span>
                 </button>
 

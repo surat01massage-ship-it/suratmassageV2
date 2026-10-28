@@ -438,7 +438,7 @@ export function getDatabase(): DatabaseSchema {
   liveDb.staff.forEach(s => {
     const numCredit = Number(s.Credit);
     if (isNaN(numCredit) || s.Credit === undefined || s.Credit === null) {
-      s.Credit = 298;
+      s.Credit = 200;
     } else {
       s.Credit = numCredit;
     }
