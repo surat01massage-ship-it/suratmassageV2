@@ -3,8 +3,25 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Guard against transient network fetch errors when server wakes up or network pauses
+// Cloud backend URL for GitHub Pages / external static deployments
+const CLOUD_BACKEND_URL = 'https://ais-pre-azwrktqb5rkknkpq7k4t53-736055977739.asia-east1.run.app';
+
+// Guard against transient network fetch errors and route external static hosts to Cloud backend
 if (typeof window !== 'undefined') {
+  const isExternalHost = window.location.hostname.includes('github.io') ||
+                         window.location.hostname.includes('github.dev') ||
+                         (window.location.hostname === 'localhost' && window.location.port !== '3000');
+
+  if (isExternalHost) {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+      if (typeof input === 'string' && input.startsWith('/api/')) {
+        return originalFetch(CLOUD_BACKEND_URL + input, init);
+      }
+      return originalFetch(input, init);
+    };
+  }
+
   window.addEventListener('unhandledrejection', (event) => {
     const msg = event?.reason?.message || String(event?.reason || '');
     if (
