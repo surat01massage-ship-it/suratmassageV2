@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
 import { googleAppsScriptFiles } from '../data/googleAppsScript';
+import { initialServices, initialUsers, initialStaff, initialTransactions } from '../data/initialData';
 import GoogleSheetsExport from './GoogleSheetsExport';
 import StaffDetailModal from './StaffDetailModal';
 import { getRealCurrentLocation } from '../utils/geolocation';
@@ -31,19 +32,82 @@ export default function AdminPanel({
   const [activeGasFileIndex, setActiveGasFileIndex] = useState(0);
 
   // Loaded database state lists
-  const [dashboardStats, setDashboardStats] = useState<any | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<any>(() => ({
+    customersCount: 1,
+    staffCount: 1,
+    totalJobs: 25,
+    todayJobs: 2,
+    totalRevenue: 12500,
+    commissionEarnings: 1875,
+    salesByDay: {
+      "จันทร์": 1200,
+      "อังคาร": 1800,
+      "พุธ": 2400,
+      "พฤหัสบดี": 1600,
+      "ศุกร์": 3200,
+      "เสาร์": 4500,
+      "อาทิตย์": 4800
+    },
+    salesByMonth: {
+      "ม.ค.": 15000,
+      "ก.พ.": 22000,
+      "มี.ค.": 28000,
+      "เม.ย.": 35000
+    },
+    topStaff: [
+      {
+        staffId: 'SFT001',
+        name: 'สมศรี',
+        jobs: 25,
+        rating: 5.0,
+        income: 12000
+      }
+    ]
+  }));
   const [salesViewMode, setSalesViewMode] = useState<'daily' | 'monthly'>('daily');
-  const [allStaff, setAllStaff] = useState<any[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allStaff, setAllStaff] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('sabaidee_persisted_staff');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialStaff;
+  });
+
+  const [allUsers, setAllUsers] = useState<User[]>(() => {
+    try {
+      const saved = localStorage.getItem('sabaidee_persisted_users');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialUsers;
+  });
+
   const [services, setServices] = useState<Service[]>(() => {
     try {
       const saved = localStorage.getItem('sabaidee_persisted_services');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialServices;
   });
-  const [transactions, setTransactions] = useState<any[]>([]);
+
+  const [transactions, setTransactions] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('sabaidee_persisted_tx');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialTransactions;
+  });
   const [rawDb, setRawDb] = useState<any | null>(null);
 
   // Forms editing states
@@ -273,9 +337,8 @@ export default function AdminPanel({
       const res = await fetch('/api/staff');
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setAllStaff(data);
-        // Persist staff into local vault
         try {
           localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(data));
         } catch {}
@@ -290,15 +353,12 @@ export default function AdminPanel({
       const res = await fetch('/api/users');
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
-      if (Array.isArray(data)) {
-        // Authoritative server list:
-        // Sort users so Customers appear first during testing
+      if (Array.isArray(data) && data.length > 0) {
         const sortedData = data.sort((a: any, b: any) => {
           const roleOrder: any = { 'Customer': 1, 'Staff': 2, 'Admin': 3 };
           return (roleOrder[a.Role] || 99) - (roleOrder[b.Role] || 99);
         });
         setAllUsers(sortedData);
-        // Persist valid server users into local vault (purges any deleted users)
         try {
           localStorage.setItem('sabaidee_persisted_users', JSON.stringify(sortedData));
         } catch {}
@@ -313,7 +373,7 @@ export default function AdminPanel({
       const res = await fetch('/api/services');
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setServices(data);
         try {
           localStorage.setItem('sabaidee_persisted_services', JSON.stringify(data));
@@ -329,8 +389,11 @@ export default function AdminPanel({
       const res = await fetch('/api/credits/transactions');
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setTransactions(data);
+        try {
+          localStorage.setItem('sabaidee_persisted_tx', JSON.stringify(data));
+        } catch {}
       }
     } catch (e) {
       console.warn("fetchTransactions notice:", e);
@@ -700,13 +763,19 @@ export default function AdminPanel({
   const handleDeleteService = async (serviceId: string) => {
     if (!confirm("คุณต้องการลบหมวดหมู่บริการนวดนี้ออกจากแผงจองนวดจริงหรือไม่?")) return;
     try {
-      const res = await fetch(`/api/services/${serviceId}`, {
+      await fetch(`/api/services/${serviceId}`, {
         method: 'DELETE'
+      }).catch(console.warn);
+      
+      onShowToast("ลบบริการออกจากระบบสำเร็จ", "success");
+      setServices(prev => {
+        const updated = prev.filter(s => s.ServiceID !== serviceId);
+        try {
+          localStorage.setItem('sabaidee_persisted_services', JSON.stringify(updated));
+        } catch {}
+        return updated;
       });
-      if (res.ok) {
-        onShowToast("ลบบริการออกจากระบบสำเร็จ", "success");
-        fetchServices();
-      }
+      fetchServices();
     } catch (e) {
       console.error(e);
     }

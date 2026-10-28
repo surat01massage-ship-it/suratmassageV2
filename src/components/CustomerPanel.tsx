@@ -6,6 +6,7 @@ import {
   ShieldCheck, Home, ZoomIn, Banknote, Camera, Upload, Trash2
 } from 'lucide-react';
 import { User, Staff, Service, Booking, Review, Notification, AppSettings, DEFAULT_BLANK_AVATAR } from '../types';
+import { initialStaff } from '../data/initialData';
 import InteractiveMap from './InteractiveMap';
 import MobileBottomNav, { CustomerNavTab } from './MobileBottomNav';
 import { calculateDistance, formatDistance, formatDistanceCompact, calculateTravelFee, getGoogleMapsDirectionsUrl } from '../utils/distance';
@@ -69,7 +70,16 @@ export default function CustomerPanel({
       }
     ];
   });
-  const [allStaff, setAllStaff] = useState<any[]>([]);
+  const [allStaff, setAllStaff] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('sabaidee_persisted_staff');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return initialStaff;
+  });
   const [activeBooking, setActiveBooking] = useState<any | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
@@ -362,8 +372,11 @@ export default function CustomerPanel({
       const res = await fetch('/api/services');
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setServices(data.filter((s: Service) => s.Active === 'ON'));
+        try {
+          localStorage.setItem('sabaidee_persisted_services', JSON.stringify(data));
+        } catch {}
       }
     } catch (e) {
       console.warn("fetchServices notice:", e);
@@ -375,8 +388,11 @@ export default function CustomerPanel({
       const res = await fetch('/api/staff');
       if (!res.ok) return;
       const data = await res.json().catch(() => []);
-      if (Array.isArray(data)) {
+      if (Array.isArray(data) && data.length > 0) {
         setAllStaff(data);
+        try {
+          localStorage.setItem('sabaidee_persisted_staff', JSON.stringify(data));
+        } catch {}
       }
     } catch (e) {
       console.warn("fetchStaff notice:", e);
