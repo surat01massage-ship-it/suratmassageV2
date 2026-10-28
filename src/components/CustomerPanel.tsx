@@ -28,7 +28,47 @@ export default function CustomerPanel({
   onUpdateUser
 }: CustomerPanelProps) {
   // Database states
-  const [services, setServices] = useState<Service[]>([]);
+  const [services, setServices] = useState<Service[]>(() => {
+    try {
+      const saved = localStorage.getItem('sabaidee_persisted_services');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      {
+        ServiceID: "S001",
+        ServiceName: "นวดผ่อนคลาย (Relaxing Massage)",
+        Detail: "นวดผ่อนคลายความเครียดสะสม คลายความเมื่อยล้าทั่วร่างกาย ปรับสมดุลให้ร่างกายเบาสบาย",
+        Duration: 120,
+        Price: 598,
+        CreditRequired: 200,
+        Active: 'ON',
+        SortOrder: 1
+      },
+      {
+        ServiceID: "S002",
+        ServiceName: "นวดแก้อาการ (Therapeutic Massage)",
+        Detail: "นวดบำบัดรักษาอาการปวดเมื่อยเฉพาะจุด แก้เส้นตึง พังผืดเกาะ คอบ่าไหล่ ออฟฟิศซินโดรม",
+        Duration: 120,
+        Price: 598,
+        CreditRequired: 200,
+        Active: 'ON',
+        SortOrder: 2
+      },
+      {
+        ServiceID: "S003",
+        ServiceName: "นวดแผนไทย (Thai Massage)",
+        Detail: "นวดแผนโบราณ กดจุด ยืดเหยียดกล้ามเนื้อ กระตุ้นการไหลเวียนเลือด ทำให้ร่างกายสดชื่น",
+        Duration: 120,
+        Price: 598,
+        CreditRequired: 200,
+        Active: 'ON',
+        SortOrder: 3
+      }
+    ];
+  });
   const [allStaff, setAllStaff] = useState<any[]>([]);
   const [activeBooking, setActiveBooking] = useState<any | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
