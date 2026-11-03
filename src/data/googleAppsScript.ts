@@ -459,11 +459,20 @@ function doPost(e) {
         if (table === 'Staff' || table === 'StaffDocuments') {
           const sName = (request.data && (request.data.StaffName || request.data.Name || request.data.Nickname)) || "พนักงานใหม่";
           const sPhone = (request.data && request.data.Phone) || "";
-          sendLineNotification("🎉 มีพนักงานใหม่สมัครใช้งาน!\nชื่อ: " + sName + "\nเบอร์: " + sPhone + "\nสถานะ: ⏳ รอแอดมินตรวจสอบเอกสารและอนุมัติในระบบค่ะ");
+          sendLineNotification([
+            "🎉 มีพนักงานใหม่สมัครใช้งาน!",
+            "ชื่อ: " + sName,
+            "เบอร์: " + sPhone,
+            "สถานะ: ⏳ รอแอดมินตรวจสอบเอกสารและอนุมัติในระบบค่ะ"
+          ].join("\\n"));
         } else if (table === 'Booking') {
           const bId = (request.data && request.data.BookingID) || "";
           const sPrice = (request.data && (request.data.TotalPrice || request.data.ServicePrice)) || 598;
-          sendLineNotification("🛎️ มีออเดอร์จองนวดใหม่เข้ามา!\nรหัสการจอง: " + bId + "\nยอดรวม: " + sPrice + " บาท");
+          sendLineNotification([
+            "🛎️ มีออเดอร์จองนวดใหม่เข้ามา!",
+            "รหัสการจอง: " + bId,
+            "ยอดรวม: " + sPrice + " บาท"
+          ].join("\\n"));
         }
         break;
       }
