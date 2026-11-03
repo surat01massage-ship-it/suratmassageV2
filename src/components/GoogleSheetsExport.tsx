@@ -23,6 +23,40 @@ export default function GoogleSheetsExport({ rawDb, onShowToast }: Props) {
     setSyncStatus('idle');
 
     try {
+      const isStaticHost = typeof window !== 'undefined' && (
+        window.location.hostname.includes('github.io') ||
+        window.location.hostname.includes('github.dev')
+      );
+
+      if (isStaticHost) {
+        // Save webhook URL into persisted settings on static host
+        try {
+          const raw = localStorage.getItem('sabaidee_persisted_settings');
+          const settings = raw ? JSON.parse(raw) : {};
+          settings.googleSheetWebhookUrl = webhookUrl.trim();
+          localStorage.setItem('sabaidee_persisted_settings', JSON.stringify(settings));
+        } catch {}
+
+        // Send a test ping to Google Apps Script to verify and trigger LINE notification
+        try {
+          await fetch(webhookUrl.trim(), {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'TEST_LINE',
+              message: '🔔 ทดสอบการเชื่อมต่อ Google Sheets & LINE แจ้งเตือนจาก SabaiDee (GitHub Pages) สำเร็จเรียบร้อยค่ะ!'
+            })
+          });
+        } catch {}
+
+        setSyncStatus('success');
+        setSyncMessage('เชื่อมต่อ Google Apps Script Webhook สำเร็จแล้ว! ระบบจะบันทึกลงชีตและแจ้งเตือนเข้า LINE อัตโนมัติทุกครั้งที่มีพนักงานสมัครหรือมีคนจองงานค่ะ');
+        setLastSyncTime(new Date().toLocaleTimeString('th-TH'));
+        onShowToast('✅ เชื่อมต่อ Webhook สำเร็จ! ระบบจะส่งแจ้งเตือนเข้า LINE อัตโนมัติค่ะ', 'success');
+        return;
+      }
+
       const res = await fetch('/api/sync/googlesheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

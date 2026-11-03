@@ -167,6 +167,23 @@ export async function handleClientApiRequest(url: string, init?: RequestInit): P
     users.push(newUser);
     setStorage('sabaidee_persisted_users', users);
 
+    // Sync to Google Sheet and trigger LINE push via GAS if Webhook configured
+    const currentSettings = getStorage<AppSettings>('sabaidee_persisted_settings', defaultSettings);
+    if (currentSettings?.googleSheetWebhookUrl && currentSettings.googleSheetWebhookUrl.startsWith('http')) {
+      try {
+        fetch(currentSettings.googleSheetWebhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'INSERT',
+            table: role === 'Staff' ? 'Staff' : 'Users',
+            data: role === 'Staff' ? newStaff : newUser
+          })
+        }).catch(console.warn);
+      } catch {}
+    }
+
     return jsonResponse({
       success: true,
       user: newUser,
@@ -433,6 +450,31 @@ export async function handleClientApiRequest(url: string, init?: RequestInit): P
   // 10. REVIEWS
   if (path === '/api/reviews') {
     return jsonResponse({ success: true });
+  }
+
+  // 11. TEST LINE NOTIFICATION
+  if (path === '/api/admin/test-line-notification' && method === 'POST') {
+    const settings = getStorage<AppSettings>('sabaidee_persisted_settings', defaultSettings);
+    if (settings?.googleSheetWebhookUrl && settings.googleSheetWebhookUrl.startsWith('http')) {
+      try {
+        fetch(settings.googleSheetWebhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'TEST_LINE',
+            message: '🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Google Apps Script Webhook)'
+          })
+        }).catch(console.warn);
+        return jsonResponse({ success: true, message: 'ส่งคำขอทดสอบไปยัง LINE ผ่าน Google Apps Script Webhook แล้วค่ะ' });
+      } catch (e: any) {
+        return jsonResponse({ error: e.message }, 500);
+      }
+    }
+    return jsonResponse({
+      success: true,
+      message: 'การส่งแจ้งเตือนเข้า LINE สำหรับ GitHub Pages ต้องเชื่อมต่อ Google Apps Script Webhook ในหน้าตั้งค่า หรือเปิดใช้งานผ่านระบบเซิร์ฟเวอร์หลักค่ะ'
+    });
   }
 
   // Default catch-all response

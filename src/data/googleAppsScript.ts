@@ -455,8 +455,22 @@ function doPost(e) {
           table.toLowerCase() === 'reviews' ? 'ReviewID' : 
           table.toLowerCase() === 'notification' ? 'NotificationID' : 'ID'
         );
-        const idVal = request.id || request.ID || (request.data ? (request.data[idCol] || request.data.ServiceID || request.data.UserID || request.data.StaffID || request.data.DocID || request.data.BookingID || request.data.TransactionID || request.data.ID || request.data.id) : null);
         result = upsertSheetRow(table, idCol, idVal, request.data);
+        if (table === 'Staff' || table === 'StaffDocuments') {
+          const sName = (request.data && (request.data.StaffName || request.data.Name || request.data.Nickname)) || "พนักงานใหม่";
+          const sPhone = (request.data && request.data.Phone) || "";
+          sendLineNotification("🎉 มีพนักงานใหม่สมัครใช้งาน!\nชื่อ: " + sName + "\nเบอร์: " + sPhone + "\nสถานะ: ⏳ รอแอดมินตรวจสอบเอกสารและอนุมัติในระบบค่ะ");
+        } else if (table === 'Booking') {
+          const bId = (request.data && request.data.BookingID) || "";
+          const sPrice = (request.data && (request.data.TotalPrice || request.data.ServicePrice)) || 598;
+          sendLineNotification("🛎️ มีออเดอร์จองนวดใหม่เข้ามา!\nรหัสการจอง: " + bId + "\nยอดรวม: " + sPrice + " บาท");
+        }
+        break;
+      }
+      case "TEST_LINE": {
+        const msg = request.message || "🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Google Apps Script Webhook)";
+        sendLineNotification(msg);
+        result = { success: true, message: "ส่งข้อความเข้า LINE เรียบร้อยแล้ว" };
         break;
       }
       case "UPDATE": {
@@ -996,6 +1010,39 @@ function createNotification(userId, title, detail) {
 function getUserNotifications(userId) {
   const notes = getSheetData("Notification");
   return notes.filter(n => n.UserID === userId).reverse();
+}
+
+/**
+ * ส่งแจ้งเตือนเข้า LINE สำหรับแอดมิน (Admin Push Message)
+ */
+function sendLineNotification(message) {
+  try {
+    const settings = getSheetData("Settings");
+    let token = "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=";
+    let adminId = "Cf544171f0f9753863ade1ddd1acd67a7";
+
+    if (settings && settings.length > 0) {
+      if (settings[0].lineChannelAccessToken) token = settings[0].lineChannelAccessToken;
+      if (settings[0].lineAdminUserId) adminId = settings[0].lineAdminUserId;
+    }
+
+    if (!token || !adminId) return;
+
+    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      payload: JSON.stringify({
+        to: adminId.trim(),
+        messages: [{ type: "text", text: message }]
+      }),
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    Logger.log("sendLineNotification Error: " + e.message);
+  }
 }
 `
   },
