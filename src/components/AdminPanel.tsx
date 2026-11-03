@@ -56,10 +56,15 @@ export default function AdminPanel({
     },
     topStaff: [
       {
+        StaffID: 'SFT001',
         staffId: 'SFT001',
+        Nickname: 'สมศรี',
         name: 'สมศรี',
+        TotalJobs: 25,
         jobs: 25,
+        Rating: 5.0,
         rating: 5.0,
+        TotalIncome: 12000,
         income: 12000
       }
     ]
@@ -1052,28 +1057,30 @@ export default function AdminPanel({
               
               <div className="flex items-end justify-between h-[150px] pt-4">
                 {salesViewMode === 'daily' ? (
-                  Object.entries(dashboardStats.salesByDay).map(([day, val]: any) => (
-                    <div key={day} className="flex flex-col items-center gap-1.5 w-[12%]">
+                  Object.entries(dashboardStats.salesByDay || {}).map(([day, val]: any, dayIdx: number) => (
+                    <div key={`day-${day || dayIdx}`} className="flex flex-col items-center gap-1.5 w-[12%]">
                       <div className="text-[8px] font-bold text-slate-400">฿{val}</div>
                       <div 
                         className="bg-sky-500 rounded-t w-full transition-all duration-500 min-h-[4px]"
-                        style={{ height: `${Math.min(100, Math.max(5, (val / 5000) * 100))}%` }}
+                        style={{ height: `${Math.min(100, Math.max(5, (Number(val || 0) / 5000) * 100))}%` }}
                       />
                       <div className="text-[8px] font-bold text-slate-500 truncate w-full text-center">
-                        {day.split('-')[2]}
+                        {String(day).includes('-') ? String(day).split('-')[2] : String(day)}
                       </div>
                     </div>
                   ))
                 ) : (
-                  Object.entries(dashboardStats.salesByMonth || {}).map(([monthStr, val]: any) => (
-                    <div key={monthStr} className="flex flex-col items-center gap-1.5 flex-1 mx-1">
+                  Object.entries(dashboardStats.salesByMonth || {}).map(([monthStr, val]: any, mIdx: number) => (
+                    <div key={`month-${monthStr || mIdx}`} className="flex flex-col items-center gap-1.5 flex-1 mx-1">
                       <div className="text-[8px] font-bold text-slate-400">฿{val}</div>
                       <div 
                         className="bg-sky-500 rounded-t w-full transition-all duration-500 min-h-[4px] max-w-[40px]"
-                        style={{ height: `${Math.min(100, Math.max(5, (val / 30000) * 100))}%` }}
+                        style={{ height: `${Math.min(100, Math.max(5, (Number(val || 0) / 30000) * 100))}%` }}
                       />
                       <div className="text-[8px] font-bold text-slate-500 truncate w-full text-center">
-                        {monthStr.split('-')[1]}/{monthStr.split('-')[0].substring(2)}
+                        {String(monthStr).includes('-') 
+                          ? `${String(monthStr).split('-')[1]}/${String(monthStr).split('-')[0].substring(2)}`
+                          : String(monthStr)}
                       </div>
                     </div>
                   ))
@@ -1086,24 +1093,32 @@ export default function AdminPanel({
               <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">5 อันดับผู้ให้บริการยอดเยี่ยม</h4>
               
               <div className="divide-y divide-slate-100">
-                {dashboardStats.topStaff.length === 0 ? (
+                {(!dashboardStats.topStaff || dashboardStats.topStaff.length === 0) ? (
                   <div className="text-center py-6 text-slate-400 text-xs">ไม่พบสถิติพนักงานนวด</div>
                 ) : (
-                  dashboardStats.topStaff.map((s: any, idx: number) => (
-                    <div key={s.Nickname} className="flex items-center justify-between text-xs py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-slate-100 text-[10px] font-bold flex items-center justify-center text-slate-500">{idx+1}</span>
-                        <div>
-                          <span className="font-bold text-slate-800">พี่{s.Nickname}</span>
-                          <span className="text-[10px] text-slate-400 ml-2">({s.TotalJobs} งาน)</span>
+                  dashboardStats.topStaff.map((s: any, idx: number) => {
+                    const staffKey = s.StaffID || s.staffId || s.Nickname || s.name || `top-staff-${idx}`;
+                    const displayName = s.Nickname || s.name || 'พนักงาน';
+                    const jobsCount = s.TotalJobs ?? s.jobs ?? 0;
+                    const totalIncome = s.TotalIncome ?? s.income ?? 0;
+                    const ratingScore = s.Rating ?? s.rating ?? 5.0;
+
+                    return (
+                      <div key={staffKey} className="flex items-center justify-between text-xs py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-slate-100 text-[10px] font-bold flex items-center justify-center text-slate-500">{idx+1}</span>
+                          <div>
+                            <span className="font-bold text-slate-800">พี่{displayName}</span>
+                            <span className="text-[10px] text-slate-400 ml-2">({jobsCount} งาน)</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-extrabold text-slate-800">฿{totalIncome}</span>
+                          <span className="text-[10px] text-amber-500 ml-2 font-bold">★ {ratingScore}</span>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="font-extrabold text-slate-800">฿{s.TotalIncome}</span>
-                        <span className="text-[10px] text-amber-500 ml-2 font-bold">★ {s.Rating}</span>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>

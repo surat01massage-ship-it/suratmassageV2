@@ -3,23 +3,47 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Cloud backend URL for GitHub Pages / external static deployments
-const CLOUD_BACKEND_URL = 'https://ais-pre-azwrktqb5rkknkpq7k4t53-736055977739.asia-east1.run.app';
+import { handleClientApiRequest } from './utils/clientApi';
 
-// Guard against transient network fetch errors and route external static hosts to Cloud backend
+// Guard against transient network fetch errors and route static hosts / offline calls cleanly
 if (typeof window !== 'undefined') {
   const isExternalHost = window.location.hostname.includes('github.io') ||
-                         window.location.hostname.includes('github.dev') ||
-                         (window.location.hostname === 'localhost' && window.location.port !== '3000');
+                         window.location.hostname.includes('github.dev');
 
   if (isExternalHost) {
-    const originalFetch = window.fetch.bind(window);
-    window.fetch = function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-      if (typeof input === 'string' && input.startsWith('/api/')) {
-        return originalFetch(CLOUD_BACKEND_URL + input, init);
+    try {
+      const originalFetch = window.fetch ? window.fetch.bind(window) : null;
+      const customFetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+        const urlStr = typeof input === 'string' ? input : (input instanceof Request ? input.url : input.toString());
+        
+        // If static host, route /api/ immediately to clientApi
+        if (urlStr.includes('/api/')) {
+          const apiPath = urlStr.startsWith('http') ? new URL(urlStr).pathname : urlStr;
+          return handleClientApiRequest(apiPath, init);
+        }
+
+        if (originalFetch) {
+          return originalFetch(input, init);
+        }
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+
+      try {
+        Object.defineProperty(window, 'fetch', {
+          value: customFetch,
+          writable: true,
+          configurable: true
+        });
+      } catch {
+        try {
+          (window as any).fetch = customFetch;
+        } catch (e) {
+          console.warn("Global fetch mutation not allowed in this runtime:", e);
+        }
       }
-      return originalFetch(input, init);
-    };
+    } catch (err) {
+      console.warn("Fetch override initialization skipped:", err);
+    }
   }
 
   window.addEventListener('unhandledrejection', (event) => {

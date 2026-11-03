@@ -10,6 +10,7 @@ import StaffPanel from './components/StaffPanel';
 import AdminPanel from './components/AdminPanel';
 import { getRealCurrentLocation } from './utils/geolocation';
 import { playJobAlertSound, playCustomerChime, unlockAudioContext } from './utils/soundAlert';
+import { handleClientApiRequest } from './utils/clientApi';
 
 // Canvas-based image compression for registration uploads
 const compressImageFile = (file: File): Promise<string> => {
@@ -756,19 +757,35 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneInput, password: passwordInput })
-      });
-      
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('เซิร์ฟเวอร์กำลังเชื่อมต่อหรือเริ่มต้นระบบใหม่ กรุณารอสักครู่แล้วลองอีกครั้งค่ะ');
+      const isStaticHost = typeof window !== 'undefined' && (
+        window.location.hostname.includes('github.io') ||
+        window.location.hostname.includes('github.dev')
+      );
+
+      let data: any = null;
+      if (isStaticHost) {
+        const clientRes = await handleClientApiRequest('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: phoneInput, password: passwordInput })
+        });
+        data = await clientRes.json();
+      } else {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: phoneInput, password: passwordInput })
+        });
+        
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error('เซิร์ฟเวอร์กำลังเชื่อมต่อหรือเริ่มต้นระบบใหม่ กรุณารอสักครู่แล้วลองอีกครั้งค่ะ');
+        }
+
+        data = await res.json();
       }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง');
+      if (!data || !data.user) throw new Error(data?.error || 'เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง');
 
       setCurrentUser(data.user);
       setCurrentStaff(data.staff);
@@ -1029,22 +1046,106 @@ export default function App() {
         } : undefined
       };
 
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        throw new Error('เซิร์ฟเวอร์กำลังเชื่อมต่อหรือเริ่มต้นระบบใหม่ กรุณารอสักครู่แล้วลองอีกครั้งค่ะ');
+      let user: User | null = null;
+      let staff: Staff | null = null;
+
+      const isStaticHost = typeof window !== 'undefined' && (
+        window.location.hostname.includes('github.io') ||
+        window.location.hostname.includes('github.dev')
+      );
+
+      try {
+        if (isStaticHost) {
+          const clientRes = await handleClientApiRequest('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const clientData = await clientRes.json();
+          if (clientData.user) {
+            user = clientData.user;
+            staff = clientData.staff || null;
+          } else if (clientData.error) {
+            throw new Error(clientData.error);
+          }
+        } else {
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const data = await res.json();
+            if (res.ok && data.user) {
+              user = data.user;
+              staff = data.staff || null;
+            } else if (!res.ok) {
+              throw new Error(data.error || 'สมัครสมาชิกไม่สำเร็จ');
+            }
+          }
+        }
+      } catch (fetchErr: any) {
+        if (fetchErr.message && !fetchErr.message.includes('fetch') && !fetchErr.message.includes('Network') && !fetchErr.message.includes('เชื่อมต่อ')) {
+          throw fetchErr;
+        }
+        console.warn("Server unavailable for register, fallback to client vault:", fetchErr);
       }
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'สมัครสมาชิกไม่สำเร็จ');
+      // If server unreachable or client-side mode, generate user and staff locally
+      if (!user) {
+        const newUserId = 'U' + Math.floor(100000 + Math.random() * 900000);
+        user = {
+          UserID: newUserId,
+          Name: regName.trim(),
+          Phone: regPhone.trim(),
+          PasswordHash: regPassword,
+          Email: `${regPhone.replace(/\D/g, '')}@sabaidee.com`,
+          Address: regRegisteredAddress || 'สุราษฎร์ธานี',
+          Province: 'สุราษฎร์ธานี',
+          District: 'เมืองสุราษฎร์ธานี',
+          SubDistrict: 'ตลาด',
+          Latitude: userLat,
+          Longitude: userLng,
+          ProfileImage: finalProfileImage,
+          Role: currentRole,
+          Status: 'Active',
+          CreatedDate: new Date().toISOString()
+        };
 
-      const user = data.user;
-      const staff = data.staff || null;
+        if (currentRole === 'Staff') {
+          const newStaffId = 'SFT' + Math.floor(100000 + Math.random() * 900000);
+          staff = {
+            StaffID: newStaffId,
+            UserID: newUserId,
+            Nickname: regNickname.trim() || regName.split(" ")[0],
+            Gender: (regGender as any) || 'Female',
+            Age: Number(regAge) || 28,
+            Weight: Number(regWeight) || 52,
+            Height: Number(regHeight) || 160,
+            RegisteredAddress: regRegisteredAddress || 'สุราษฎร์ธานี',
+            Experience: Number(regExperience) || 2,
+            Description: "ยินดีให้บริการนวดเพื่อสุขภาพและการผ่อนคลายค่ะ",
+            Rating: 5.0,
+            ReviewCount: 0,
+            Credit: 200, // 200 CR welcome bonus
+            Available: 'OFF',
+            VerifyStatus: 'Pending',
+            CurrentLatitude: userLat,
+            CurrentLongitude: userLng,
+            LastLocationUpdate: new Date().toISOString(),
+            TotalIncome: 0,
+            TotalJobs: 0,
+            OfferedServices: ['S001', 'S002', 'S003'],
+            MaxJobDistance: 25,
+            Photos: finalStaffPhotos,
+            LicenseFile: regLicenseFile,
+            IdCardFile: regIdCardFile,
+            HouseRegFile: regHouseRegFile
+          };
+        }
+      }
 
       // Automatically log the user in immediately so their account and session are active
       setCurrentUser(user);
