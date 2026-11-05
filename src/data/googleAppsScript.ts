@@ -83,24 +83,30 @@ const SPREADSHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE";
 const DRIVE_FOLDER_ID = ""; // Optional: ใส่ ID โฟลเดอร์ใน Google Drive ที่ต้องการเก็บรูป (ถ้าว่างจะสร้างโฟลเดอร์ SabaiDee_Staff_Evidence_Documents ให้อัตโนมัติ)
 
 function getDb() {
-  if (SPREADSHEET_ID === "YOUR_GOOGLE_SHEET_ID_HERE") {
-    return SpreadsheetApp.getActiveSpreadsheet();
-  }
-  return SpreadsheetApp.openById(SPREADSHEET_ID);
+  try {
+    if (SPREADSHEET_ID && SPREADSHEET_ID !== "YOUR_GOOGLE_SHEET_ID_HERE") {
+      return SpreadsheetApp.openById(SPREADSHEET_ID);
+    }
+    const active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (e) {}
+  return null;
 }
 
 function getSheetByNameRobust(sheetName) {
   const db = getDb();
-  let sheet = db.getSheetByName(sheetName);
-  if (sheet) return sheet;
+  if (!db) return null;
+  try {
+    let sheet = db.getSheetByName(sheetName);
+    if (sheet) return sheet;
 
-  // Case-insensitive fallback lookup
-  const sheets = db.getSheets();
-  for (let i = 0; i < sheets.length; i++) {
-    if (sheets[i].getName().toLowerCase() === sheetName.toLowerCase()) {
-      return sheets[i];
+    const sheets = db.getSheets();
+    for (let i = 0; i < sheets.length; i++) {
+      if (sheets[i].getName().toLowerCase() === sheetName.toLowerCase()) {
+        return sheets[i];
+      }
     }
-  }
+  } catch (e) {}
   return null;
 }
 
@@ -429,26 +435,15 @@ function doGet(e) {
   var token = (e && e.parameter && e.parameter.token) || "";
   var adminId = (e && e.parameter && e.parameter.adminId) || "";
 
-  if (action === "TEST_LINE" || (e && e.parameter && e.parameter.test)) {
-    sendLineNotification("🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Google Apps Script สำเร็จ 100%!)", token, adminId);
-    return HtmlService.createHtmlOutput([
-      "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>",
-      "<title>ทดสอบ LINE สำเร็จ</title>",
-      "<style>body{font-family:sans-serif;text-align:center;padding:50px 20px;background:#f0fdf4;color:#166534;}",
-      ".card{background:white;padding:35px 25px;border-radius:24px;max-width:440px;margin:auto;box-shadow:0 10px 25px rgba(0,0,0,0.06);border:1px solid #bbf7d0;}",
-      "h2{margin:0 0 12px;font-size:22px;color:#15803d;}p{font-size:14px;color:#4b5563;line-height:1.6;}</style></head>",
-      "<body><div class='card'><h2>🎉 ส่งข้อความเข้า LINE สำเร็จ 100%!</h2>",
-      "<p>ระบบได้ส่งข้อความทดสอบเข้ากลุ่ม LINE แอดมินเรียบร้อยแล้วค่ะ กรุณาเปิดเช็คในโทรศัพท์ของคุณได้เลย</p>",
-      "<p style='font-size:12px;color:#9ca3af;margin-top:20px;'>คุณสามารถปิดหน้านี้แล้วกลับไปใช้งานแอพต่อได้ทันทีค่ะ</p></div></body></html>"
-    ].join(""))
-    .setTitle("SabaiDee LINE Test Success");
-  }
+  var res = sendLineNotification("🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ส่งผ่าน Google Apps Script สำเร็จ 100%!)", token, adminId);
 
   return ContentService.createTextOutput(JSON.stringify({
-    status: "online",
-    message: "SabaiDee Home Massage Webhook พร้อมทำงาน 100%!",
-    timestamp: new Date().toISOString()
-  })).setMimeType(ContentService.MimeType.JSON);
+    status: res.success ? "success" : "failed",
+    http_code: res.statusCode,
+    line_api_response: res.responseBody || res.error,
+    sent_to: adminId || "Cf544171f0f9753863ade1ddd1acd67a7",
+    message: res.success ? "🎉 ส่งข้อความเข้ากลุ่ม LINE แอดมินสำเร็จ 100%! กรุณาเปิดเช็คในโทรศัพท์ได้เลยค่ะ" : "❌ ส่งไม่สำเร็จ โปรดดูรายละเอียดใน line_api_response"
+  }, null, 2)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -660,9 +655,7 @@ function sendLineNotification(message, customToken, customAdminId) {
     if (!token) token = "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=";
     if (!adminId) adminId = "Cf544171f0f9753863ade1ddd1acd67a7";
 
-    if (!token || !adminId) return;
-
-    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+    var res = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
       method: "post",
       headers: {
         "Content-Type": "application/json",
@@ -674,8 +667,12 @@ function sendLineNotification(message, customToken, customAdminId) {
       }),
       muteHttpExceptions: true
     });
+
+    var code = res.getResponseCode();
+    var body = res.getContentText();
+    return { statusCode: code, responseBody: body, success: code >= 200 && code < 300 };
   } catch (err) {
-    Logger.log("sendLineNotification Error: " + err.message);
+    return { statusCode: 500, error: err.message, success: false };
   }
 }
 `
@@ -1110,33 +1107,44 @@ function getUserNotifications(userId) {
 /**
  * ส่งแจ้งเตือนเข้า LINE สำหรับแอดมิน (Admin Push Message)
  */
-function sendLineNotification(message) {
+function sendLineNotification(message, customToken, customAdminId) {
   try {
-    const settings = getSheetData("Settings");
-    let token = "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=";
-    let adminId = "Cf544171f0f9753863ade1ddd1acd67a7";
+    var token = (customToken || "").toString().trim();
+    var adminId = (customAdminId || "").toString().trim();
 
-    if (settings && settings.length > 0) {
-      if (settings[0].lineChannelAccessToken) token = settings[0].lineChannelAccessToken;
-      if (settings[0].lineAdminUserId) adminId = settings[0].lineAdminUserId;
+    if (!token || !adminId) {
+      try {
+        var settings = getSheetData("Settings");
+        if (settings && settings.length > 0) {
+          if (!token && settings[0].lineChannelAccessToken) token = settings[0].lineChannelAccessToken.toString().trim();
+          if (!adminId && settings[0].lineAdminUserId) adminId = settings[0].lineAdminUserId.toString().trim();
+        }
+      } catch (eSettings) {}
     }
 
-    if (!token || !adminId) return;
+    if (!token) token = "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=";
+    if (!adminId) adminId = "Cf544171f0f9753863ade1ddd1acd67a7";
 
-    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+    var payload = {
+      to: adminId.trim(),
+      messages: [{ type: "text", text: String(message) }]
+    };
+
+    var res = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
       method: "post",
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer " + token
       },
-      payload: JSON.stringify({
-        to: adminId.trim(),
-        messages: [{ type: "text", text: message }]
-      }),
+      payload: JSON.stringify(payload),
       muteHttpExceptions: true
     });
+
+    var code = res.getResponseCode();
+    var body = res.getContentText();
+    return { statusCode: code, responseBody: body, success: code >= 200 && code < 300 };
   } catch (e) {
-    Logger.log("sendLineNotification Error: " + e.message);
+    return { statusCode: 500, error: e.message, success: false };
   }
 }
 `
