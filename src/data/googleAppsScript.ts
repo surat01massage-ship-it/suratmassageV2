@@ -425,16 +425,26 @@ function handleSyncAllTables(tables) {
  */
 
 function doGet(e) {
-  return HtmlService.createTemplateFromFile("index")
-    .evaluate()
-    .setTitle("SabaiDee Home Massage Portal")
-    .addMetaTag("viewport", "width=device-width, initial-scale=1")
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  if (e && e.parameter && e.parameter.action === "TEST_LINE") {
+    sendLineNotification("🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Webhook GET สำเร็จ 100%!)", e.parameter.token, e.parameter.adminId);
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: "LINE notification triggered via GET" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "online",
+    message: "SabaiDee Home Massage Webhook พร้อมทำงาน 100%!",
+    timestamp: new Date().toISOString()
+  })).setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   try {
-    const request = JSON.parse(e.postData.contents);
+    let request = {};
+    if (e && e.postData && e.postData.contents) {
+      request = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      request = e.parameter;
+    }
     const action = request.action;
     const payload = request.payload || request;
     let result = {};
@@ -455,6 +465,7 @@ function doPost(e) {
           table.toLowerCase() === 'reviews' ? 'ReviewID' : 
           table.toLowerCase() === 'notification' ? 'NotificationID' : 'ID'
         );
+        const idVal = request.id || request.ID || (request.data ? (request.data[idCol] || request.data.ServiceID || request.data.UserID || request.data.StaffID || request.data.DocID || request.data.BookingID || request.data.TransactionID || request.data.ID || request.data.id) : null);
         result = upsertSheetRow(table, idCol, idVal, request.data);
         if (table === 'Staff' || table === 'StaffDocuments') {
           const sName = (request.data && (request.data.StaffName || request.data.Name || request.data.Nickname)) || "พนักงานใหม่";
@@ -464,7 +475,7 @@ function doPost(e) {
             "ชื่อ: " + sName,
             "เบอร์: " + sPhone,
             "สถานะ: ⏳ รอแอดมินตรวจสอบเอกสารและอนุมัติในระบบค่ะ"
-          ].join("\\n"));
+          ].join("\\n"), request.token, request.adminId);
         } else if (table === 'Booking') {
           const bId = (request.data && request.data.BookingID) || "";
           const sPrice = (request.data && (request.data.TotalPrice || request.data.ServicePrice)) || 598;
@@ -472,13 +483,13 @@ function doPost(e) {
             "🛎️ มีออเดอร์จองนวดใหม่เข้ามา!",
             "รหัสการจอง: " + bId,
             "ยอดรวม: " + sPrice + " บาท"
-          ].join("\\n"));
+          ].join("\\n"), request.token, request.adminId);
         }
         break;
       }
       case "TEST_LINE": {
         const msg = request.message || "🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Google Apps Script Webhook)";
-        sendLineNotification(msg);
+        sendLineNotification(msg, request.token, request.adminId);
         result = { success: true, message: "ส่งข้อความเข้า LINE เรียบร้อยแล้ว" };
         break;
       }
@@ -590,6 +601,47 @@ function doPost(e) {
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.message }))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+/**
+ * ส่งแจ้งเตือนเข้า LINE สำหรับแอดมิน (Admin Push Message)
+ * ฝังไว้ใน Code.gs โดยตรงเพื่อให้ทำงานได้ทันที แม้ไม่มีไฟล์ Notification.gs
+ */
+function sendLineNotification(message, customToken, customAdminId) {
+  try {
+    var token = (customToken || "").toString().trim();
+    var adminId = (customAdminId || "").toString().trim();
+
+    if (!token || !adminId) {
+      try {
+        var settings = getSheetData("Settings");
+        if (settings && settings.length > 0) {
+          if (!token && settings[0].lineChannelAccessToken) token = settings[0].lineChannelAccessToken.toString().trim();
+          if (!adminId && settings[0].lineAdminUserId) adminId = settings[0].lineAdminUserId.toString().trim();
+        }
+      } catch (errDb) {}
+    }
+
+    if (!token) token = "b6spU9oI6sgyc/lagfyn8Z6MZ4GkUCLOModW44f2ZY/4Ja0nvseYKZSvZwPOboWSMAKM3VN0z/7h50RoaGkMvCNBX2+e51SYez0lNHgwqoEs8TnNKe+7jMLbFEY1sH6ujkXTbp9OXhYxOUKnOiJ0WgdB04t89/1O/w1cDnyilFU=";
+    if (!adminId) adminId = "Cf544171f0f9753863ade1ddd1acd67a7";
+
+    if (!token || !adminId) return;
+
+    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+      method: "post",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token
+      },
+      payload: JSON.stringify({
+        to: adminId,
+        messages: [{ type: "text", text: String(message) }]
+      }),
+      muteHttpExceptions: true
+    });
+  } catch (err) {
+    Logger.log("sendLineNotification Error: " + err.message);
   }
 }
 `

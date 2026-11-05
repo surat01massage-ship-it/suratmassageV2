@@ -171,6 +171,14 @@ export async function handleClientApiRequest(url: string, init?: RequestInit): P
     const currentSettings = getStorage<AppSettings>('sabaidee_persisted_settings', defaultSettings);
     if (currentSettings?.googleSheetWebhookUrl && currentSettings.googleSheetWebhookUrl.startsWith('http')) {
       try {
+        const staffPayload = role === 'Staff' && newStaff ? {
+          ...newStaff,
+          StaffName: body.name || newStaff.Nickname,
+          Name: body.name || newStaff.Nickname,
+          Phone: body.phone,
+          Nickname: newStaff.Nickname || body.name
+        } : newUser;
+
         fetch(currentSettings.googleSheetWebhookUrl, {
           method: 'POST',
           mode: 'no-cors',
@@ -178,7 +186,9 @@ export async function handleClientApiRequest(url: string, init?: RequestInit): P
           body: JSON.stringify({
             action: 'INSERT',
             table: role === 'Staff' ? 'Staff' : 'Users',
-            data: role === 'Staff' ? newStaff : newUser
+            data: staffPayload,
+            token: currentSettings.lineChannelAccessToken,
+            adminId: currentSettings.lineAdminUserId
           })
         }).catch(console.warn);
       } catch {}
@@ -455,15 +465,21 @@ export async function handleClientApiRequest(url: string, init?: RequestInit): P
   // 11. TEST LINE NOTIFICATION
   if (path === '/api/admin/test-line-notification' && method === 'POST') {
     const settings = getStorage<AppSettings>('sabaidee_persisted_settings', defaultSettings);
-    if (settings?.googleSheetWebhookUrl && settings.googleSheetWebhookUrl.startsWith('http')) {
+    const webhookUrl = body.webhookUrl || settings?.googleSheetWebhookUrl;
+    const token = body.token || settings?.lineChannelAccessToken;
+    const adminId = body.adminId || settings?.lineAdminUserId;
+
+    if (webhookUrl && webhookUrl.startsWith('http')) {
       try {
-        fetch(settings.googleSheetWebhookUrl, {
+        fetch(webhookUrl, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'TEST_LINE',
-            message: '🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Google Apps Script Webhook)'
+            message: '🔔 ทดสอบส่งข้อความเข้ากลุ่ม LINE แอดมินจาก SabaiDee Massage (ส่งผ่าน GitHub Pages สำเร็จเรียบร้อยค่ะ!)',
+            token,
+            adminId
           })
         }).catch(console.warn);
         return jsonResponse({ success: true, message: 'ส่งคำขอทดสอบไปยัง LINE ผ่าน Google Apps Script Webhook แล้วค่ะ' });

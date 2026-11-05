@@ -295,6 +295,16 @@ export default function AdminPanel({
     setIsTestingLine(true);
     try {
       if (isStaticHost && webhook) {
+        // Automatically save latest token, adminId, and webhook in localStorage
+        try {
+          const raw = localStorage.getItem('sabaidee_persisted_settings');
+          const current = raw ? JSON.parse(raw) : {};
+          current.lineChannelAccessToken = token.trim();
+          current.lineAdminUserId = adminId.trim();
+          current.googleSheetWebhookUrl = webhook.trim();
+          localStorage.setItem('sabaidee_persisted_settings', JSON.stringify(current));
+        } catch {}
+
         // Send directly to Google Apps Script Webhook
         await fetch(webhook.trim(), {
           method: 'POST',
@@ -302,10 +312,12 @@ export default function AdminPanel({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'TEST_LINE',
-            message: '🔔 ทดสอบส่งข้อความเข้า LINE แอดมินจาก SabaiDee Massage (ส่งผ่าน GitHub Pages สำเร็จเรียบร้อยค่ะ!)'
+            message: '🔔 ทดสอบส่งข้อความเข้ากลุ่ม LINE แอดมินจาก SabaiDee Massage (ส่งผ่าน GitHub Pages สำเร็จเรียบร้อยค่ะ!)',
+            token: token.trim(),
+            adminId: adminId.trim()
           })
         });
-        onShowToast("📲 ยิงคำขอส่งข้อความเข้า LINE แอดมินเรียบร้อยแล้วค่ะ! กรุณาตรวจสอบในโทรศัพท์ของคุณ", "success");
+        onShowToast("📲 ยิงคำขอส่งข้อความเข้า LINE แอดมินเรียบร้อยแล้วค่ะ! หากยังไม่ได้รับ กรุณาตรวจสอบว่าใน Google Apps Script ได้เลือก 'ผู้มีสิทธิ์เข้าถึง = ทุกคน (Anyone)' หรือยังนะคะ", "success");
         return;
       }
 
@@ -2918,9 +2930,17 @@ export default function AdminPanel({
                     className="w-full text-xs font-mono font-medium border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none focus:border-emerald-500"
                     placeholder="https://script.google.com/macros/s/AKfycb.../exec"
                   />
-                  <p className="text-[9px] text-slate-400">
-                    นำ Web App URL ที่ได้จากการกด "ทำให้ใช้งานได้ (Deploy)" ใน Google Apps Script มาวางที่นี่ ระบบจะส่งข้อความเข้า LINE ได้ทันที 100%
-                  </p>
+                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 text-left space-y-1">
+                    <p className="text-[11px] font-bold text-amber-850 flex items-center gap-1.5 text-amber-800">
+                      💡 คำแนะนำการ Deploy Google Apps Script ให้แจ้งเตือน LINE ทำงาน 100%:
+                    </p>
+                    <ol className="text-[10px] text-amber-700 list-decimal list-inside space-y-0.5 font-medium leading-relaxed">
+                      <li>ใน Google Apps Script ให้คัดลอกโค้ด <b>Code.gs</b> จากแท็บ "Google Sheets" ไปวางแทนที่</li>
+                      <li>กดปุ่มสีน้ำเงิน <b>"การทำให้ใช้งานได้ (Deploy)"</b> ด้านบนขวา &gt; เลือก <b>"การทำให้ใช้งานได้รายการใหม่ (New deployment)"</b></li>
+                      <li>ตรงหัวข้อ <b>"ผู้มีสิทธิ์เข้าถึง (Who has access)"</b> ให้เลือกเป็น <b className="text-red-600 underline">"ทุกคน (Anyone)"</b> เท่านั้น (หากเลือกเฉพาะฉัน Google จะฟ้องว่าไม่พบไฟล์ 404 และส่งข้อความไม่ได้)</li>
+                      <li>กดปุ่ม "การทำให้ใช้งานได้" แล้วคัดลอก <b>URL เว็บแอป (ที่ลงท้ายด้วย /exec)</b> มาวางในช่องนี้ค่ะ</li>
+                    </ol>
+                  </div>
                 </div>
               </div>
 
