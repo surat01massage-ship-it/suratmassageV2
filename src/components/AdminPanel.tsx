@@ -305,8 +305,8 @@ export default function AdminPanel({
           localStorage.setItem('sabaidee_persisted_settings', JSON.stringify(current));
         } catch {}
 
-        // Send directly to Google Apps Script Webhook
-        await fetch(webhook.trim(), {
+        // Send via POST
+        fetch(webhook.trim(), {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
@@ -316,8 +316,21 @@ export default function AdminPanel({
             token: token.trim(),
             adminId: adminId.trim()
           })
-        });
-        onShowToast("📲 ยิงคำขอส่งข้อความเข้า LINE แอดมินเรียบร้อยแล้วค่ะ! หากยังไม่ได้รับ กรุณาตรวจสอบว่าใน Google Apps Script ได้เลือก 'ผู้มีสิทธิ์เข้าถึง = ทุกคน (Anyone)' หรือยังนะคะ", "success");
+        }).catch(() => {});
+
+        // Also send via GET query param as dual fallback
+        try {
+          const getUrl = new URL(webhook.trim().split('?')[0]);
+          getUrl.searchParams.set('action', 'TEST_LINE');
+          getUrl.searchParams.set('token', token.trim());
+          getUrl.searchParams.set('adminId', adminId.trim());
+          fetch(getUrl.toString(), {
+            method: 'GET',
+            mode: 'no-cors'
+          }).catch(() => {});
+        } catch {}
+
+        onShowToast("📲 ยิงคำขอส่งข้อความเข้า LINE แอดมินแล้วค่ะ! หากยังไม่ได้รับข้อความ โปรดกดปุ่มสีฟ้า '🔗 เปิดทดสอบ Webhook ในแท็บใหม่' ด้านข้างเพื่อยืนยันสิทธิ์ Google นะคะ", "success");
         return;
       }
 
@@ -2952,12 +2965,24 @@ export default function AdminPanel({
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-col sm:flex-row justify-end items-stretch sm:items-center gap-2.5">
+                {formSettings.googleSheetWebhookUrl && formSettings.googleSheetWebhookUrl.startsWith('http') && (
+                  <a
+                    href={`${formSettings.googleSheetWebhookUrl.trim().split('?')[0]}?action=TEST_LINE&token=${encodeURIComponent(formSettings.lineChannelAccessToken || '')}&adminId=${encodeURIComponent(formSettings.lineAdminUserId || '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="เปิดเพื่ออนุญาตสิทธิ์ Google และยิงข้อความทดสอบเข้า LINE ทันที"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span>🔗 เปิดทดสอบ Webhook ในแท็บใหม่ (ยืนยันสิทธิ์ & ส่งทันที)</span>
+                  </a>
+                )}
                 <button
                   type="button"
                   onClick={handleTestLineNotification}
                   disabled={isTestingLine || !formSettings.lineChannelAccessToken || !formSettings.lineAdminUserId}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {isTestingLine ? (
                     <>กำลังส่งข้อความทดสอบ...</>

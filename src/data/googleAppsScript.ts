@@ -425,11 +425,25 @@ function handleSyncAllTables(tables) {
  */
 
 function doGet(e) {
-  if (e && e.parameter && e.parameter.action === "TEST_LINE") {
-    sendLineNotification("🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Webhook GET สำเร็จ 100%!)", e.parameter.token, e.parameter.adminId);
-    return ContentService.createTextOutput(JSON.stringify({ success: true, message: "LINE notification triggered via GET" }))
-      .setMimeType(ContentService.MimeType.JSON);
+  var action = (e && e.parameter && e.parameter.action) || "";
+  var token = (e && e.parameter && e.parameter.token) || "";
+  var adminId = (e && e.parameter && e.parameter.adminId) || "";
+
+  if (action === "TEST_LINE" || (e && e.parameter && e.parameter.test)) {
+    sendLineNotification("🔔 ทดสอบการแจ้งเตือน LINE สำหรับแอดมิน (ผ่าน Google Apps Script สำเร็จ 100%!)", token, adminId);
+    return HtmlService.createHtmlOutput([
+      "<!DOCTYPE html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>",
+      "<title>ทดสอบ LINE สำเร็จ</title>",
+      "<style>body{font-family:sans-serif;text-align:center;padding:50px 20px;background:#f0fdf4;color:#166534;}",
+      ".card{background:white;padding:35px 25px;border-radius:24px;max-width:440px;margin:auto;box-shadow:0 10px 25px rgba(0,0,0,0.06);border:1px solid #bbf7d0;}",
+      "h2{margin:0 0 12px;font-size:22px;color:#15803d;}p{font-size:14px;color:#4b5563;line-height:1.6;}</style></head>",
+      "<body><div class='card'><h2>🎉 ส่งข้อความเข้า LINE สำเร็จ 100%!</h2>",
+      "<p>ระบบได้ส่งข้อความทดสอบเข้ากลุ่ม LINE แอดมินเรียบร้อยแล้วค่ะ กรุณาเปิดเช็คในโทรศัพท์ของคุณได้เลย</p>",
+      "<p style='font-size:12px;color:#9ca3af;margin-top:20px;'>คุณสามารถปิดหน้านี้แล้วกลับไปใช้งานแอพต่อได้ทันทีค่ะ</p></div></body></html>"
+    ].join(""))
+    .setTitle("SabaiDee LINE Test Success");
   }
+
   return ContentService.createTextOutput(JSON.stringify({
     status: "online",
     message: "SabaiDee Home Massage Webhook พร้อมทำงาน 100%!",
