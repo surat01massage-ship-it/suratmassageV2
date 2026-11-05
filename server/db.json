@@ -18,7 +18,52 @@
       "CreatedDate": "2026-01-01T00:00:00.000Z"
     }
   ],
-  "staff": [],
+  "staff": [
+    {
+      "StaffID": "SFT363108",
+      "UserID": "U987754",
+      "Nickname": "น้องนวดไลน์",
+      "Gender": "Female",
+      "Age": 30,
+      "Weight": 50,
+      "Height": 160,
+      "RegisteredAddress": "",
+      "Experience": 3,
+      "Description": "ยินดีให้บริการนวดเพื่อสุขภาพค่ะ",
+      "Rating": 5,
+      "ReviewCount": 0,
+      "Credit": 200,
+      "Available": "OFF",
+      "VerifyStatus": "Pending",
+      "CurrentLatitude": 9.138244,
+      "CurrentLongitude": 99.321748,
+      "LastLocationUpdate": "2026-11-03T07:40:10.331Z",
+      "TotalIncome": 0,
+      "TotalJobs": 0,
+      "OfferedServices": [
+        "S001",
+        "S002",
+        "S003"
+      ],
+      "MaxJobDistance": 25,
+      "Photos": [
+        "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Ccircle cx='64' cy='64' r='64' fill='%23F1F5F9'/%3E%3Ccircle cx='64' cy='52' r='24' fill='%2394A3B8'/%3E%3Cpath fill='%2394A3B8' d='M64 82c-23.2 0-42 14.5-45 33.2 10.7 7.9 23.9 12.8 38.3 12.8 17 0 32.3-6.4 43.8-16.9C97.5 95 78.8 82 64 82z'/%3E%3C/svg%3E"
+      ],
+      "LicenseFile": "",
+      "IdCardFile": "",
+      "HouseRegFile": "",
+      "Name": "พนักงาน",
+      "Phone": "",
+      "Email": "",
+      "ProfileImage": "",
+      "Address": "",
+      "Province": "",
+      "District": "",
+      "SubDistrict": "",
+      "UserStatus": "Active",
+      "UserCreatedDate": ""
+    }
+  ],
   "services": [
     {
       "ServiceID": "S001",
@@ -55,10 +100,115 @@
     }
   ],
   "bookings": [],
-  "transactions": [],
+  "transactions": [
+    {
+      "TransactionID": "TX922057",
+      "StaffID": "SFT355362",
+      "Amount": 200,
+      "BeforeCredit": 0,
+      "AfterCredit": 200,
+      "Type": "Topup",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้ง)",
+      "CreatedDate": "2026-10-07T08:30:01.508Z"
+    },
+    {
+      "TransactionID": "TX149025",
+      "StaffID": "SFT363108",
+      "Amount": 200,
+      "BeforeCredit": 0,
+      "AfterCredit": 200,
+      "Type": "Topup",
+      "SlipImage": "",
+      "Status": "Approved",
+      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)",
+      "CreatedDate": "2026-11-03T07:40:10.333Z"
+    }
+  ],
   "reviews": [],
-  "notifications": [],
-  "staffDocuments": [],
+  "notifications": [
+    {
+      "NotificationID": "N801660",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ พนักงานใหม่ (ชื่อเล่น น้องใหม่) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T06:01:46.038Z"
+    },
+    {
+      "NotificationID": "N218956",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
+      "Detail": "พนักงานนวดคนใหม่ คุณ น้องฟ้า บริการดี (ชื่อเล่น ฟ้า) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.288Z"
+    },
+    {
+      "NotificationID": "N456967",
+      "UserID": "U001",
+      "Title": "🟢 พนักงานตอบรับงานของคุณแล้ว!",
+      "Detail": "พี่ ฟ้า ได้รับงานของคุณแล้ว กำลังจัดเตรียมอุปกรณ์เพื่อเดินทางไปให้บริการ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.362Z"
+    },
+    {
+      "NotificationID": "N487646",
+      "UserID": "U001",
+      "Title": "✅ การให้บริการเสร็จสิ้นแล้ว",
+      "Detail": "ขอบคุณที่ใช้บริการ SabaiDee Massage ค่ะ กรุณาให้คะแนนรีวิวเพื่อเป็นกำลังใจและพัฒนาคุณภาพต่อไป",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-08T08:26:40.382Z"
+    },
+    {
+      "NotificationID": "N513496",
+      "UserID": "U001",
+      "Title": "🛵 พนักงานกำลังเดินทางมาหาคุณ",
+      "Detail": "พี่พนักงานกำลังเดินทางไปยังที่อยู่ของคุณ ระยะทางประมาณ 0.84 กม.",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-16T08:47:45.284Z"
+    },
+    {
+      "NotificationID": "N452244",
+      "UserID": "U001",
+      "Title": "🛵 พนักงานกำลังเดินทางมาหาคุณ",
+      "Detail": "พี่พนักงานกำลังเดินทางไปยังที่อยู่ของคุณ ระยะทางประมาณ 0.84 กม.",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-16T08:48:00.420Z"
+    },
+    {
+      "NotificationID": "N844610",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-22T07:34:48.741Z"
+    },
+    {
+      "NotificationID": "N281293",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่ (รอการอนุมัติ)",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) เบอร์ 0899990001 ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-09-22T07:35:04.812Z"
+    },
+    {
+      "NotificationID": "N916712",
+      "UserID": "U987754",
+      "Title": "⏳ ใบสมัครพนักงานของคุณอยู่ระหว่างรอแอดมินอนุมัติ",
+      "Detail": "ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 200 เครดิตฟรีค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-11-03T07:40:10.333Z"
+    },
+    {
+      "NotificationID": "N764977",
+      "UserID": "U001",
+      "Title": "มีผู้สมัครเป็นพนักงานใหม่ (รอการอนุมัติ)",
+      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ พนักงานนวดส่งไลน์ (ชื่อเล่น น้องนวดไลน์) เบอร์ 0899998877 ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ",
+      "ReadStatus": "Unread",
+      "CreatedDate": "2026-11-03T07:40:10.338Z"
+    }
+  ],
   "settings": {
     "companyName": "SabaiDee Massage",
     "logo": "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
@@ -101,11 +251,30 @@
     "lineAdminUserId": "Cf544171f0f9753863ade1ddd1acd67a7",
     "enableLineAdminNotify": true,
     "autoCompleteMinutes": 30,
-    "googleSheetWebhookUrl": "https://script.google.com/macros/s/AKfycbwb1ovZB-WfYeUirZj3xuDIb_SA6LbJxLctNNySPr1sTCMwR_aig1gyECzAtE0ACue4CA/exec",
+    "googleSheetWebhookUrl": "https://script.google.com/macros/s/AKfycyb8vBvsKHa-BGXfFkH0kfxqr8hP_U4QYsWtlZ3j8wl-eqKBwcSREsBYvCuFerhUcleHWw/exec",
     "isCustomized": true,
-    "updatedAt": "2026-11-04T00:00:00.000Z"
+    "updatedAt": "2026-10-06T07:31:22.987Z"
   },
-  "deletedUserIds": [],
-  "deletedStaffIds": [],
+  "deletedUserIds": [
+    "U002",
+    "U005",
+    "U759249",
+    "U347114",
+    "U999",
+    "U_TEST_01",
+    "U477380",
+    "U695556",
+    "U739690",
+    "U308294",
+    "0899999999",
+    "U436539",
+    "0898887766"
+  ],
+  "deletedStaffIds": [
+    "SFT001",
+    "SFT956678",
+    "SFT738787",
+    "SFT355362"
+  ],
   "deletedServiceIds": []
 }

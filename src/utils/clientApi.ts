@@ -53,7 +53,7 @@ export const defaultSettings: AppSettings = {
   lineAdminUserId: "Cf544171f0f9753863ade1ddd1acd67a7",
   enableLineAdminNotify: true,
   autoCompleteMinutes: 30,
-  googleSheetWebhookUrl: "https://script.google.com/macros/s/AKfycbwb1ovZB-WfYeUirZj3xuDIb_SA6LbJxLctNNySPr1sTCMwR_aig1gyECzAtE0ACue4CA/exec"
+  googleSheetWebhookUrl: "https://script.google.com/macros/s/AKfycyb8vBvsKHa-BGXfFkH0kfxqr8hP_U4QYsWtlZ3j8wl-eqKBwcSREsBYvCuFerhUcleHWw/exec"
 };
 
 function cleanPersistedUsers(users: User[]): User[] {
