@@ -2951,16 +2951,26 @@ export default function AdminPanel({
                     className="w-full text-xs font-mono font-medium border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none focus:border-emerald-500"
                     placeholder="https://script.google.com/macros/s/AKfycb.../exec"
                   />
-                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 text-left space-y-1">
-                    <p className="text-[11px] font-bold text-amber-850 flex items-center gap-1.5 text-amber-800">
-                      💡 คำแนะนำการ Deploy Google Apps Script ให้แจ้งเตือน LINE ทำงาน 100%:
+                  <div className="bg-amber-50/90 border border-amber-200 rounded-xl p-3.5 text-left space-y-2">
+                    <p className="text-[11px] font-bold text-amber-900 flex items-center gap-1.5">
+                      💡 ขั้นตอนการ Deploy Google Apps Script ให้แจ้งเตือน LINE ทำงาน 100%:
                     </p>
-                    <ol className="text-[10px] text-amber-700 list-decimal list-inside space-y-0.5 font-medium leading-relaxed">
-                      <li>ใน Google Apps Script ให้คัดลอกโค้ด <b>Code.gs</b> จากแท็บ "Google Sheets" ไปวางแทนที่</li>
+                    <ol className="text-[10px] text-amber-800 list-decimal list-inside space-y-1 font-medium leading-relaxed">
+                      <li>ใน Google Apps Script คัดลอกโค้ด <b>Code.gs</b> (จากแท็บ "Google Sheets" ในแอปนี้) ไปวางในโปรเจกต์</li>
                       <li>กดปุ่มสีน้ำเงิน <b>"การทำให้ใช้งานได้ (Deploy)"</b> ด้านบนขวา &gt; เลือก <b>"การทำให้ใช้งานได้รายการใหม่ (New deployment)"</b></li>
-                      <li>ตรงหัวข้อ <b>"ผู้มีสิทธิ์เข้าถึง (Who has access)"</b> ให้เลือกเป็น <b className="text-red-600 underline">"ทุกคน (Anyone)"</b> เท่านั้น (หากเลือกเฉพาะฉัน Google จะฟ้องว่าไม่พบไฟล์ 404 และส่งข้อความไม่ได้)</li>
-                      <li>กดปุ่ม "การทำให้ใช้งานได้" แล้วคัดลอก <b>URL เว็บแอป (ที่ลงท้ายด้วย /exec)</b> มาวางในช่องนี้ค่ะ</li>
+                      <li>ตรงหัวข้อ <b>"ผู้มีสิทธิ์เข้าถึง (Who has access)"</b> ให้เลือกเป็น <b className="text-red-600 underline">"ทุกคน (Anyone)"</b></li>
+                      <li>กดปุ่มสีน้ำเงิน <b>"การทำให้ใช้งานได้"</b> ด้านล่าง &gt; หากมีป๊อปอัป ให้กด <b>"ให้สิทธิ์เข้าถึง"</b> &gt; เลือก Gmail &gt; กด <b>"ขั้นสูง (Advanced)"</b> &gt; กด <b>"ไปที่ โครงการไม่มีชื่อ (ไม่ปลอดภัย)"</b> &gt; กด <b>"อนุญาต"</b></li>
+                      <li>เมื่อสำเร็จ Google จะแสดงกล่อง <b>"URL ของเว็บแอป" (ลงท้ายด้วย /exec)</b> ให้กดคัดลอกแล้วนำมาวางในช่องนี้ค่ะ</li>
                     </ol>
+
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 mt-2">
+                      <p className="text-[10px] font-bold text-red-700 flex items-center gap-1">
+                        ⛔ สิ่งที่ไม่ต้องทำ (ข้อควรระวัง):
+                      </p>
+                      <p className="text-[10px] text-red-600 mt-0.5 leading-relaxed">
+                        <b>ห้ามนำ URL นี้ไปใส่ใน LINE Developers และไม่ต้องกด Verify ใน LINE Developers ค่ะ!</b> เพราะ LINE Developers จะฟ้อง <code>Error 302 Found</code> เสมอ ซึ่งระบบส่งแจ้งเตือนของเราเป็นการยิงข้อความ Push Message ตรงเข้ากลุ่ม LINE โดยใช้แค่ Token และ Group ID อยู่แล้ว ไม่ต้องพึ่งพา Webhook ในหน้า LINE Developers เลยค่ะ
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>

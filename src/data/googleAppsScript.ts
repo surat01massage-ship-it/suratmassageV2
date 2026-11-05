@@ -455,10 +455,20 @@ function doPost(e) {
   try {
     let request = {};
     if (e && e.postData && e.postData.contents) {
-      request = JSON.parse(e.postData.contents);
+      try {
+        request = JSON.parse(e.postData.contents);
+      } catch (parseErr) {
+        request = {};
+      }
     } else if (e && e.parameter) {
       request = e.parameter;
     }
+
+    // LINE Developers Webhook Verification ping handler (returns OK 200 if probed)
+    if (request && Array.isArray(request.events)) {
+      return ContentService.createTextOutput("OK").setMimeType(ContentService.MimeType.TEXT);
+    }
+
     const action = request.action;
     const payload = request.payload || request;
     let result = {};
@@ -521,6 +531,16 @@ function doPost(e) {
         );
         const idVal = request.id || request.ID || (request.data ? (request.data[idCol] || request.data.ServiceID || request.data.UserID || request.data.StaffID || request.data.DocID || request.data.BookingID || request.data.TransactionID || request.data.ID || request.data.id) : null);
         result = upsertSheetRow(table, idCol, idVal, request.data);
+
+        // Notify LINE when staff is approved
+        if (table === 'Staff' && request.data && request.data.VerifyStatus === 'Approved') {
+          const sName = request.data.Nickname || request.data.StaffName || request.data.Name || request.id || "พนักงาน";
+          sendLineNotification([
+            "✅ [อนุมัติพนักงานแล้ว]",
+            "ชื่อ: " + sName,
+            "สถานะ: แอดมินอนุมัติเรียบร้อย พนักงานสามารถเปิดรับงานได้แล้ว 🎉"
+          ].join("\\n"), request.token, request.adminId);
+        }
         break;
       }
       case "DELETE": {

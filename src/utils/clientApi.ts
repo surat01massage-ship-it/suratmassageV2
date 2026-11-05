@@ -328,7 +328,14 @@ export async function handleClientApiRequest(url: string, init?: RequestInit): P
               table: 'Staff',
               idColumn: 'StaffID',
               id: staffId,
-              data: { VerifyStatus: status, Available: staff.Available }
+              data: {
+                VerifyStatus: status,
+                Available: staff.Available,
+                Nickname: staff.Nickname,
+                StaffName: staff.Nickname
+              },
+              token: settings.lineChannelAccessToken,
+              adminId: settings.lineAdminUserId
             })
           }).catch(console.warn);
         } catch {}
