@@ -1127,3 +1127,7 @@ function hashPasswordForProduction(pwd) {
 `
   }
 ];
+
+export const allInOneGoogleAppsScriptCode = googleAppsScriptFiles
+  .map(f => `// ========================================================\n// FILE: ${f.name}\n// ========================================================\n${f.code}`)
+  .join("\n\n");

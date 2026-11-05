@@ -7,7 +7,7 @@ import {
   QrCode, ExternalLink, Link as LinkIcon, Image as ImageIcon
 } from 'lucide-react';
 import { User, Staff, Service, CreditTransaction, AppSettings } from '../types';
-import { googleAppsScriptFiles } from '../data/googleAppsScript';
+import { googleAppsScriptFiles, allInOneGoogleAppsScriptCode } from '../data/googleAppsScript';
 import { initialServices, initialUsers, initialStaff, initialTransactions } from '../data/initialData';
 import GoogleSheetsExport from './GoogleSheetsExport';
 import StaffDetailModal from './StaffDetailModal';
@@ -275,23 +275,49 @@ export default function AdminPanel({
   const handleTestLineNotification = async () => {
     const token = formSettings.lineChannelAccessToken;
     const adminId = formSettings.lineAdminUserId;
+    const webhook = formSettings.googleSheetWebhookUrl;
 
     if (!token || !adminId) {
       onShowToast("กรุณาระบุทั้ง Channel Access Token และ Admin User/Group ID ก่อนกดทดสอบค่ะ", "error");
       return;
     }
 
+    const isStaticHost = typeof window !== 'undefined' && (
+      window.location.hostname.includes('github.io') ||
+      window.location.hostname.includes('github.dev')
+    );
+
+    if (isStaticHost && (!webhook || !webhook.startsWith('http'))) {
+      onShowToast("⚠️ สำหรับ GitHub Pages ต้องระบุ Google Apps Script Webhook URL ด้านล่างเพื่อส่งเข้า LINE ค่ะ", "error");
+      return;
+    }
+
     setIsTestingLine(true);
     try {
+      if (isStaticHost && webhook) {
+        // Send directly to Google Apps Script Webhook
+        await fetch(webhook.trim(), {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'TEST_LINE',
+            message: '🔔 ทดสอบส่งข้อความเข้า LINE แอดมินจาก SabaiDee Massage (ส่งผ่าน GitHub Pages สำเร็จเรียบร้อยค่ะ!)'
+          })
+        });
+        onShowToast("📲 ยิงคำขอส่งข้อความเข้า LINE แอดมินเรียบร้อยแล้วค่ะ! กรุณาตรวจสอบในโทรศัพท์ของคุณ", "success");
+        return;
+      }
+
       const res = await fetch('/api/admin/test-line-notification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, adminId })
+        body: JSON.stringify({ token, adminId, webhookUrl: webhook })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'ส่งข้อความไม่สำเร็จ');
 
-      onShowToast(data.message, "success");
+      onShowToast(data.message || "ส่งข้อความเข้า LINE แอดมินสำเร็จแล้ว!", "success");
     } catch (e: any) {
       onShowToast(e.message, "error");
     } finally {
@@ -2871,6 +2897,31 @@ export default function AdminPanel({
                     แนะนำใช้ User ID (ขึ้นต้นด้วย U จาก Basic settings) หรือ Group ID (ขึ้นต้นด้วย C)
                   </p>
                 </div>
+
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
+                    <span>Google Apps Script Webhook URL (จำเป็นสำหรับการแจ้งเตือน LINE ฟรีผ่าน GitHub Pages)</span>
+                    {formSettings.googleSheetWebhookUrl ? (
+                      <span className="text-emerald-600 font-bold text-[9px] flex items-center gap-1">
+                        <Check className="w-3 h-3" /> เชื่อมต่อแล้ว
+                      </span>
+                    ) : (
+                      <span className="text-amber-600 font-bold text-[9px]">
+                        ⚠️ ต้องระบุสำหรับ GitHub Pages
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="url"
+                    value={formSettings.googleSheetWebhookUrl || ''}
+                    onChange={(e) => setFormSettings({ ...formSettings, googleSheetWebhookUrl: e.target.value })}
+                    className="w-full text-xs font-mono font-medium border border-slate-200 rounded-xl p-3 bg-slate-50 focus:outline-none focus:border-emerald-500"
+                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                  />
+                  <p className="text-[9px] text-slate-400">
+                    นำ Web App URL ที่ได้จากการกด "ทำให้ใช้งานได้ (Deploy)" ใน Google Apps Script มาวางที่นี่ ระบบจะส่งข้อความเข้า LINE ได้ทันที 100%
+                  </p>
+                </div>
               </div>
 
               <div className="flex justify-end">
@@ -3001,14 +3052,23 @@ export default function AdminPanel({
       {activeTab === 'gas' && (
         <div className="bg-white text-slate-800 border border-slate-200 rounded-3xl p-6 shadow-sm space-y-6 text-left animate-fade-in font-sans">
           
-          <div>
-            <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-              <FileCode className="w-5 h-5 text-sky-500" />
-              ชุดรหัสสคริปต์หลังบ้าน (Google Apps Script Production Package)
-            </h3>
-            <p className="text-[10px] text-slate-500 font-semibold mt-1">
-              แบ่งออกเป็น 14 สคริปต์ย่อย (Modular GS Files) เรียงตามหลักสถาปัตยกรรมของแอปพลิเคชันอย่างครบถ้วนเพื่อประสิทธิภาพสูงสุด
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 p-4 rounded-2xl">
+            <div>
+              <h3 className="text-sm font-black text-emerald-950 flex items-center gap-2">
+                <FileCode className="w-5 h-5 text-emerald-600" />
+                ชุดรหัสสคริปต์หลังบ้าน (Google Apps Script Production Package)
+              </h3>
+              <p className="text-[11px] text-emerald-800 font-medium mt-0.5">
+                แนะนำ: กดปุ่มด้านขวาเพื่อคัดลอกโค้ดทั้งหมดไฟล์เดียว แล้วนำไปวางใน <code className="bg-white px-1.5 py-0.5 rounded font-mono font-bold text-emerald-700">Code.gs</code> ไฟล์เดียวจบได้ทันทีค่ะ
+              </p>
+            </div>
+
+            <button
+              onClick={() => handleCopyCode(allInOneGoogleAppsScriptCode)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black px-4 py-2.5 rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer shrink-0"
+            >
+              <Copy className="w-4 h-4" /> 📋 คัดลอกโค้ดทั้งหมด (ไฟล์เดียวจบ 100%)
+            </button>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
