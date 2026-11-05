@@ -2,20 +2,20 @@
   "users": [
     {
       "UserID": "U001",
-      "Name": "สมชาย ยิ่งดี (แอดมิน)",
-      "Phone": "0812345678",
-      "PasswordHash": "admin123",
-      "Email": "admin@sabaidee.com",
-      "Address": "99 ถนนกาญจนวิถี ต.บางกุ้ง อ.เมือง จ.สุราษฎร์ธานี 84000",
+      "Name": "ช้าง",
+      "Phone": "2511",
+      "PasswordHash": "2511",
+      "Email": "chang@sabaidee.com",
+      "Address": "สุราษฎร์ธานี",
       "Province": "สุราษฎร์ธานี",
       "District": "เมืองสุราษฎร์ธานี",
-      "SubDistrict": "บางกุ้ง",
-      "Latitude": 9.10537453623607,
-      "Longitude": 99.33859825517314,
-      "ProfileImage": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=60",
+      "SubDistrict": "ตลาด",
+      "Latitude": 9.138244,
+      "Longitude": 99.321748,
+      "ProfileImage": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
       "Role": "Admin",
       "Status": "Active",
-      "CreatedDate": "2026-01-01T08:00:00Z"
+      "CreatedDate": "2026-01-01T00:00:00.000Z"
     }
   ],
   "staff": [],
@@ -55,115 +55,10 @@
     }
   ],
   "bookings": [],
-  "transactions": [
-    {
-      "TransactionID": "TX922057",
-      "StaffID": "SFT355362",
-      "Amount": 200,
-      "BeforeCredit": 0,
-      "AfterCredit": 200,
-      "Type": "Topup",
-      "SlipImage": "",
-      "Status": "Approved",
-      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้ง)",
-      "CreatedDate": "2026-10-07T08:30:01.508Z"
-    },
-    {
-      "TransactionID": "TX149025",
-      "StaffID": "SFT363108",
-      "Amount": 200,
-      "BeforeCredit": 0,
-      "AfterCredit": 200,
-      "Type": "Topup",
-      "SlipImage": "",
-      "Status": "Approved",
-      "AdminRemark": "🎁 โบนัสต้อนรับพนักงานใหม่ 200 เครดิต (รับงานฟรี 1 ครั้งเมื่อได้รับการอนุมัติ)",
-      "CreatedDate": "2026-11-03T07:40:10.333Z"
-    }
-  ],
+  "transactions": [],
   "reviews": [],
-  "notifications": [
-    {
-      "NotificationID": "N801660",
-      "UserID": "U001",
-      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
-      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ พนักงานใหม่ (ชื่อเล่น น้องใหม่) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-08T06:01:46.038Z"
-    },
-    {
-      "NotificationID": "N218956",
-      "UserID": "U001",
-      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
-      "Detail": "พนักงานนวดคนใหม่ คุณ น้องฟ้า บริการดี (ชื่อเล่น ฟ้า) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-08T08:26:40.288Z"
-    },
-    {
-      "NotificationID": "N456967",
-      "UserID": "U001",
-      "Title": "🟢 พนักงานตอบรับงานของคุณแล้ว!",
-      "Detail": "พี่ ฟ้า ได้รับงานของคุณแล้ว กำลังจัดเตรียมอุปกรณ์เพื่อเดินทางไปให้บริการ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-08T08:26:40.362Z"
-    },
-    {
-      "NotificationID": "N487646",
-      "UserID": "U001",
-      "Title": "✅ การให้บริการเสร็จสิ้นแล้ว",
-      "Detail": "ขอบคุณที่ใช้บริการ SabaiDee Massage ค่ะ กรุณาให้คะแนนรีวิวเพื่อเป็นกำลังใจและพัฒนาคุณภาพต่อไป",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-08T08:26:40.382Z"
-    },
-    {
-      "NotificationID": "N513496",
-      "UserID": "U001",
-      "Title": "🛵 พนักงานกำลังเดินทางมาหาคุณ",
-      "Detail": "พี่พนักงานกำลังเดินทางไปยังที่อยู่ของคุณ ระยะทางประมาณ 0.84 กม.",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-16T08:47:45.284Z"
-    },
-    {
-      "NotificationID": "N452244",
-      "UserID": "U001",
-      "Title": "🛵 พนักงานกำลังเดินทางมาหาคุณ",
-      "Detail": "พี่พนักงานกำลังเดินทางไปยังที่อยู่ของคุณ ระยะทางประมาณ 0.84 กม.",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-16T08:48:00.420Z"
-    },
-    {
-      "NotificationID": "N844610",
-      "UserID": "U001",
-      "Title": "มีผู้สมัครเป็นพนักงานใหม่",
-      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) ได้สมัครสมาชิกเข้ามา พร้อมรับเครดิตฟรี 398 CR",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-22T07:34:48.741Z"
-    },
-    {
-      "NotificationID": "N281293",
-      "UserID": "U001",
-      "Title": "มีผู้สมัครเป็นพนักงานใหม่ (รอการอนุมัติ)",
-      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ แอดมินอนุมัติ (ชื่อเล่น หมอทดสอบ) เบอร์ 0899990001 ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-09-22T07:35:04.812Z"
-    },
-    {
-      "NotificationID": "N916712",
-      "UserID": "U987754",
-      "Title": "⏳ ใบสมัครพนักงานของคุณอยู่ระหว่างรอแอดมินอนุมัติ",
-      "Detail": "ยินดีต้อนรับสู่ SabaiDee Massage! ข้อมูลและเอกสารของคุณถูกส่งถึงแอดมินแล้ว เมื่อได้รับการอนุมัติ คุณจะสามารถเปิดรับงาน (Online) เพื่อเริ่มรับงานลูกค้าได้ทันที พร้อมรับ 200 เครดิตฟรีค่ะ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-11-03T07:40:10.333Z"
-    },
-    {
-      "NotificationID": "N764977",
-      "UserID": "U001",
-      "Title": "มีผู้สมัครเป็นพนักงานใหม่ (รอการอนุมัติ)",
-      "Detail": "พนักงานนวดคนใหม่ คุณ ทดสอบ พนักงานนวดส่งไลน์ (ชื่อเล่น น้องนวดไลน์) เบอร์ 0899998877 ได้สมัครสมาชิกเข้ามา รอแอดมินตรวจสอบเอกสารและอนุมัติก่อนเริ่มงานค่ะ",
-      "ReadStatus": "Unread",
-      "CreatedDate": "2026-11-03T07:40:10.338Z"
-    }
-  ],
+  "notifications": [],
+  "staffDocuments": [],
   "settings": {
     "companyName": "SabaiDee Massage",
     "logo": "https://images.unsplash.com/photo-1600334089648-b0d9d3028eb2?w=120&auto=format&fit=crop&q=60",
@@ -206,29 +101,11 @@
     "lineAdminUserId": "Cf544171f0f9753863ade1ddd1acd67a7",
     "enableLineAdminNotify": true,
     "autoCompleteMinutes": 30,
+    "googleSheetWebhookUrl": "https://script.google.com/macros/s/AKfycbwb1ovZB-WfYeUirZj3xuDIb_SA6LbJxLctNNySPr1sTCMwR_aig1gyECzAtE0ACue4CA/exec",
     "isCustomized": true,
-    "updatedAt": "2026-10-06T07:31:22.987Z"
+    "updatedAt": "2026-11-04T00:00:00.000Z"
   },
-  "deletedUserIds": [
-    "U002",
-    "U005",
-    "U759249",
-    "U347114",
-    "U999",
-    "U_TEST_01",
-    "U477380",
-    "U695556",
-    "U739690",
-    "U308294",
-    "0899999999",
-    "U436539",
-    "0898887766"
-  ],
-  "deletedStaffIds": [
-    "SFT001",
-    "SFT956678",
-    "SFT738787",
-    "SFT355362"
-  ],
+  "deletedUserIds": [],
+  "deletedStaffIds": [],
   "deletedServiceIds": []
 }

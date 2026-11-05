@@ -10,7 +10,7 @@ import StaffPanel from './components/StaffPanel';
 import AdminPanel from './components/AdminPanel';
 import { getRealCurrentLocation } from './utils/geolocation';
 import { playJobAlertSound, playCustomerChime, unlockAudioContext } from './utils/soundAlert';
-import { handleClientApiRequest } from './utils/clientApi';
+import { handleClientApiRequest, ADMIN_CHANG } from './utils/clientApi';
 
 // Canvas-based image compression for registration uploads
 const compressImageFile = (file: File): Promise<string> => {
@@ -140,6 +140,21 @@ const getPersistedSession = (): { user: User | null; staff: Staff | null; role: 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.user && parsed.user.UserID) {
+          // Purge legacy mock users
+          if (parsed.user.UserID === 'U002' || parsed.user.UserID === 'U003' || parsed.user.Phone === '0812345678' || parsed.user.Phone === '0891234567' || parsed.user.Phone === '0823456789') {
+            localStorage.removeItem('sabaidee_active_session');
+            localStorage.removeItem('sabaidee_auth');
+            return { user: null, staff: null, role: 'Customer' };
+          }
+
+          if (parsed.user.Phone === '2511' || parsed.user.Name === 'ช้าง') {
+            return {
+              user: ADMIN_CHANG,
+              staff: null,
+              role: 'Admin'
+            };
+          }
+
           const userPhone = parsed.user.Phone ? parsed.user.Phone.replace(/\D/g, '') : '';
           const isDeleted = deletedSet.has(parsed.user.UserID) || 
             (parsed.user.Phone && deletedSet.has(parsed.user.Phone)) ||
@@ -842,95 +857,24 @@ export default function App() {
       setPasswordInput("");
     } catch (e: any) {
       // Offline fallback for static hosts (GitHub Pages) or temporary server disconnects
-      const digits = phoneInput.replace(/\D/g, '');
+      const rawInput = phoneInput.trim();
+      const digits = rawInput.replace(/\D/g, '');
       let fallbackUser: User | null = null;
       let fallbackStaff: Staff | null = null;
 
-      if (digits === '0812345678') {
-        fallbackUser = {
-          UserID: 'U001',
-          Phone: '0812345678',
-          PasswordHash: passwordInput || '123456',
-          Name: 'ผู้ดูแลระบบ (Admin)',
-          Email: 'admin@sabaidee.com',
-          Address: 'เมืองสุราษฎร์ธานี',
-          Province: 'สุราษฎร์ธานี',
-          District: 'เมือง',
-          SubDistrict: 'ตลาด',
-          Role: 'Admin',
-          Status: 'Active',
-          ProfileImage: '',
-          Latitude: 9.138244,
-          Longitude: 99.321748,
-          CreatedDate: new Date().toISOString()
-        };
-      } else if (digits === '0891234567') {
-        fallbackUser = {
-          UserID: 'U002',
-          Phone: '0891234567',
-          PasswordHash: passwordInput || '123456',
-          Name: 'พี่สมศรี ใจดี',
-          Email: 'somsri@sabaidee.com',
-          Address: 'เมืองสุราษฎร์ธานี',
-          Province: 'สุราษฎร์ธานี',
-          District: 'เมือง',
-          SubDistrict: 'มะขามเตี้ย',
-          Role: 'Staff',
-          Status: 'Active',
-          ProfileImage: '',
-          Latitude: 9.138244,
-          Longitude: 99.321748,
-          CreatedDate: new Date().toISOString()
-        };
-        fallbackStaff = {
-          StaffID: 'SFT001',
-          UserID: 'U002',
-          Nickname: 'สมศรี',
-          Gender: 'Female',
-          Age: 35,
-          Weight: 52,
-          Height: 160,
-          RegisteredAddress: 'สุราษฎร์ธานี',
-          Experience: 5,
-          Description: 'หมอนวดแผนไทยเชี่ยวชาญแก้อาการ คลายเส้น นวดออฟฟิศซินโดรม',
-          Rating: 4.9,
-          ReviewCount: 28,
-          Credit: 200,
-          Available: 'ON',
-          VerifyStatus: 'Approved',
-          CurrentLatitude: 9.138244,
-          CurrentLongitude: 99.321748,
-          LastLocationUpdate: new Date().toISOString(),
-          TotalIncome: 0,
-          TotalJobs: 0,
-          OfferedServices: ['S001', 'S002', 'S003'],
-          MaxJobDistance: 25
-        };
-      } else if (digits === '0823456789') {
-        fallbackUser = {
-          UserID: 'U003',
-          Phone: '0823456789',
-          PasswordHash: passwordInput || '123456',
-          Name: 'คุณสมชาย ลูกค้าประจำ',
-          Email: 'somchai@gmail.com',
-          Address: 'เมืองสุราษฎร์ธานี',
-          Province: 'สุราษฎร์ธานี',
-          District: 'เมือง',
-          SubDistrict: 'บางกุ้ง',
-          Role: 'Customer',
-          Status: 'Active',
-          ProfileImage: '',
-          Latitude: 9.138244,
-          Longitude: 99.321748,
-          CreatedDate: new Date().toISOString()
-        };
+      if (rawInput === '2511' || digits === '2511' || rawInput.toLowerCase() === 'chang' || rawInput.includes('ช้าง')) {
+        if (!passwordInput || passwordInput.trim() === '2511') {
+          fallbackUser = ADMIN_CHANG;
+        } else {
+          throw new Error('รหัสผ่านไม่ถูกต้อง (รหัสผ่านแอดมินคือ 2511)');
+        }
       } else {
         // Try to match from locally persisted users
         try {
           const raw = localStorage.getItem('sabaidee_persisted_users');
           if (raw) {
             const list: User[] = JSON.parse(raw);
-            const found = list.find(u => u.Phone?.replace(/\D/g, '') === digits && (!passwordInput || u.PasswordHash === passwordInput || (u as any).Password === passwordInput));
+            const found = list.find(u => (u.Phone?.replace(/\D/g, '') === digits || u.Phone === rawInput) && (!passwordInput || u.PasswordHash === passwordInput || (u as any).Password === passwordInput));
             if (found) {
               fallbackUser = found;
               if (found.Role === 'Staff') {
